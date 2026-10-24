@@ -936,3 +936,63 @@ TEST(save, el_autoguardado_se_marca_y_se_vuelca) {
   p.flushSave();
   CHECK(!p.savePending());
 }
+
+// ---------------------------------------------------------------- save backup
+TEST(backup, ida_y_vuelta_conserva_el_estado) {
+  Pet a;
+  makePet(a, 4);
+  a.fullness = 47; a.joy = 33; a.bond = 12; a.streak = 5; a.gameHi = 321;
+  a.rename("BACKUP");
+  a.dexReg[3] = 0xA5;
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  CHECK(n > 16 && n <= sizeof(blob));
+
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.speciesId, (int)a.speciesId);
+  CHECK_EQ((int)b.fullness, 47);
+  CHECK_EQ((int)b.joy, 33);
+  CHECK_EQ((int)b.bond, 12);
+  CHECK_EQ((int)b.streak, 5);
+  CHECK_EQ((int)b.gameHi, 321);
+  CHECK_EQ((int)b.dexReg[3], 0xA5);
+  CHECK(strcmp(b.nick, "BACKUP") == 0);
+}
+
+TEST(backup, rechaza_datos_cortados_o_alterados_y_no_toca_el_estado) {
+  Pet a;
+  makePet(a, 4);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+
+  Pet b;
+  makePet(b, 7);
+  b.fullness = 61;
+  CHECK(!b.importBackup(blob, n - 1));        // cut off
+  uint8_t bad[Pet::BACKUP_MAX_BYTES];
+  memcpy(bad, blob, n);
+  bad[10] ^= 0x01;                            // flipped bit
+  CHECK(!b.importBackup(bad, n));
+  memcpy(bad, blob, n);
+  bad[0] = 'X';                               // not a backup
+  CHECK(!b.importBackup(bad, n));
+  CHECK_EQ((int)b.fullness, 61);
+  CHECK_EQ((int)b.speciesId, 7);
+}
+
+TEST(backup, un_valor_fuera_de_rango_con_checksum_valido_se_deshace) {
+  Pet a;
+  makePet(a, 4);
+  a.fullness = 250;                           // impossible; export does not clamp
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+
+  Pet b;
+  makePet(b, 7);
+  b.fullness = 61;
+  CHECK(!b.importBackup(blob, n));
+  CHECK_EQ((int)b.fullness, 61);              // rolled back
+  CHECK_EQ((int)b.speciesId, 7);
+}

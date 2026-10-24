@@ -597,6 +597,76 @@ void Pet::save() {
   prefs.putString("nick", nick);
 }
 
+// The saved fields in one place: the same list writes and reads the backup, so the two
+// directions cannot drift apart. Add new persisted state here AND in save()/load().
+template <class IO> void Pet::backupFields(IO &io) {
+  io(fullness); io(joy); io(energy); io(hygiene); io(poops); io(weight);
+  io(geneAtk); io(geneDef); io(geneSpe); io(trAtk); io(trDef); io(trSpe);
+  io(berryKnown); io(shiny); io(eggShiny); io(starterPick); io(sleeping);
+  io(dexReg); io(dexShinyReg);
+  io(ageMinutes); io(speciesId); io(eggTarget); io(eggTaps); io(careMistakes); io(lastEnd);
+  io(streak); io(bestStreak); io(lastCareDay); io(bond);
+  io(medals); io(totalMedals); io(lastMilestone); io(gameHi); io(strHi);
+  io(nick);
+}
+
+namespace {
+const uint8_t BACKUP_MAGIC[4] = { 'T', 'B', 'K', '1' };
+uint32_t backupChecksum(const uint8_t *d, size_t n) {  // FNV-1a
+  uint32_t h = 2166136261UL;
+  for (size_t i = 0; i < n; i++) h = (h ^ d[i]) * 16777619UL;
+  return h;
+}
+struct BackupWriter {
+  uint8_t *p; uint8_t *end; bool ok = true;
+  template <class T> void operator()(T &v) {
+    if (p + sizeof(T) > end) { ok = false; return; }
+    memcpy(p, &v, sizeof(T)); p += sizeof(T);
+  }
+};
+struct BackupReader {
+  const uint8_t *p;
+  template <class T> void operator()(T &v) { memcpy(&v, p, sizeof(T)); p += sizeof(T); }
+};
+}  // namespace
+
+size_t Pet::exportBackup(uint8_t *out, size_t capacity) {
+  if (!out || capacity < sizeof(BACKUP_MAGIC) + 4) return 0;
+  memcpy(out, BACKUP_MAGIC, sizeof(BACKUP_MAGIC));
+  BackupWriter w{ out + sizeof(BACKUP_MAGIC), out + capacity - 4 };  // keep 4 bytes for the checksum
+  backupFields(w);
+  if (!w.ok) return 0;
+  uint32_t sum = backupChecksum(out, w.p - out);
+  memcpy(w.p, &sum, 4);
+  return (w.p - out) + 4;
+}
+
+bool Pet::importBackup(const uint8_t *data, size_t length) {
+  uint8_t prev[BACKUP_MAX_BYTES];
+  size_t want = exportBackup(prev, sizeof(prev));  // also the rollback copy
+  if (!data || !want || length != want || memcmp(data, BACKUP_MAGIC, sizeof(BACKUP_MAGIC)) != 0) return false;
+  uint32_t sum;
+  memcpy(&sum, data + length - 4, 4);
+  if (sum != backupChecksum(data, length - 4)) return false;
+  BackupReader r{ data + sizeof(BACKUP_MAGIC) };
+  backupFields(r);
+  nick[sizeof(nick) - 1] = 0;
+  bool sane = speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
+              fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3;
+  if (!sane) {
+    BackupReader back{ prev + sizeof(BACKUP_MAGIC) };
+    backupFields(back);
+    return false;
+  }
+  ceremony = CER_NONE;
+  evolveUntil = 0;
+  neglectTicks = 0;
+  lastSeenEpoch = 0;
+  prefs.putUInt("seen", 0);  // no offline catch-up for the time since the backup was taken
+  save();
+  return true;
+}
+
 void Pet::load() {
   fullness = prefs.getUChar("full", 80);
   joy = prefs.getUChar("joy", 80);

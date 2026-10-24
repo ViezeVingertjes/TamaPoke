@@ -171,7 +171,14 @@ public:
   uint32_t savedEpoch() { return prefs.getUInt("seen", 0); }
   void flushSave();
 
+  // Versioned snapshot of the game state for the browser installer (SAVEGET / SAVEPUT over
+  // USB). Never includes SD data. Time away is not applied after a restore.
+  static constexpr size_t BACKUP_MAX_BYTES = 128;
+  size_t exportBackup(uint8_t *out, size_t capacity);
+  bool importBackup(const uint8_t *data, size_t length);
+
 private:
+  template <class IO> void backupFields(IO &io);
   Preferences prefs;
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;

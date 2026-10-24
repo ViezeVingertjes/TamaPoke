@@ -507,6 +507,38 @@ void handleSerial() {
   if (line.length() == 0) return;
   if (sdSerialCommand(line)) return;
 
+  // Browser save backup: SAVEGET -> "SAVE <n>", "SAVEHEX <hex>", DONE.
+  // SAVEPUT <n> -> OK, then n raw bytes -> DONE and a reboot. The checksum in the
+  // snapshot rejects altered or cut-off data before the save changes.
+  if (line == "SAVEGET") {
+    uint8_t backup[Pet::BACKUP_MAX_BYTES];
+    size_t size = pet.exportBackup(backup, sizeof(backup));
+    if (!size) { Serial.println("ERR"); return; }
+    // setup() sets a zero TX timeout so logs never block without a terminal open; the
+    // browser is reading now, so wait for the whole answer instead of dropping it
+    Serial.setTxTimeoutMs(1500);
+    Serial.printf("SAVE %u\nSAVEHEX ", (unsigned)size);
+    for (size_t i = 0; i < size; i++) Serial.printf("%02X", backup[i]);
+    Serial.println();
+    Serial.println("DONE");
+    Serial.flush();
+    Serial.setTxTimeoutMs(0);
+    return;
+  }
+  if (line.startsWith("SAVEPUT ")) {
+    uint32_t size = (uint32_t)line.substring(8).toInt();
+    if (size == 0 || size > Pet::BACKUP_MAX_BYTES) { Serial.println("ERR"); return; }
+    uint8_t backup[Pet::BACKUP_MAX_BYTES];
+    Serial.println("OK");
+    Serial.setTimeout(6000);
+    size_t got = Serial.readBytes(backup, size);
+    Serial.setTimeout(1000);
+    if (got != size || !pet.importBackup(backup, size)) { Serial.println("ERR"); return; }
+    Serial.println("DONE");
+    delay(150);
+    ESP.restart();
+  }
+
   if (line == "HATCH") {
     pet.eggTap(); pet.eggTap(); pet.eggTap();
     Serial.println("DONE");
