@@ -3,23 +3,23 @@
 #include "nearby.h"
 #include "power.h"
 
-// Capa de radio de los TamaPokes cercanos (ESP-NOW). La logica (paquete, tabla, horario) esta
-// en nearby.h; esto solo enciende y apaga la radio. En el renderer del host hay una version
-// de mentira (test/render/nearby_host.cpp).
+// Radio layer for nearby TamaPokes (ESP-NOW). The logic (packet, table, schedule) is
+// in nearby.h; this only turns the radio on and off. The host renderer has a fake
+// version (test/render/nearby_host.cpp).
 
 struct NbSelf {
-  bool valid;       // false si todavia es un huevo: no se envia nada
+  bool valid;       // false while still an egg: nothing is sent
   uint8_t species;
   bool shiny, sleeping;
   uint16_t level;
 };
 
-void nearbyBegin();                         // lee (o crea) en la NVS el id de este aparato; busca durante 60 s
+void nearbyBegin();                         // reads (or creates) this device's id in NVS; searches for 60 s
 bool nearbySearching();
-// Maquina de estados de la radio: se llama en cada pase del bucle principal (es barata cuando la
-// radio esta apagada). Enciende la radio en las ventanas del horario, envia y recibe, y la apaga.
+// Radio state machine: called on every pass of the main loop (cheap when the
+// radio is off). Turns the radio on in the scheduled windows, sends and receives, then turns it off.
 void nearbyPoll(uint32_t now, const PowerCtx &c, const NbSelf &self);
-bool nearbyRadioOn();                       // con la radio encendida no se puede hacer light sleep
-uint32_t nearbyNextEventMs(uint32_t now);   // ms hasta la proxima ventana (0 = ninguna): el sueno no pasa de ahi
-int nearbyShown(const NbEntry **out);       // vecinos para dibujar (hasta NB_MAX_SHOWN)
-uint32_t nearbyEpoch();                     // +1 cada vez que cambia quien esta cerca
+bool nearbyRadioOn();                       // light sleep is not possible while the radio is on
+uint32_t nearbyNextEventMs(uint32_t now);   // ms until the next window (0 = none): sleep must not go past it
+int nearbyShown(const NbEntry **out);       // neighbors to draw (up to NB_MAX_SHOWN)
+uint32_t nearbyEpoch();                     // +1 each time who is nearby changes

@@ -22,7 +22,7 @@ struct HostSD {
     return stat((root() + p).c_str(), &st) == 0;
   }
   bool remove(const char *) { return false; }
-  // solo lectura: la carpeta de sprites es la del repo y no se toca
+  // read-only: the sprites folder is the repo's and is left untouched
   File open(const char *p, const char *mode = FILE_READ) {
     if (mode[0] != 'r') return File();
     FILE *f = fopen((root() + p).c_str(), mode);

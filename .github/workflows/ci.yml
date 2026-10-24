@@ -22,9 +22,9 @@ jobs:
       - name: Install arduino-cli
         uses: arduino/setup-arduino-cli@v2
 
-      # Fijado a la version del core verificada para compilar este sketch. Subirla
-      # a mano y a proposito: alguna version nueva del core ha roto librerias de
-      # terceros antes.
+      # Pinned to the core version verified to build this sketch. Bump it
+      # by hand and on purpose: a newer core version has broken third-party
+      # libraries before.
       - name: Install ESP32 core
         run: |
           arduino-cli config init --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
@@ -65,9 +65,9 @@ jobs:
           python3 tools/gen_dex.py
           python3 tools/sprites.py emit
 
-      # dex.h y species.h llevan "GENERADO - no editar" en su cabecera; esto pilla
-      # a quien edite la salida en vez del generador, o se olvide de regenerar
-      # tras tocar los datos de origen.
+      # dex.h and species.h carry "GENERADO - no editar" in their header; this catches
+      # anyone who edits the output instead of the generator, or forgets to regenerate
+      # after touching the source data.
       - name: Fail if regenerating produced a diff
         run: git diff --exit-code -- dex.h species.h
 
@@ -90,22 +90,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
-      # pet.cpp / i18n.cpp / dex.h compilan y corren en el PC contra unos shims
-      # de Arduino, con millis() y random() falsos y una NVS en memoria. Aqui es
-      # donde se han roto las cosas: los tres bugs de la v1.3, v1.4 y v1.8 eran
-      # logica pura y estos tests los pillan sin tocar la placa.
+      # pet.cpp / i18n.cpp / dex.h build and run on the PC against Arduino shims,
+      # with fake millis() and random() and an in-memory NVS. This is
+      # where things have broken: the three bugs in v1.3, v1.4 and v1.8 were
+      # pure logic and these tests catch them without touching the board.
       - name: Run the suite (plus AddressSanitizer + UBSan)
         run: ./test/run_tests.sh --asan
-
-  i18n:
-    name: i18n table sizes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-      - run: python3 tools/test_i18n_formats.py
 
   ui-screens:
     name: UI screens match the reference images
@@ -117,15 +107,15 @@ jobs:
           python-version: "3.x"
       - run: pip install pillow
       - uses: arduino/setup-arduino-cli@v2
-      # el renderer compila el codigo grafico de GFX Library for Arduino; version fijada
-      # porque las imagenes de referencia dependen de ella
+      # the renderer builds the graphics code of GFX Library for Arduino; pinned version
+      # because the reference images depend on it
       - run: arduino-cli lib install "GFX Library for Arduino@1.6.9"
-      # compila el sketch contra un lienzo por software y compara cada pantalla
-      # (test/render). Si el cambio de interfaz es intencionado: make golden.
+      # builds the sketch against a software canvas and compares every screen
+      # (test/render). If the interface change is intentional: make golden.
       - run: make -C test/render check
-      # tocar el centro de cada boton y comprobar que cada cadena cabe donde se dibuja
+      # tap the center of every button and check that every string fits where it is drawn
       - run: make -C test/render taps fit power
-      # y el panel cuadrado de 480 px (2.16): toques y textos tambien
+      # and the 480 px square panel (2.16): taps and texts too
       - run: make -C test/render taps fit ROUND=0 SIZE=480
       - uses: actions/upload-artifact@v4
         if: failure()

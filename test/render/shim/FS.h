@@ -1,5 +1,5 @@
-// File / FS sobre el disco del host: la "SD" es una carpeta (TAMAPOKE_SD o
-// tools/sdcard), asi el renderer carga los mismos sprites que la placa.
+// File / FS on top of the host disk: the "SD" is a folder (TAMAPOKE_SD or
+// tools/sdcard), so the renderer loads the same sprites as the board.
 #pragma once
 #include "Arduino.h"
 #include <stdio.h>

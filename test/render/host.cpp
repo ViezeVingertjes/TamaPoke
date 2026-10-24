@@ -1,4 +1,4 @@
-// Piezas del hardware que el renderer del host reemplaza por stubs.
+// Hardware pieces that the host renderer replaces with stubs.
 #include "shim/Arduino.h"
 #include "shim/Arduino_GFX_Library.h"
 #include "shim/Wire.h"
@@ -15,7 +15,7 @@ HostSD SD_MMC;
 
 std::function<void(const uint16_t *, int, int)> gOnFrame;
 
-// RTC y PMU: hora fija y bateria al 80 % para que las capturas sean estables
+// RTC and PMU: fixed time and battery at 80 % so screenshots are stable
 static uint32_t gEpoch = 1767225600UL + 12 * 3600;
 int gBatPercent = 80;
 bool gBatCharging = false;
@@ -35,7 +35,7 @@ void batSetPollMs(uint32_t) {}
 void pwrSetup() {}
 bool pwrShortPressed() { return false; }
 
-// vecinos de mentira: las escenas rellenan gHostNb (el id decide el hueco, como en la tabla real)
+// fake neighbors: scenes fill gHostNb (the id decides the slot, as in the real table)
 NbEntry gHostNb[NB_TABLE_SIZE];
 int gHostNbN = 0;
 void nearbyBegin() {}
@@ -44,7 +44,7 @@ bool nearbyRadioOn() { return false; }
 uint32_t nearbyNextEventMs(uint32_t) { return 0; }
 uint32_t nearbyEpoch() { return 0; }
 int nearbyShown(const NbEntry **out) {
-  static NbTable t;  // los punteros que devuelve shown() apuntan aqui
+  static NbTable t;  // the pointers shown() returns point here
   t.clear();
   t.selfId = 0xFFFFFF;
   for (int i = 0; i < gHostNbN; i++) memcpy(&t.e[i], &gHostNb[i], sizeof(NbEntry));

@@ -324,7 +324,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `pin_config.h` — the board's official pins
 - `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `gen_dex.py`,
   `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`
-  (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload), `touch_log.py`
+  (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload)
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
 - `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)
 

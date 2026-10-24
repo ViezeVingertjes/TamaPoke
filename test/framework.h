@@ -1,4 +1,4 @@
-// Micro framework de tests: sin dependencias, un solo binario.
+// Micro test framework: no dependencies, a single binary.
 #pragma once
 #include <cstdint>
 #include <cstring>
@@ -11,7 +11,7 @@ struct TestCase {
   std::string suite;
   std::string name;
   std::function<void()> fn;
-  bool knownIssue;   // documenta un fallo real del firmware: no rompe la suite
+  bool knownIssue;   // documents a real firmware bug: does not break the suite
   std::string note;
 };
 
@@ -35,8 +35,8 @@ struct TestRegistrar {
   static TestRegistrar suite##_##name##_reg(#suite, #name, suite##_##name##_body); \
   static void suite##_##name##_body()
 
-// Test que describe el comportamiento CORRECTO de algo que hoy falla.
-// No rompe la suite: se informa aparte (y avisa si algun dia pasa a verde).
+// Test that describes the CORRECT behavior of something that fails today.
+// It does not break the suite: it is reported separately (and warns if it ever turns green).
 #define TEST_KNOWN_ISSUE(suite, name, note)                                      \
   static void suite##_##name##_body();                                           \
   static TestRegistrar suite##_##name##_reg(#suite, #name, suite##_##name##_body, \

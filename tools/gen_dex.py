@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera dex.h (tabla de la Pokedex para el firmware) desde dex_data.py.
+"""Generates dex.h (Pokedex table for the firmware) from dex_data.py.
 
   python3 tools/gen_dex.py
 """
@@ -16,16 +16,16 @@ def rgb565(hexcol):
     return (r >> 3) << 11 | (g >> 2) << 5 | (b >> 3)
 
 
-# bioma de fondo por tipo (la luz la pone la hora real del RTC)
-# 0 PRADERA, 1 PLAYA, 2 BOSQUE, 3 VOLCAN, 4 MONTANA, 5 NIEVE
+# background biome per type (the lighting comes from the RTC's real time)
+# 0 MEADOW, 1 BEACH, 2 FOREST, 3 VOLCANO, 4 MOUNTAIN, 5 SNOW
 TYPE_BIOME = {
     'agua': 1, 'planta': 2, 'bicho': 2, 'fuego': 3,
-    'roca': 4, 'tierra': 4, 'dragon': 1, 'hielo': 5,  # los dragones gen1 (Dratini) viven en el agua
+    'roca': 4, 'tierra': 4, 'dragon': 1, 'hielo': 5,  # Gen 1 dragons (Dratini) live in the water
     'normal': 0, 'electrico': 0, 'lucha': 0, 'veneno': 0,
     'psiquico': 0, 'fantasma': 0,
 }
 
-# excepciones por dex# (el tipo no basta): fosiles marinos roca/agua -> playa
+# per-dex# exceptions (the type is not enough): rock/water sea fossils -> beach
 BIOME_OVERRIDE = {138: 1, 139: 1, 140: 1, 141: 1}  # Omanyte, Omastar, Kabuto, Kabutops
 
 
@@ -34,25 +34,25 @@ def main():
     out.append("#pragma once\n#include <stdint.h>\n\n")
     out.append("// GENERADO por tools/gen_dex.py desde tools/dex_data.py - no editar\n\n")
     out.append("#define DEX_COUNT 151\n")
-    out.append("#define DEX_EEVEE 133  // rama al azar: 134/135/136\n\n")
+    out.append("#define DEX_EEVEE 133  // random branch: 134/135/136\n\n")
     out.append(
-        "// rareza: 0 = solo por evolucion, 1 = comun, 2 = raro, 3 = legendario\n"
+        "// rarity: 0 = evolution only, 1 = common, 2 = rare, 3 = legendary\n"
         "enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO };\n\n"
         "struct DexEntry {\n"
         "  const char *name;\n"
-        "  uint8_t evolvesTo;    // numero de dex, 0 = forma final\n"
+        "  uint8_t evolvesTo;    // dex number, 0 = final form\n"
         "  uint8_t evolveLevel;\n"
-        "  uint8_t rarity;       // sale de huevo si > 0\n"
-        "  uint16_t accent;      // color RGB565 del tipo para la UI\n"
-        "  uint8_t bHp, bAtk, bDef, bSpe;  // base stats reales de gen 1\n"
-        "  uint8_t biome;        // 0 pradera 1 playa 2 bosque 3 volcan 4 montana 5 nieve\n"
+        "  uint8_t rarity;       // can come from an egg if > 0\n"
+        "  uint16_t accent;      // RGB565 type color for the UI\n"
+        "  uint8_t bHp, bAtk, bDef, bSpe;  // real Gen 1 base stats\n"
+        "  uint8_t biome;        // 0 meadow 1 beach 2 forest 3 volcano 4 mountain 5 snow\n"
         "};\n\n")
-    # formas base = las que no son evolucion de nadie (las ramas de Eevee si lo son)
+    # base forms = those that are nobody's evolution (Eevee's branches are)
     evolved = {evo for *_, evo, _lvl in [(d[4], d[5]) for d in DEX] for evo in [_[0] for _ in [(d[4],) for d in DEX]]}
     evolved = {d[4] for d in DEX if d[4]} | {135, 136}
     rarities = []
     out.append("static const DexEntry DEX_TBL[DEX_COUNT + 1] = {\n")
-    out.append('  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, 0 },  // 0: sin usar\n')
+    out.append('  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, 0 },  // 0: unused\n')
     for num, slug, display, typ, evo, lvl in DEX:
         acc = rgb565(TYPE_ACCENTS[typ])
         if num in evolved:
@@ -70,12 +70,12 @@ def main():
     out.append("};\n\n")
 
     out.append(
-        "// Nombre de la especie (DEX_TBL[0] fuera de rango).\n"
+        "// Species name (DEX_TBL[0] when out of range).\n"
         "static inline const char *dexName(int16_t dex) {\n"
         "  return DEX_TBL[dex < 1 || dex > DEX_COUNT ? 0 : dex].name;\n"
         "}\n\n")
 
-    out.append("// el primer huevo de la partida: iniciales clasicos\n")
+    out.append("// the first egg of a game: classic starters\n")
     out.append("static const int16_t CLASSIC_DEX[] = { %s };\n" % ", ".join(map(str, CLASSIC)))
     out.append(f"#define NUM_CLASSIC_DEX {len(CLASSIC)}\n")
     from collections import Counter

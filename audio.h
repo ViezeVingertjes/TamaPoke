@@ -1,26 +1,26 @@
 #pragma once
 #include <stdint.h>
 
-// Efectos de sonido del juego (cola, no bloqueante). El orden coincide con la
-// tabla SFX de audio.cpp.
+// Game sound effects (queued, non-blocking). The order matches the
+// SFX table in audio.cpp.
 enum Sfx : uint8_t {
-  SFX_TAP = 0,  // tocar / boton
-  SFX_EAT,      // comer
-  SFX_PLAY,     // punto del minijuego / golpe
-  SFX_HEART,    // le gusta / mimo
-  SFX_HATCH,    // eclosion
-  SFX_EVOLVE,   // evolucion
-  SFX_MEDAL,    // medalla / hito
-  SFX_DENY,     // accion no permitida
-  SFX_BYE,      // despedida
-  SFX_LEVEL,    // sube de nivel
+  SFX_TAP = 0,  // tap / button
+  SFX_EAT,      // eat
+  SFX_PLAY,     // minigame point / hit
+  SFX_HEART,    // likes it / petting
+  SFX_HATCH,    // hatching
+  SFX_EVOLVE,   // evolution
+  SFX_MEDAL,    // medal / milestone
+  SFX_DENY,     // action not allowed
+  SFX_BYE,      // farewell
+  SFX_LEVEL,    // level up
   SFX_COUNT
 };
 
-void audioBegin();          // init ES8311 + I2S + amplificador + tarea de audio
-void sfxPlay(uint8_t id);   // encola un efecto (no bloquea el loop)
+void audioBegin();          // init ES8311 + I2S + amplifier + audio task
+void sfxPlay(uint8_t id);   // queues an effect (does not block the loop)
 void audioSetEnabled(bool on);
 bool audioEnabled();
-void audioSetSleeping(bool sleeping);  // dormida: amplificador apagado
-bool audioBusy();                      // un efecto pedido en reposo aun puede estar sonando: no dormir la CPU
-void audioSetIdle(bool idle);          // sin uso reciente: amplificador apagado (un efecto lo enciende 4 s)
+void audioSetSleeping(bool sleeping);  // asleep: amplifier off
+bool audioBusy();                      // an effect requested while idle may still be playing: do not sleep the CPU
+void audioSetIdle(bool idle);          // no recent use: amplifier off (an effect turns it on for 4 s)

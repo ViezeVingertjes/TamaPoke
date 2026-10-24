@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Ejecuta toda la bateria de tests (logica del firmware + herramientas).
+# Runs the whole test suite (firmware logic + tools).
 #   ./test/run_tests.sh          normal
-#   ./test/run_tests.sh --asan   ademas con AddressSanitizer + UBSan
+#   ./test/run_tests.sh --asan   also with AddressSanitizer + UBSan
 set -uo pipefail
 cd "$(dirname "$0")"
 

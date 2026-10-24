@@ -17,10 +17,10 @@ TEST(batcurve, es_monotona_y_cubre_todo_el_rango) {
     CHECK(p >= 0 && p <= 100);
     prev = p;
   }
-  CHECK_EQ(batPercentFromMv(3660), 8);  // entre (3610, 5) y (3690, 10)
+  CHECK_EQ(batPercentFromMv(3660), 8);  // between (3610, 5) and (3690, 10)
 }
 
-// lecturas cada 2 s desde t0 con la misma tension; devuelve si hay que apagar al final
+// readings every 2 s from t0 at the same voltage; returns whether to power off at the end
 static bool lowFor(BatMonitor &m, int mv, uint32_t t0, uint32_t ms) {
   bool r = false;
   for (uint32_t t = t0; t <= t0 + ms; t += 2000) { m.sample(mv, t); r = m.shutdownNeeded(t); }
@@ -29,14 +29,14 @@ static bool lowFor(BatMonitor &m, int mv, uint32_t t0, uint32_t ms) {
 
 TEST(batcurve, el_apagado_exige_tension_baja_sostenida) {
   BatMonitor m;
-  CHECK(!lowFor(m, 3250, 100000, 20000));  // 20 s no bastan
-  CHECK(lowFor(m, 3250, 120000, 12000));   // 30+ s seguidos si
+  CHECK(!lowFor(m, 3250, 100000, 20000));  // 20 s is not enough
+  CHECK(lowFor(m, 3250, 120000, 12000));   // 30+ s in a row is
 }
 
 TEST(batcurve, un_bache_por_carga_no_apaga) {
   BatMonitor m;
   for (uint32_t t = 100000; t < 130000; t += 2000) m.sample(3700, t);
-  // una carga larga (sonido, radio) hunde la tension 20 s por debajo del limite y se recupera
+  // a long load (sound, radio) drags the voltage below the limit for 20 s, then it recovers
   CHECK(!lowFor(m, 3200, 130000, 20000));
   m.sample(3700, 152000); m.sample(3700, 154000); m.sample(3700, 156000); m.sample(3700, 158000);
   CHECK(!m.shutdownNeeded(160000));
@@ -61,12 +61,12 @@ TEST(batcurve, una_lectura_fallida_corta_la_cuenta) {
 
 TEST(batcurve, el_porcentaje_solo_baja_en_descarga) {
   BatMonitor m;
-  m.seed(60);                              // el PMU decia 60 al desenchufar
-  CHECK_EQ(m.sample(4100, 1000), 60);      // la tension inflada por la carga no lo sube
+  m.seed(60);                              // the PMU said 60 when unplugged
+  CHECK_EQ(m.sample(4100, 1000), 60);      // the voltage inflated by the load doesn't raise it
   int a = 60;
-  for (uint32_t t = 3000; t < 23000; t += 2000) a = m.sample(3700, t);  // la tension baja de verdad
+  for (uint32_t t = 3000; t < 23000; t += 2000) a = m.sample(3700, t);  // the voltage really drops
   CHECK(a < 60 && a > 10);
-  int b = m.sample(4000, 5000);            // un repunte tampoco lo sube
+  int b = m.sample(4000, 5000);            // a spike doesn't raise it either
   CHECK_EQ(b, a);
   CHECK_EQ(m.sample(3840, 7000) <= a, true);
 }

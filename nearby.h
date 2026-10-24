@@ -3,33 +3,33 @@
 #include <string.h>
 #include "power.h"
 
-// TamaPokes cercanos por ESP-NOW (opcional). Esta cabecera es el protocolo, la tabla de
-// vecinos y el horario de la radio como funciones puras (se prueban en el PC, ver
-// test/test_nearby.cpp). La radio de verdad esta en nearby.cpp.
+// Nearby TamaPokes over ESP-NOW (optional). This header is the protocol, the table of
+// neighbors and the radio schedule as pure functions (tested on the PC, see
+// test/test_nearby.cpp). The real radio is in nearby.cpp.
 //
-// Consumo: escuchar es lo que cuesta (~100 mA con la radio encendida), enviar un
-// paquete de 11 bytes casi nada. Por eso la radio solo se enciende en ventanas cortas y
-// el horario depende de que se este usando el aparato: ver nbPeriodMs().
+// Power: listening is what costs (~100 mA with the radio on), sending an
+// 11-byte packet costs almost nothing. So the radio is only turned on in short windows and
+// the schedule depends on whether the device is in use: see nbPeriodMs().
 
 #define NB_MAGIC0 'T'
 #define NB_MAGIC1 'P'
 #define NB_VERSION 1
 #define NB_BEACON_LEN 11
-#define NB_TABLE_SIZE 8       // vecinos recordados
-#define NB_MAX_SHOWN 4        // vecinos que se dibujan junto al bicho
-#define NB_TTL_MS 900000UL    // un vecino sin senales durante 15 min se olvida (dos aparatos con ventanas de 0,8 s se oyen cada pocos minutos)
-#define NB_MAX_PPS 30         // paquetes aceptados por segundo (el resto se descarta)
-#define NB_REPEAT_MS 500      // dos senales del mismo vecino con menos de esto de diferencia no cuentan
+#define NB_TABLE_SIZE 8       // neighbors remembered
+#define NB_MAX_SHOWN 4        // neighbors drawn next to the pet
+#define NB_TTL_MS 900000UL    // a neighbor with no signals for 15 min is forgotten (two devices with 0.8 s windows hear each other every few minutes)
+#define NB_MAX_PPS 30         // packets accepted per second (the rest are dropped)
+#define NB_REPEAT_MS 500      // two signals from the same neighbor closer together than this do not count
 
-// ---- formato del paquete (11 bytes) ----
-//  0 'T'   1 'P'   2 version   3 especie (1-151)   4 flags (bit 0 shiny, bit 1 duerme)
-//  5-6 nivel (little endian)   7-9 id del aparato (24 bits, distinto de 0)   10 crc8 de los 10 anteriores
-// Solo viajan datos que el otro aparato ya veria si estuviera al lado: ni apodo ni nada personal.
+// ---- packet format (11 bytes) ----
+//  0 'T'   1 'P'   2 version   3 species (1-151)   4 flags (bit 0 shiny, bit 1 asleep)
+//  5-6 level (little endian)   7-9 device id (24 bits, nonzero)   10 crc8 of the previous 10
+// Only data the other device would already see if it were next to this one is sent: no nickname or anything personal.
 struct NbBeacon {
   uint8_t species;
   bool shiny, sleeping;
   uint16_t level;
-  uint32_t id;  // 24 bits, distinto de 0
+  uint32_t id;  // 24 bits, nonzero
 };
 
 inline uint8_t nbCrc8(const uint8_t *d, int n) {
@@ -56,8 +56,8 @@ inline int nbEncode(uint8_t *out, uint32_t id, int species, bool shiny, bool sle
   return NB_BEACON_LEN;
 }
 
-// Valida un paquete recibido de cualquiera (es difusion sin cifrar): longitud, firma,
-// version, crc y rangos. Solo lo que pasa esto llega a la tabla ni al dibujo.
+// Validates a packet received from anyone (it is unencrypted broadcast): length, signature,
+// version, crc and ranges. Only what passes this reaches the table or the drawing.
 inline bool nbDecode(const uint8_t *d, int len, NbBeacon *out) {
   if (len != NB_BEACON_LEN || d[0] != NB_MAGIC0 || d[1] != NB_MAGIC1 || d[2] != NB_VERSION) return false;
   if (nbCrc8(d, 10) != d[10]) return false;
@@ -73,7 +73,7 @@ inline bool nbDecode(const uint8_t *d, int len, NbBeacon *out) {
   return true;
 }
 
-// ---- tabla de vecinos ----
+// ---- neighbor table ----
 struct NbEntry {
   bool used;
   bool shiny, sleeping;
@@ -82,7 +82,7 @@ struct NbEntry {
   uint16_t level;
   uint32_t id;
   uint32_t lastSeen;  // ms
-  uint32_t lastCount; // ms de la ultima senal aceptada
+  uint32_t lastCount; // ms of the last accepted signal
 };
 
 enum NbResult : uint8_t { NB_IGNORED = 0, NB_UPDATED, NB_NEW };
@@ -95,8 +95,8 @@ struct NbTable {
 
   void clear() { memset(e, 0, sizeof(e)); secStart = 0; secCount = 0; }
 
-  // Procesa una senal valida. Descarta las propias, las que llegan demasiado seguidas (global y
-  // por vecino) y, si la tabla esta llena, sustituye al mas antiguo.
+  // Processes a valid signal. Drops our own, those arriving too close together (global and
+  // per neighbor) and, if the table is full, replaces the oldest.
   NbResult accept(const NbBeacon &b, int rssi, uint32_t now) {
     if (b.id == selfId) return NB_IGNORED;
     if (now - secStart >= 1000 || secStart == 0) { secStart = now ? now : 1; secCount = 0; }
@@ -126,7 +126,7 @@ struct NbTable {
     return r;
   }
 
-  // olvida a los que llevan mas de ttl sin senales; devuelve cuantos se fueron
+  // forgets those with no signals for more than ttl; returns how many left
   int prune(uint32_t now, uint32_t ttl = NB_TTL_MS) {
     int gone = 0;
     for (auto &x : e)
@@ -134,18 +134,18 @@ struct NbTable {
     return gone;
   }
 
-  // hasta NB_MAX_SHOWN vecinos: los vistos mas recientemente, ordenados por id para que cada
-  // uno conserve su sitio aunque lleguen senales de otros
+  // up to NB_MAX_SHOWN neighbors: the most recently seen, sorted by id so that each
+  // keeps its place even when signals from others arrive
   int shown(const NbEntry **out) const {
     const NbEntry *pick[NB_TABLE_SIZE];
     int n = 0;
     for (auto &x : e) if (x.used) pick[n++] = &x;
-    for (int i = 1; i < n; i++)  // por lastSeen descendente (insercion)
+    for (int i = 1; i < n; i++)  // by lastSeen descending (insertion)
       for (int j = i; j > 0 && (int32_t)(pick[j]->lastSeen - pick[j - 1]->lastSeen) > 0; j--) {
         const NbEntry *t = pick[j]; pick[j] = pick[j - 1]; pick[j - 1] = t;
       }
     if (n > NB_MAX_SHOWN) n = NB_MAX_SHOWN;
-    for (int i = 1; i < n; i++)  // por id ascendente
+    for (int i = 1; i < n; i++)  // by id ascending
       for (int j = i; j > 0 && pick[j]->id < pick[j - 1]->id; j--) {
         const NbEntry *t = pick[j]; pick[j] = pick[j - 1]; pick[j - 1] = t;
       }
@@ -154,13 +154,13 @@ struct NbTable {
   }
 };
 
-// ---- horario de la radio ----
+// ---- radio schedule ----
 enum NbMode : uint8_t { NB_OFF = 0, NB_ACTIVE, NB_DIM, NB_NIGHT, NB_SEARCH };
 
-// ms entre ventanas de radio: mas seguido mientras alguien usa el aparato, y casi nada con la
-// pantalla apagada. Cada ventana dura NB_WINDOW_MS. NB_SEARCH es la busqueda activa: la radio
-// escucha seguido durante NB_SEARCH_MS al activar la funcion o al tocar su boton (con otro
-// aparato al lado, se ven en segundos); cuesta ~100 mA durante ese minuto y nada despues.
+// ms between radio windows: more often while someone is using the device, and almost never with the
+// screen off. Each window lasts NB_WINDOW_MS. NB_SEARCH is the active search: the radio
+// listens continuously for NB_SEARCH_MS when the feature is enabled or its button is tapped (with another
+// device next to it, they see each other in seconds); it costs ~100 mA during that minute and nothing after.
 #define NB_WINDOW_MS 800
 #define NB_SEARCH_MS 60000UL
 inline uint32_t nbPeriodMs(NbMode m) {
@@ -168,32 +168,32 @@ inline uint32_t nbPeriodMs(NbMode m) {
     case NB_ACTIVE: return 25000;
     case NB_DIM: return 45000;
     case NB_NIGHT: return 300000;
-    default: return 0;  // NB_OFF no tiene ventanas; NB_SEARCH es una sola continua
+    default: return 0;  // NB_OFF has no windows; NB_SEARCH is a single continuous one
   }
 }
-// cuanto tiempo esta la radio encendida, en milesimas del tiempo total (para el consumo medio)
+// how long the radio is on, in thousandths of total time (for average consumption)
 inline uint32_t nbDutyPermille(NbMode m) {
   return m == NB_SEARCH ? 1000 : m ? NB_WINDOW_MS * 1000UL / nbPeriodMs(m) : 0;
 }
 
-// searching: hay una busqueda activa en curso (solo con la pantalla encendida)
+// searching: an active search is in progress (only with the screen on)
 inline NbMode nbModeFor(const PowerCtx &c, bool enabled, bool searching = false) {
-  if (!enabled || batteryLow(c)) return NB_OFF;   // con poca bateria no se gasta en esto
+  if (!enabled || batteryLow(c)) return NB_OFF;   // with low battery nothing is spent on this
   if (c.screenOff) return NB_NIGHT;
   if (searching) return NB_SEARCH;
   if (c.sleeping || dimStageFor(c.idleMs) != DIM_AWAKE) return NB_DIM;
   return NB_ACTIVE;
 }
 
-// ms hasta la proxima ventana: el periodo +-25 % al azar, para que dos aparatos no queden
-// sincronizados para siempre sin oirse (ni se pisen siempre)
+// ms until the next window: the period +-25 % at random, so that two devices do not stay
+// synchronized forever without hearing each other (or always overlapping)
 inline uint32_t nbNextDelayMs(NbMode m, uint32_t rnd) {
   uint32_t p = nbPeriodMs(m);
   return p ? p - p / 4 + rnd % (p / 2 + 1) : 0;
 }
 
-// instantes (ms desde el inicio de la ventana) en los que se envia una senal: al abrir, y
-// repetida dos veces por si el otro abre su ventana a medias
+// instants (ms from the start of the window) at which a signal is sent: on opening, and
+// repeated twice in case the other opens its window midway
 #define NB_BEACON_COUNT 5
 inline uint32_t nbBeaconAtMs(int i) { return (uint32_t)i * 160; }
-#define NB_SEARCH_BEACON_MS 500  // en la busqueda activa, una senal cada tanto
+#define NB_SEARCH_BEACON_MS 500  // during the active search, one signal every so often
