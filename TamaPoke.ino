@@ -866,6 +866,8 @@ void onTap(int16_t x, int16_t y) {
 bool gNight = false;  // noche real (por hora) o durmiendo: lo fija render()
 uint16_t inkColor() { return gNight ? UI_INK_NIGHT : UI_INK; }
 
+#define C565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+
 // paleta y piezas de la interfaz (definidas mas abajo, junto a drawHeader)
 #define UI_ACC C565(0xFF, 0xC2, 0x1A)
 static uint16_t uiBg();
@@ -880,7 +882,6 @@ static void drawRecordPill(int y);
 
 // ---------- escena de fondo: bioma del tipo + hora real del RTC ----------
 
-#define C565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 #define HORIZON UY(232)  // linea donde el cielo se encuentra con el suelo
 
 uint16_t lerp565(uint16_t a, uint16_t b, int i, int n) {
@@ -896,6 +897,24 @@ int sceneHour() {
   uint32_t e = pet.lastSeenEpoch;
   return e ? (int)((e / 3600) % 24) : 13;
 }
+
+// colores del cielo segun la hora (arriba y abajo del degradado)
+static void skyColors(bool night, uint16_t &top, uint16_t &bot) {
+  int h = sceneHour();
+  if (night)            { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
+  else if (h < 8)       { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }  // amanecer
+  else if (h < 18)      { top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }  // dia
+  else                  { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }  // atardecer
+}
+
+// cielo en bandas hasta el horizonte
+static void drawSky(int horizon, uint16_t top, uint16_t bot) {
+  for (int y = 0; y < horizon; y += UY(8))
+    gfx->fillRect(0, y, UI_W, UY(8), lerp565(top, bot, y, horizon));
+}
+
+// el suelo de noche se mezcla hacia el azul nocturno
+static uint16_t nightSoil(uint16_t soil) { return lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16); }
 
 // suelo de cada bioma de dia (de noche se mezcla hacia el azul nocturno)
 static const uint16_t BIOME_SOIL[6] = {
@@ -920,14 +939,8 @@ void drawClouds(uint32_t now, uint16_t col) {
 void drawScene(uint8_t biome, uint32_t now, bool night) {
   int h = sceneHour();
   uint16_t top, bot;
-  if (night)            { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
-  else if (h < 8)       { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }  // amanecer
-  else if (h < 18)      { top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }  // dia
-  else                  { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }  // atardecer
-
-  // cielo en bandas
-  for (int y = 0; y < HORIZON; y += UY(8))
-    gfx->fillRect(0, y, UI_W, UY(8), lerp565(top, bot, y, HORIZON));
+  skyColors(night, top, bot);
+  drawSky(HORIZON, top, bot);
 
   // sol o luna
   if (night) {
@@ -943,7 +956,7 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
 
   // mar de la playa: una franja de agua sobre la arena
   uint16_t soil = BIOME_SOIL[biome < 6 ? biome : 0];
-  if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
+  if (night) soil = nightSoil(soil);
   if (biome == 1) {
     uint16_t sea = night ? C565(0x1c, 0x34, 0x52) : C565(0x4f, 0x96, 0xc4);
     gfx->fillRect(0, HORIZON - UY(26), UI_W, UY(26), sea);
@@ -1505,18 +1518,14 @@ void drawGameScene() {
   int hh = sceneHour();
   bool night = hh < 6 || hh >= 20;
   uint16_t top, bot;
-  if (night)       { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
-  else if (hh < 8) { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }
-  else if (hh < 18){ top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }
-  else             { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }
+  skyColors(night, top, bot);
   int hor = UY(376);
-  for (int y = 0; y < hor; y += UY(8))
-    gfx->fillRect(0, y, UI_W, UY(8), lerp565(top, bot, y, hor));
+  drawSky(hor, top, bot);
   if (night)
     for (auto &st : STARS) gfx->fillRect(U(st[0]), UY(st[1]), SC(4), SC(4), UI_WHITE);
   uint8_t bio = pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome;
   uint16_t soil = BIOME_SOIL[bio < 6 ? bio : 0];
-  if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
+  if (night) soil = nightSoil(soil);
   gfx->fillRect(0, hor, UI_W, UI_H - hor, soil);
 }
 
