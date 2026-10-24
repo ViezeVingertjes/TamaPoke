@@ -393,6 +393,123 @@ static int runMeasureTests() {
   return fails ? 1 : 0;
 }
 
+// ---------- ajuste de textos: cada cadena real de cada idioma cabe donde se dibuja ----------
+static int gFitFails = 0;
+static const char *gFitLang = "";
+// texto a escala `size` (TS ya aplicado) en la linea y: debe caber en maxW (px)
+static void fitBox(const char *what, const char *text, int size, int maxW) {
+  setSize(size);
+  int w = textW(text, size);
+  if (w > maxW) {
+    fprintf(stderr, "FALLA %-3s %-22s %3d px > %3d  '%s'\n", gFitLang, what, w, maxW, text);
+    gFitFails++;
+  }
+}
+// ... o en la cuerda visible del circulo a la altura de esa linea (arriba y abajo)
+static void fitChord(const char *what, const char *text, int size, int y) {
+  setSize(size);
+  int top = chordW(y), bot = chordW(y + textH());
+  fitBox(what, text, size, (top < bot ? top : bot) - U(8));
+}
+// el peor nombre de especie del idioma
+static const char *longestName() {
+  const char *best = "";
+  setSize(TS(2));
+  for (int d = 1; d <= 151; d++)
+    if (textW(dexName(d), TS(2)) > textW(best, TS(2))) best = dexName(d);
+  return best;
+}
+
+static int runFitTests() {
+  static const Lang langs[] = { LANG_ES, LANG_EN, LANG_FR, LANG_DE, LANG_IT, LANG_PT, LANG_JA, LANG_KO };
+  static const char *const names[] = { "ES", "EN", "FR", "DE", "IT", "PT", "JA", "KO" };
+  for (int li = 0; li < 8; li++) {
+    setLang(langs[li]);
+    applyLangFont();
+    gFitLang = names[li];
+    char b[96];
+    const char *ln = longestName();
+    // --- escena principal (todo el ancho) ---
+    snprintf(b, sizeof(b), T(S_NAME_FMT), "*", ln, 999);
+    fitBox("nombre y nivel (cabecera)", b, TS(3) , UI_W - U(40));
+    for (StrId id : { S_EVOLVING, S_EATING, S_LIKES, S_HUNGRY, S_NEEDS_BATH, S_EXHAUSTED, S_SAD, S_CHUBBY, S_IS_SHINY, S_HAPPY,
+                      S_FAREWELL, S_RUNAWAY, S_GOODBYE, S_EGG_TOUCH, S_EGG_MOVES, S_EGG_ALMOST })
+      fitBox("mensaje de estado", T(id), TS(2), UI_W - U(40));
+    snprintf(b, sizeof(b), T(S_POKEDEX_FMT), 151);
+    fitBox("pokedex del huevo", b, TS(2), UI_W - U(40));
+    // --- elegir inicial ---
+    fitChord("titulo de inicial", T(S_CHOOSE_STARTER), TS(2), UY(68));
+    for (int i = 0; i < 3; i++) fitBox("nombre de inicial en su fila", dexName(STARTER_DEX[i]), TS(3), STARTER_ROW_X + STARTER_ROW_W - U(178) - U(8));
+    // --- dialogos ---
+    snprintf(b, sizeof(b), T(S_RELEASE_FMT), ln);
+    fitBox("soltar? (tamano pequeno)", b, TS(1), U(278) - U(16));
+    fitBox("SI", T(S_YES), TS(2), YES_W - U(8));
+    fitBox("NO", T(S_NO), TS(2), YES_W - U(8));
+    for (StrId id : { S_EVO_Q, S_EVO_TAP, S_EVO_KEEP, S_FAR_Q, S_FAR_GO, S_FAR_STAY }) fitBox("dialogo de decision", T(id), TS(2), CHOICE_W - U(16));
+    fitBox("boton evolucionar", T(S_EVO_TAP), TS(3), EVO_BTN_W - U(16));
+    snprintf(b, sizeof(b), T(S_FAREWELL_BTN), ln);
+    fitBox("boton despedida (tamano pequeno)", b, TS(1), FAR_BTN_W - U(16));
+    snprintf(b, sizeof(b), T(S_RUNAWAY_BTN), ln);
+    fitBox("boton escapada (tamano pequeno)", b, TS(1), FAR_BTN_W - U(16));
+    fitBox("medalla (banner)", T(S_MEDAL_BANNER), TS(3), U(320) - U(16));
+    fitBox("hito (banner)", T(S_GREAT), TS(3), U(320) - U(16));
+    snprintf(b, sizeof(b), T(S_STREAK_DAYS_FMT), 365);
+    fitBox("racha (banner)", b, TS(2), U(320) - U(16));
+    for (int i = 0; i < MED_COUNT; i++) fitBox("nombre de medalla (banner)", medalName(i), TS(2), U(320) - U(16));
+    // --- ficha ---
+    snprintf(b, sizeof(b), T(S_NAME_FMT), "*", ln, 99);
+    { setSize(TS(2)); fitChord("cabecera de la ficha (tamano pequeno)", b, TS(2), UY(40)); }
+    snprintf(b, sizeof(b), "(%s)", ln);
+    fitChord("especie bajo el apodo", b, TS(2), UY(64));
+    snprintf(b, sizeof(b), T(S_STREAK_FMT), 365, 365);
+    fitBox("racha con llama", b, TS(2), (CX + chordW(UY(224)) / 2) - (U(138) + U(24)) - U(8));
+    snprintf(b, sizeof(b), T(S_INFO_FMT), T(S_BERRY_UNK), 9999UL);
+    fitChord("baya y edad", b, TS(2), UY(296));
+    fitChord("pista de renombrar", T(S_RENAME_HINT), TS(2), UY(332));
+    fitChord("pista de volver", T(S_BACK), TS(2), UY(398));
+    fitChord("combate", T(S_BATTLE), TS(3), UY(48));
+    fitBox("entrenar fuerza", T(S_TRAIN_STR), TS(2), TRAIN_W - U(16));
+    snprintf(b, sizeof(b), T(S_MEDALS_FMT), 8, 8);
+    fitChord("medallas", b, TS(3), UY(48));
+    fitChord("progreso", T(S_PROGRESS), TS(3), UY(44));
+    snprintf(b, sizeof(b), T(S_NEXT_LVL_FMT), 60, 999);
+    fitChord("siguiente nivel", b, TS(2), UY(190));
+    fitChord("etiqueta de evolucion", T(S_EVO_LABEL), TS(2), UY(230));
+    for (StrId id : { S_FINAL_FORM, S_EVO_READY, S_EVO_BLOCKED }) fitChord("estado de evolucion", T(id), TS(2), UY(256));
+    snprintf(b, sizeof(b), T(S_EVO_IN_FMT), 99);
+    fitChord("evolucion en", b, TS(2), UY(256));
+    snprintf(b, sizeof(b), T(S_MISTAKES_FMT), 99);
+    fitChord("descuidos", b, TS(2), UY(312));
+    // --- galeria, teclado, reloj ---
+    snprintf(b, sizeof(b), T(S_POKEDEX_FMT), 151);
+    fitChord("pokedex", b, TS(2), UY(48));  // el titulo cae a este tamano si no cabe al grande
+    snprintf(b, sizeof(b), "N.%03d %s%s", 151, "*", ln);
+    fitChord("detalle de galeria (tamano pequeno)", b, TS(2), UY(60));
+    fitChord("volver del detalle", T(S_DETAIL_BACK), TS(2), UY(408));
+    fitChord("nombre (teclado)", T(S_NAME), TS(2), UY(56));
+    fitChord("ajustar hora", T(S_SET_TIME), TS(3), UY(44));
+    fitBox("HORA", T(S_HOUR), TS(2), CLOCK_BTN_W * 2 + (CLK_X1 - CLK_X0 - CLOCK_BTN_W));
+    fitBox("MIN", T(S_MIN), TS(2), CLOCK_BTN_W * 2 + (CLK_X3 - CLK_X2 - CLOCK_BTN_W));
+    fitBox("sonido activado", T(S_SND_ON), TS(2), SND_PILL_W - U(8));
+    fitBox("sonido desactivado", T(S_SND_OFF), TS(2), SND_PILL_W - U(8));
+    fitChord("cancelar el reloj (tamano pequeno)", T(S_CLOCK_CANCEL), TS(1), UY(410));
+    // --- minijuegos ---
+    snprintf(b, sizeof(b), T(S_SCORE_FMT), 999);
+    fitBox("puntuacion", b, TS(4), UI_W - U(40));
+    snprintf(b, sizeof(b), T(S_RECORD_FMT), 999);
+    fitBox("record", b, TS(2), UI_W - U(40));
+    snprintf(b, sizeof(b), T(S_REC_FMT), 999);
+    fitBox("record en vivo", b, TS(2), UI_W - U(40));
+    for (StrId id : { S_NEW_RECORD, S_GREAT_JOY, S_PLUS_JOY, S_HIT_FAST }) fitBox("texto de minijuego", T(id), TS(2), UI_W - U(40));
+    snprintf(b, sizeof(b), T(S_HITS_FMT), 999);
+    fitBox("golpes", b, TS(4), UI_W - U(40));
+    snprintf(b, sizeof(b), T(S_STR_GAIN_FMT), 9);
+    fitBox("ganancia de fuerza", b, TS(3), UI_W - U(40));
+  }
+  fprintf(stderr, "%d textos que no caben\n", gFitFails);
+  return gFitFails ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "uso: %s carpeta [idioma] [filtro]\n", argv[0]); return 2; }
   std::string out = argv[1];
@@ -406,7 +523,8 @@ int main(int argc, char **argv) {
   std::string filter = argc > 3 ? argv[3] : "";
   bool tapsMode = filter == "--taps";
   bool measureMode = filter == "--measure";
-  if (tapsMode || measureMode) filter = "";
+  bool fitMode = filter == "--fit";
+  if (tapsMode || measureMode || fitMode) filter = "";
   int drawn = 0;
   if (lang < 0 || lang >= LANG_COUNT) { fprintf(stderr, "idioma fuera de rango: %d\n", lang); return 2; }
 
@@ -420,6 +538,7 @@ int main(int argc, char **argv) {
 
   if (tapsMode) return runTapTests();
   if (measureMode) return runMeasureTests();
+  if (fitMode) return runFitTests();
   std::vector<const Scene *> all;
   for (const Scene &sc : SCENES) all.push_back(&sc);
   for (const Scene &sc : EXTRA)

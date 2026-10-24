@@ -107,6 +107,9 @@ jobs:
       # compila el sketch contra un lienzo por software y compara cada pantalla
       # (test/render). Si el cambio de interfaz es intencionado: make golden.
       - run: make -C test/render check
+      # tocar el centro de cada boton, medir los textos CJK y comprobar que cada cadena de
+      # cada idioma cabe donde se dibuja
+      - run: make -C test/render taps measure fit
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -1197,9 +1197,10 @@ void render() {
       char q[48];
       snprintf(q, sizeof(q), T(S_RELEASE_FMT), dexName(pet.speciesId));
       gfx->setTextColor(UI_INK);
-      setSize(TS(2));
-      setCur(centerX(q, TS(2)), UY(196));
+      int qs = fitWidth(q, TS(2), TS(1), U(278) - U(16));  // con nombres largos no cabe a tamano 2
+      setCur(centerX(q, qs), UY(196) + (TS(2) * 7 - textH()) / 2);
       printT(q);
+      setSize(TS(2));
       gfx->fillRoundRect(YES_X, YES_Y, YES_W, YES_H, U(12), UI_BAR_OK);
       gfx->setTextColor(UI_WHITE);
       setCur(YES_X + (YES_W - textW(T(S_YES), TS(2))) / 2, UY(270));
@@ -2304,8 +2305,8 @@ void drawFarewellButton() {
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
   gfx->setTextColor(UI_INK);
-  setSize(TS(2));
-  setCur(centerX(buf, TS(2)), y + h / 2 - UY(8));
+  int fs = fitWidth(buf, TS(2), TS(1), FAR_BTN_W - U(16));  // con nombres largos no cabe a tamano 2
+  setCur(centerX(buf, fs), y + (h - textH()) / 2);
   printT(buf);
 }
 
@@ -2321,8 +2322,8 @@ void drawRunawayButton() {
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_RUNAWAY_BTN), nm);
   gfx->setTextColor(C565(0xc8, 0xd2, 0xe0));
-  setSize(TS(2));
-  setCur(centerX(buf, TS(2)), y + h / 2 - UY(8));
+  int fs = fitWidth(buf, TS(2), TS(1), FAR_BTN_W - U(16));
+  setCur(centerX(buf, fs), y + (h - textH()) / 2);
   printT(buf);
 }
 
