@@ -26,8 +26,8 @@ constexpr int uiScale(int n, int panel) {
 
 // factores enteros (nunca bajan de 1), redondeados HACIA ABAJO para que lo dibujado
 // no sea mas grande que la caja que se escalo con U()/UY():
-//  - TS: tamano de texto (setSize/textW/centerX). Medido con las cadenas reales de los 8
-//    idiomas: redondear al mas cercano desbordaba cajas en paneles de 360 y 240 px.
+//  - TS: tamano de texto (setSize/textW/centerX). Medido con las cadenas reales:
+//    redondear al mas cercano desbordaba cajas en paneles de 360 y 240 px.
 //  - SC: escala de sprite o pixel-art (drawMap, drawPmdAct...).
 // Hoy son iguales; se mantienen dos nombres para que el uso quede claro (y test_tools.py
 // vigila que no se crucen) por si el redondeo del texto vuelve a separarse del de los

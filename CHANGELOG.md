@@ -6,6 +6,17 @@ bottom of the clock/settings screen (swipe down) and `web/manifest.json`.
 Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 **without** ticking "Erase device" keeps your Pokémon.
 
+## [Unreleased]
+
+### Removed
+
+- **Every language except English.** The UI strings, the medal texts and the species
+  names are English only; the language pill on the settings screen is gone and the
+  sound switch sits in its place, centred. The CJK font support (U8g2, `applyLangFont()`,
+  UTF-8 text measuring and wrapping), `tools/gen_names.py`, `tools/dex_names.py` and the
+  reference images for the other languages went with them. A language saved in NVS by an
+  older firmware is ignored.
+
 ## [1.17] - 2026-09-18
 
 ### Added

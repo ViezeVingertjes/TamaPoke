@@ -1,19 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-// Idiomas soportados. La fuente 5x7 de Arduino_GFX es una tabla CP437 completa
-// (256 glifos), asi que SI hay acentos, dieresis y enes: van como byte suelto en
-// octal (\240 a, \244 n~, \202 e, \204 a"...), nunca en UTF-8, porque la UI centra
-// con strlen(t)*6 y un caracter de dos bytes descuadraria las etiquetas.
-// No estan en CP437: las mayusculas acentuadas salvo E (\220), ni a~/o~ del portugues.
-enum Lang : uint8_t { LANG_ES = 0, LANG_EN, LANG_FR, LANG_DE, LANG_IT, LANG_PT,
-                     LANG_JA, LANG_KO, LANG_COUNT };
-// idiomas que necesitan una fuente U8g2 y texto UTF-8 en vez de la tabla CP437
-#define LANG_IS_CJK(l) ((l) == LANG_JA || (l) == LANG_KO)
-#define LANG_DEFAULT LANG_EN  // idioma por defecto: ingles
-
-extern Lang gLang;  // idioma activo (definido en i18n.cpp)
-
 // IDs de cadena. El orden debe coincidir con la tabla STRINGS de i18n.cpp.
 enum StrId : uint8_t {
   // estado del bicho (statusMsg)
@@ -32,7 +19,7 @@ enum StrId : uint8_t {
   S_HITS_FMT, S_STR_GAIN_FMT, S_NEW_RECORD, S_RECORD_FMT, S_HIT_FAST,
   S_SCORE_FMT, S_GREAT_JOY, S_PLUS_JOY,
   // reloj / ajustes
-  S_SET_TIME, S_HOUR, S_MIN, S_CLOCK_CANCEL, S_LANG_LABEL,
+  S_SET_TIME, S_HOUR, S_MIN, S_CLOCK_CANCEL,
   // celebracion
   S_MEDAL_BANNER, S_GREAT, S_STREAK_DAYS_FMT,
   // ficha: perfil
@@ -63,10 +50,6 @@ enum StrId : uint8_t {
   STR_COUNT
 };
 
-const char *T(StrId id);       // texto en el idioma activo
+const char *T(StrId id);       // texto de la interfaz
 const char *medalName(int i);  // banner de medalla (MED_COUNT)
-const char *medalLabel(int i); // etiqueta corta de medalla
 const char *medalDesc(int i);  // descripcion larga de medalla
-
-void loadLang();             // lee el idioma de NVS (llamar en setup)
-void setLang(Lang l);        // cambia y persiste el idioma

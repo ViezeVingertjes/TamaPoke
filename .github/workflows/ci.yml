@@ -32,7 +32,7 @@ jobs:
           arduino-cli core install esp32:esp32@3.3.10
 
       - name: Install libraries
-        run: arduino-cli lib install "GFX Library for Arduino" SensorLib XPowersLib U8g2
+        run: arduino-cli lib install "GFX Library for Arduino" SensorLib XPowersLib
 
       - name: Compile
         if: matrix.flags == ''
@@ -98,7 +98,7 @@ jobs:
         run: ./test/run_tests.sh --asan
 
   i18n:
-    name: i18n format-specifier consistency
+    name: i18n table sizes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -117,16 +117,14 @@ jobs:
           python-version: "3.x"
       - run: pip install pillow
       - uses: arduino/setup-arduino-cli@v2
-      # el renderer compila el codigo grafico de GFX Library for Arduino y saca las
-      # fuentes CJK de U8g2; versiones fijadas porque las imagenes de referencia
-      # dependen de ellas
-      - run: arduino-cli lib install "GFX Library for Arduino@1.6.9" "U8g2@2.36.19"
+      # el renderer compila el codigo grafico de GFX Library for Arduino; version fijada
+      # porque las imagenes de referencia dependen de ella
+      - run: arduino-cli lib install "GFX Library for Arduino@1.6.9"
       # compila el sketch contra un lienzo por software y compara cada pantalla
       # (test/render). Si el cambio de interfaz es intencionado: make golden.
       - run: make -C test/render check
-      # tocar el centro de cada boton, medir los textos CJK y comprobar que cada cadena de
-      # cada idioma cabe donde se dibuja
-      - run: make -C test/render taps measure fit power
+      # tocar el centro de cada boton y comprobar que cada cadena cabe donde se dibuja
+      - run: make -C test/render taps fit power
       # y el panel cuadrado de 480 px (2.16): toques y textos tambien
       - run: make -C test/render taps fit ROUND=0 SIZE=480
       - uses: actions/upload-artifact@v4

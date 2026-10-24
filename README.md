@@ -6,7 +6,6 @@
 ![Firmware](https://img.shields.io/badge/firmware-v1.17-8A2BE2)
 [![CI](https://github.com/socquique/TamaPoke/actions/workflows/ci.yml/badge.svg)](https://github.com/socquique/TamaPoke/actions/workflows/ci.yml)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
-![Languages](https://img.shields.io/badge/languages-8-FFCB05)
 [![Stars](https://img.shields.io/github/stars/socquique/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/socquique/TamaPoke/stargazers)
 
 A gen-1-Pokémon-inspired tamagotchi for the
@@ -28,7 +27,7 @@ behind a decision dialog), bred-Pokédex with gallery, battle stats (genes +
 training), retention hooks (streak / bond / medals / name), biome + real-time
 backgrounds, ball minigame, training bag, animated bath, RTC with offline
 progression, battery (AXP2101) and PWR button, anti-burn-in dimming,
-**sound (ES8311)**, **8 UI languages (English default)**, **starter choice on
+**sound (ES8311)**, **starter choice on
 first run**, and a one-click **web installer**.
 
 Pending: wild encounters / battle (designed, not implemented), 3D case, soak
@@ -143,7 +142,6 @@ SPEED ← minigame, DEFENSE ← 12 h of unbroken good care). *(Battles: on the r
 | GFX Library for Arduino (`Arduino_GFX`) | moononournation | CO5300 over QSPI + framebuffer in PSRAM |
 | SensorLib | Lewis He | CST9217 touch + PCF85063 RTC |
 | XPowersLib | Lewis He | AXP2101 PMU (battery, brightness, PWR button) |
-| U8g2 | olikraus | CJK glyphs (`unifont_t_japanese3`, the only Japanese subset that also carries `！？。、「」`; `unifont_t_korean2` for Hangul, 2350 syllables against korean1's 478); only the font data is used, not its display driver |
 | ESP_I2S (bundled in the ESP32 core) | Espressif | I2S to the ES8311 codec |
 
 ## IDE setup / build
@@ -211,7 +209,7 @@ If one bottoms out it counts as a *slip-up*.
 - Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Medals /
   Progress; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).
-- Swipe down = **set the clock** and pick the **language** + sound on/off.
+- Swipe down = **set the clock** and toggle **sound** on/off.
 - Long press (3 s) on the creature = **release** dialog.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
@@ -251,12 +249,9 @@ thumbnails (`SdThumbs`). `SdMon` (TPK1) remains as a dormant legacy fallback onl
 
 `tools/dex_data.py` is the **single source**: name, slug, type (accent colour +
 background biome), evolution line with gen-1 levels, rarities and starters.
-`tools/dex_stats.py` has the real base stats (from PokéAPI). `tools/gen_names.py`
-pulls the **official localized names** from PokéAPI into `tools/dex_names.py`
-(only French and German differ in gen 1; Spanish, Italian and Portuguese use the
-English ones). `gen_dex.py` emits `dex.h` (the `DEX_TBL[152]` table plus the
-per-language name tables and the `dexName()` accessor). The pet's identity is its
-Pokédex number (persisted in NVS).
+`tools/dex_stats.py` has the real base stats (from PokéAPI). `gen_dex.py` emits
+`dex.h` (the `DEX_TBL[152]` table and the `dexName()` accessor). The pet's identity
+is its Pokédex number (persisted in NVS).
 
 - **Evolution** gen-1 style (levels 16/36/…; stones ≈30, trade ≈40; Eevee
   branches to whichever evolution you're missing). Each slip-up delays it 1
@@ -286,7 +281,7 @@ and burns off with training.
 High streak and bond **improve the egg roll** (rarity and shiny): caring well
 always pays off.
 
-## Life cycle, eggs by rarity, languages
+## Life cycle and eggs by rarity
 
 The life cycle lasts **3 days** of play. Three endings (all leave a new egg):
 **farewell** (final form + 3 days), **release** (long press), **runaway** (all 4
@@ -297,15 +292,6 @@ The egg rolls rarity over the ~79 base forms (47 common / 27 rare / 5 legendary)
 **biased towards the lines you're missing** (all 151 are completable), blessed by
 a farewell and punished by a runaway. Legendaries only with 25+ registered.
 **Shiny** 1/48 (better with streak/bond/farewell).
-
-**Languages:** the UI ships in 8 languages — English (default), Spanish, French,
-German, Italian, Portuguese, Japanese and Korean — switchable from the settings
-screen (swipe down).
-**Pokémon names are localized too**: French, German, Japanese and Korean show
-the official names (Bulbizarre, Bisasam, フシギダネ, 이상해씨...). Spanish, Italian
-and Portuguese use the English ones, which is what those regions officially use
-for gen 1. Nidoran♀/♂ read ニドランF/M in Japanese and 니드런 암/수 in Korean: no
-U8g2 unifont subset carries ♀ or ♂, so each language picks its own substitute.
 
 ## Backgrounds: biome + real time
 
@@ -320,12 +306,11 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `sdmon.h` / `sdmon.cpp` — TPK1 (animated) and TPK2 (PMD) sprites + thumbnails, and file reception over USB (PUT/LS)
 - `rtcbat.h` / `rtcbat.cpp` — PCF85063 RTC + AXP2101 PMU (battery, brightness, PWR button)
 - `audio.h` / `audio.cpp` — ES8311 + I2S + Game-Boy-style tone synth (non-blocking task)
-- `i18n.h` / `i18n.cpp` — the 8-language string tables
+- `i18n.h` / `i18n.cpp` — the UI strings
 - `dex.h` — GENERATED (`gen_dex.py`): the 151 table
 - `species.h` — GENERATED (`sprites.py`): fallback sprites, UI icons, colours
 - `pin_config.h` — the board's official pins
-- `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `dex_names.py` +
-  `gen_names.py` (localized names), `gen_dex.py`,
+- `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `gen_dex.py`,
   `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`
   (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload), `touch_log.py`
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
