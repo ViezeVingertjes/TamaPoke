@@ -2,7 +2,7 @@
 """Envia los sprites empaquetados a la SD de la placa por USB.
 
   python3 tools/send_sd.py                  # envia tools/sdcard/mons/*.bin
-  python3 tools/send_sd.py --port /dev/cu.usbmodem101
+  python3 tools/send_sd.py --port /dev/cu.usbmodem101   # o /dev/ttyACM0
   python3 tools/send_sd.py --ls             # lista lo que hay en la SD
 """
 import argparse
@@ -13,9 +13,9 @@ import time
 import serial
 
 def find_port():
-    ports = glob.glob('/dev/cu.usbmodem*')
+    ports = glob.glob('/dev/cu.usbmodem*') + glob.glob('/dev/ttyACM*')  # macOS, Linux
     if not ports:
-        sys.exit("no encuentro la placa (/dev/cu.usbmodem*)")
+        sys.exit("no encuentro la placa (/dev/cu.usbmodem* o /dev/ttyACM*)")
     return ports[0]
 
 def wait_line(ser, expect, timeout=10):
