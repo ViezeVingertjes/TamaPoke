@@ -9,7 +9,6 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from dex_data import DEX, TYPE_ACCENTS, CLASSIC, RARE, LEGENDARY
 from dex_stats import BASE_STATS
-from dex_names import LOCAL_NAMES
 
 
 def rgb565(hexcol):
@@ -32,7 +31,7 @@ BIOME_OVERRIDE = {138: 1, 139: 1, 140: 1, 141: 1}  # Omanyte, Omastar, Kabuto, K
 
 def main():
     out = []
-    out.append("#pragma once\n#include <stdint.h>\n#include \"i18n.h\"  // gLang\n\n")
+    out.append("#pragma once\n#include <stdint.h>\n\n")
     out.append("// GENERADO por tools/gen_dex.py desde tools/dex_data.py - no editar\n\n")
     out.append("#define DEX_COUNT 151\n")
     out.append("#define DEX_EEVEE 133  // rama al azar: 134/135/136\n\n")
@@ -70,34 +69,10 @@ def main():
         out.append(f'  {{ "{display}", {evo}, {lvl}, {rar}, 0x{acc:04X}, {hp}, {atk}, {df}, {spe}, {bio} }},  // {num} {typ}\n')
     out.append("};\n\n")
 
-    # Solo FR y DE tienen nombre propio en gen 1; ES/IT/PT usan el ingles.
     out.append(
-        "// Nombres oficiales por idioma. FR y DE son los unicos latinos que difieren\n"
-        "// del ingles en gen 1 (ES/IT/PT usan el de DEX_TBL); JA y KO van en UTF-8,\n"
-        "// que se pinta con la fuente U8g2. nullptr = sin nombre propio.\n")
-    for lg in ('fr', 'de', 'ja', 'ko'):
-        out.append(f"static const char *const DEX_NAME_{lg.upper()}[DEX_COUNT + 1] = {{\n")
-        fila = []
-        for num in range(0, 152):
-            nm = LOCAL_NAMES.get(num, {}).get(lg)
-            fila.append(f'"{nm}"' if nm else 'nullptr')
-            if len(fila) == 4:
-                out.append("  " + ", ".join(fila) + ",\n")
-                fila = []
-        if fila:
-            out.append("  " + ", ".join(fila) + ",\n")
-        out.append("};\n\n")
-    out.append(
-        "// Nombre de la especie en el idioma activo (cae al de DEX_TBL si ese\n"
-        "// idioma no tiene nombre propio para ella).\n"
+        "// Nombre de la especie (DEX_TBL[0] fuera de rango).\n"
         "static inline const char *dexName(int16_t dex) {\n"
-        "  if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;\n"
-        "  const char *n = (gLang == LANG_FR)   ? DEX_NAME_FR[dex]\n"
-        "                  : (gLang == LANG_DE) ? DEX_NAME_DE[dex]\n"
-        "                  : (gLang == LANG_JA) ? DEX_NAME_JA[dex]\n"
-        "                  : (gLang == LANG_KO) ? DEX_NAME_KO[dex]\n"
-        "                                       : nullptr;\n"
-        "  return n ? n : DEX_TBL[dex].name;\n"
+        "  return DEX_TBL[dex < 1 || dex > DEX_COUNT ? 0 : dex].name;\n"
         "}\n\n")
 
     out.append("// el primer huevo de la partida: iniciales clasicos\n")

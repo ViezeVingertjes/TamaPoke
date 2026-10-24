@@ -13,8 +13,6 @@ static const int N = DEX_COUNT;
 
 TEST(dex, la_tabla_tiene_152_entradas) {
   CHECK_EQ((int)(sizeof(DEX_TBL) / sizeof(DEX_TBL[0])), N + 1);
-  CHECK_EQ((int)(sizeof(DEX_NAME_FR) / sizeof(DEX_NAME_FR[0])), N + 1);
-  CHECK_EQ((int)(sizeof(DEX_NAME_DE) / sizeof(DEX_NAME_DE[0])), N + 1);
 }
 
 TEST(dex, todos_los_nombres_son_ascii_en_mayusculas) {
@@ -30,34 +28,14 @@ TEST(dex, todos_los_nombres_son_ascii_en_mayusculas) {
   }
 }
 
-TEST(dex, los_nombres_traducidos_tambien_son_ascii) {
-  const char *const *tables[2] = { DEX_NAME_FR, DEX_NAME_DE };
-  for (int t = 0; t < 2; t++) {
-    for (int d = 1; d <= N; d++) {
-      const char *n = tables[t][d];
-      if (!n) continue;  // sin nombre propio: cae al de DEX_TBL
-      CHECK_MSG(n[0] != 0, "nombre traducido vacio");
-      for (const char *c = n; *c; c++) {
-        CHECK_MSG((unsigned char)*c < 128, std::string("caracter no ASCII en ") + n);
-        CHECK_MSG(!islower((unsigned char)*c), std::string("minuscula en ") + n);
-      }
-    }
-  }
-}
-
-// la cabecera de la ficha es char[26] con "%s%s Lv.%u": ningun nombre en ningun
-// idioma puede desbordarla (el nombre se cortaria en pantalla)
+// la cabecera de la ficha es char[26] con "%s%s Lv.%u": ningun nombre puede desbordarla
+// (el nombre se cortaria en pantalla)
 TEST(dex, ningun_nombre_desborda_la_cabecera) {
   char head[26];
-  for (int lang = 0; lang < LANG_COUNT; lang++) {
-    gLang = (Lang)lang;
-    for (int d = 1; d <= N; d++) {
-      int need = snprintf(head, sizeof(head), T(S_NAME_FMT), "*", dexName(d), 255);
-      CHECK_MSG(need >= 0 && need < (int)sizeof(head),
-                std::string("cabecera cortada: ") + dexName(d));
-    }
+  for (int d = 1; d <= N; d++) {
+    int need = snprintf(head, sizeof(head), T(S_NAME_FMT), "*", dexName(d), 255);
+    CHECK_MSG(need >= 0 && need < (int)sizeof(head), std::string("cabecera cortada: ") + dexName(d));
   }
-  gLang = LANG_DEFAULT;
 }
 
 TEST(dex, las_evoluciones_apuntan_a_entradas_validas) {
@@ -187,29 +165,13 @@ TEST(dex, ningun_tier_desborda_el_array_de_candidatos) {
   }
 }
 
-TEST(dex, dexName_cae_al_nombre_base_si_no_hay_traduccion) {
-  gLang = LANG_ES;
-  CHECK_STREQ(dexName(1), DEX_TBL[1].name);
-  gLang = LANG_FR;
-  for (int d = 1; d <= N; d++) {
-    const char *want = DEX_NAME_FR[d] ? DEX_NAME_FR[d] : DEX_TBL[d].name;
-    CHECK_STREQ(dexName(d), want);
-  }
-  gLang = LANG_DE;
-  for (int d = 1; d <= N; d++) {
-    const char *want = DEX_NAME_DE[d] ? DEX_NAME_DE[d] : DEX_TBL[d].name;
-    CHECK_STREQ(dexName(d), want);
-  }
-  gLang = LANG_DEFAULT;
+TEST(dex, dexName_devuelve_el_nombre_de_la_tabla) {
+  for (int d = 1; d <= N; d++) CHECK_STREQ(dexName(d), DEX_TBL[d].name);
 }
 
 TEST(dex, dexName_fuera_de_rango_no_revienta) {
-  for (int lang = 0; lang < LANG_COUNT; lang++) {
-    gLang = (Lang)lang;
-    CHECK_STREQ(dexName(0), DEX_TBL[0].name);
-    CHECK_STREQ(dexName(-1), DEX_TBL[0].name);
-    CHECK_STREQ(dexName(152), DEX_TBL[0].name);
-    CHECK_STREQ(dexName(30000), DEX_TBL[0].name);
-  }
-  gLang = LANG_DEFAULT;
+  CHECK_STREQ(dexName(0), DEX_TBL[0].name);
+  CHECK_STREQ(dexName(-1), DEX_TBL[0].name);
+  CHECK_STREQ(dexName(152), DEX_TBL[0].name);
+  CHECK_STREQ(dexName(30000), DEX_TBL[0].name);
 }

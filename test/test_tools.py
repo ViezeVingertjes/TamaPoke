@@ -75,10 +75,9 @@ class TestDexData(unittest.TestCase):
     def setUpClass(cls):
         from dex_data import DEX, TYPE_ACCENTS, CLASSIC, RARE, LEGENDARY, SLUGS
         from dex_stats import BASE_STATS
-        from dex_names import LOCAL_NAMES
         cls.DEX, cls.ACCENTS, cls.CLASSIC = DEX, TYPE_ACCENTS, CLASSIC
         cls.RARE, cls.LEGENDARY, cls.SLUGS = RARE, LEGENDARY, SLUGS
-        cls.STATS, cls.NAMES = BASE_STATS, LOCAL_NAMES
+        cls.STATS = BASE_STATS
         cls.byNum = {row[0]: row for row in DEX}
 
     def test_estan_las_151_especies_sin_huecos_ni_repetidos(self):
@@ -147,25 +146,6 @@ class TestDexData(unittest.TestCase):
             for v in (hp, atk, dfn, spe):
                 self.assertTrue(0 < v <= 255, f'stat fuera de rango en {self.byNum[num][2]}: {v}')
 
-    def test_los_nombres_traducidos_cuadran_con_su_fuente(self):
-        # Los latinos se pintan con la fuente CP437 (un byte por caracter, sin
-        # minusculas en los nombres); el japones y el coreano con una fuente
-        # U8g2 y van en UTF-8, asi que ni son ASCII ni tienen mayusculas que
-        # comprobar.
-        LATINOS, CJK = ('fr', 'de'), ('ja', 'ko')
-        for num, langs in self.NAMES.items():
-            self.assertIn(num, self.byNum, f'nombre traducido de una especie inexistente: {num}')
-            for lang, name in langs.items():
-                self.assertIn(lang, LATINOS + CJK, f'idioma inesperado: {lang}')
-                self.assertTrue(name, f'{num} {lang} vacio')
-                if lang in LATINOS:
-                    self.assertTrue(name.isascii(), f'{num} {lang} no es ASCII: {name}')
-                    self.assertEqual(name, name.upper(), f'{num} {lang} lleva minusculas: {name}')
-                    self.assertLessEqual(len(name), 12, f'{num} {lang} no cabe en pantalla: {name}')
-                else:
-                    # el limite util son CARACTERES, no bytes: en UTF-8 cada kana o silaba hangul ocupa 3
-                    self.assertLessEqual(len(name), 8, f'{num} {lang} no cabe en pantalla: {name}')
-
 
 class TestGeneratedFiles(unittest.TestCase):
     """dex.h esta generado: si no coincide con su generador, alguien lo edito a mano."""
@@ -217,14 +197,11 @@ class TestSketchSanity(unittest.TestCase):
 
 
 class TestBuffersDeTexto(unittest.TestCase):
-    """Cada snprintf(buf, sizeof(buf), T(S_x), ...) cabe en su buffer en TODOS los idiomas.
+    """Cada snprintf(buf, sizeof(buf), T(S_x), ...) cabe en su buffer.
 
-    Los buffers se dimensionaron cuando toda cadena era de un byte por
-    caracter. En UTF-8 un kana o una silaba hangul ocupan 3, y snprintf corta
-    en silencio: a veces se pierden cifras ("きろく 2" por "きろく 219") y a
-    veces corta a mitad de un caracter, que la fuente ya no sabe dibujar. No lo
-    avisa ni el compilador ni la pantalla, asi que se comprueba aqui con el
-    peor caso de cada argumento segun su tipo:
+    Un buffer corto trunca el texto en silencio: a veces corta a mitad de un caracter, que
+    la fuente ya no sabe dibujar. No lo avisa ni el compilador ni la pantalla, asi que se
+    comprueba aqui con el peor caso de cada argumento segun su tipo:
 
       %u / %d  -> 5 cifras (todos los argumentos son de 16 bits o menos)
       %lu      -> 10 cifras
@@ -246,24 +223,17 @@ class TestBuffersDeTexto(unittest.TestCase):
     def setUpClass(cls):
         import test_i18n_formats as fmt
         from dex_data import DEX
-        from dex_names import LOCAL_NAMES
 
         def leer(nombre):
             with open(os.path.join(ROOT, nombre), encoding='utf-8') as fh:
                 return fh.read()
 
-        cls.LANGS = fmt.LANGS
         cuerpo = re.search(r'enum\s+StrId[^{]*\{(.*?)\}', leer('i18n.h'), re.S).group(1)
         ids = re.findall(r'\b(S_[A-Z0-9_]+)\b', cuerpo)
-        filas = fmt.extract_table(leer('i18n.cpp'), 'STRINGS', len(cls.LANGS))
-        cls.LIT = {sid: [fila[k] for fila in filas] for k, sid in enumerate(ids)}
+        cls.LIT = dict(zip(ids, fmt.extract_table(leer('i18n.cpp'), 'STRINGS')))
         cls.ino = leer('TamaPoke.ino').splitlines()
         cls.APODO = int(re.search(r'char\s+nick\[(\d+)\]', leer('pet.h')).group(1)) - 1
-        base = max(len(row[2].encode()) for row in DEX)
-        cls.NOMBRE = {}
-        for lang in cls.LANGS:
-            propios = [n[lang.lower()] for n in LOCAL_NAMES.values() if lang.lower() in n]
-            cls.NOMBRE[lang] = max([base] + [len(n.encode('utf-8')) for n in propios])
+        cls.NOMBRE = max(len(row[2].encode()) for row in DEX)
 
     @staticmethod
     def bytes_literal(literal):
@@ -281,8 +251,8 @@ class TestBuffersDeTexto(unittest.TestCase):
             n += 1
         return n
 
-    def peor_caso(self, sid, li):
-        lang, lit = self.LANGS[li], self.LIT[sid][li]
+    def peor_caso(self, sid):
+        lit = self.LIT[sid]
         total = self.bytes_literal(lit) + 1  # + terminador
         pendientes = list(self.ARGS_S.get(sid, ()))
         for m in self.ESPEC.finditer(lit):
@@ -295,15 +265,15 @@ class TestBuffersDeTexto(unittest.TestCase):
             if arg == 'estrella':
                 total += 1
             elif arg == 'nombre':
-                total += self.NOMBRE[lang]
+                total += self.NOMBRE
             elif arg == 'nombre_o_apodo':
-                total += max(self.NOMBRE[lang], self.APODO)
+                total += max(self.NOMBRE, self.APODO)
             elif arg == 'baya':
-                total += max(self.bytes_literal(self.LIT[b][li]) for b in
+                total += max(self.bytes_literal(self.LIT[b]) for b in
                              ('S_BERRY_UNK', 'S_BERRY_RED', 'S_BERRY_BLUE', 'S_BERRY_GREEN'))
         return total
 
-    def test_cada_texto_formateado_cabe_en_su_buffer_en_todos_los_idiomas(self):
+    def test_cada_texto_formateado_cabe_en_su_buffer(self):
         llamada = re.compile(r'snprintf\((\w+),\s*sizeof\(\1\),\s*T\((S_[A-Z0-9_]+)\)')
         revisadas = 0
         for n, linea in enumerate(self.ino, 1):
@@ -316,13 +286,11 @@ class TestBuffersDeTexto(unittest.TestCase):
                         if d), None)
             self.assertIsNotNone(tam, f'TamaPoke.ino:{n}: no encuentro la declaracion de {var}')
             revisadas += 1
-            for li, lang in enumerate(self.LANGS):
-                with self.subTest(linea=n, id=sid, idioma=lang):
-                    peor = self.peor_caso(sid, li)
-                    self.assertLessEqual(
-                        peor, tam,
-                        f'TamaPoke.ino:{n}: {var}[{tam}] con {sid} en {lang} necesita {peor} bytes')
+            with self.subTest(linea=n, id=sid):
+                peor = self.peor_caso(sid)
+                self.assertLessEqual(peor, tam, f'TamaPoke.ino:{n}: {var}[{tam}] con {sid} necesita {peor} bytes')
         self.assertGreater(revisadas, 10, 'el patron de snprintf ya no encuentra las llamadas')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
