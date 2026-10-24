@@ -441,13 +441,14 @@ static void fitChord(const char *what, const char *text, int size, int y) {
   fitBox(what, text, size, (top < bot ? top : bot) - U(8));
 }
 // texto partido en <= maxLines lineas (como drawWrapped): cada linea cabe y no se pierde nada
-static void fitWrapped(const char *what, const char *text, int size, int maxW, int maxLines) {
+static void fitWrapped(const char *what, const char *text, int size, int maxW, int maxLines, int maxH = 1 << 20) {
   setSize(size);
   int st[4], ln[4];
   int n = wrapText(text, size, maxW, maxLines, st, ln);
   int L = (int)strlen(text);
   while (L > 0 && text[L - 1] == ' ') L--;
   bool ok = n > 0 && st[n - 1] + ln[n - 1] == L;
+  if (n * textH() + (n - 1) * U(4) > maxH) ok = false;  // el bloque tambien tiene que caber en su caja
   for (int i = 0; i < n; i++) {
     char line[96]; memcpy(line, text + st[i], ln[i]); line[ln[i]] = 0;
     if (textW(line, size) > maxW) ok = false;
@@ -464,6 +465,34 @@ static const char *longestName() {
   for (int d = 1; d <= 151; d++)
     if (textW(dexName(d), TS(2)) > textW(best, TS(2))) best = dexName(d);
   return best;
+}
+
+// wrapText: cortes en el limite exacto (la palabra acaba justo en maxW)
+static int runWrapTests() {
+  int fails = 0;
+  setLang(LANG_EN);
+  applyLangFont();
+  setSize(1);  // 6 px por caracter
+  struct Case { const char *text; int maxW; int lines; const char *l0; const char *l1; };
+  static const Case cases[] = {
+    { "AA AA BBBBB", 30, 2, "AA AA", "BBBBB" },       // la primera linea llena justo; el espacio ya no cabe
+    { "AA BB", 100, 1, "AA BB", "" },
+    { "ABCDEFGHIJ", 30, 2, "ABCDE", "FGHIJ" },         // sin espacios: corta por caracteres
+    { "  HOLA   MUNDO  ", 60, 2, "HOLA", "MUNDO" },    // espacios sobrantes
+    { "", 60, 0, "", "" },
+  };
+  for (const Case &c : cases) {
+    int st[4], ln[4];
+    int n = wrapText(c.text, 1, c.maxW, 2, st, ln);
+    char a0[32] = "", a1[32] = "";
+    if (n > 0) { memcpy(a0, c.text + st[0], ln[0]); a0[ln[0]] = 0; }
+    if (n > 1) { memcpy(a1, c.text + st[1], ln[1]); a1[ln[1]] = 0; }
+    if (n != c.lines || strcmp(a0, c.l0) || strcmp(a1, c.l1)) {
+      fprintf(stderr, "FALLA wrapText '%s' (%d px): %d lineas '%s' | '%s'; esperaba %d '%s' | '%s'\n", c.text, c.maxW, n, a0, a1, c.lines, c.l0, c.l1);
+      fails++;
+    }
+  }
+  return fails;
 }
 
 static int runFitTests() {
@@ -493,7 +522,7 @@ static int runFitTests() {
     // --- dialogos ---
     for (const char *nm : worst) {
       snprintf(b, sizeof(b), T(S_RELEASE_FMT), nm);
-      fitWrapped("soltar?", b, TS(2), U(278) - U(16), 2);
+      fitWrapped("soltar?", b, TS(2), U(278) - U(16), 2, UY(60));
     }
     fitBox("SI", T(S_YES), TS(2), YES_W - U(8));
     fitBox("NO", T(S_NO), TS(2), YES_W - U(8));
@@ -501,18 +530,19 @@ static int runFitTests() {
     fitBox("boton evolucionar", T(S_EVO_TAP), TS(3), EVO_BTN_W - U(16));
     for (const char *nm : worst) {
       snprintf(b, sizeof(b), T(S_FAREWELL_BTN), nm);
-      fitWrapped("boton despedida", b, TS(2), FAR_BTN_W - U(16), 2);
+      fitWrapped("boton despedida", b, TS(2), FAR_BTN_W - U(16), 2, FAR_BTN_H - UY(8));
       snprintf(b, sizeof(b), T(S_RUNAWAY_BTN), nm);
-      fitWrapped("boton escapada", b, TS(2), FAR_BTN_W - U(16), 2);
+      fitWrapped("boton escapada", b, TS(2), FAR_BTN_W - U(16), 2, FAR_BTN_H - UY(8));
     }
     for (int i = 0; i < MED_COUNT; i++) {
-      fitWrapped("descripcion de medalla", medalDesc(i), TS(2), MED_W - U(44) - U(6), 2);
+      fitWrapped("descripcion de medalla", medalDesc(i), TS(2), MED_W - U(44) - U(6), 2, UY(44) - UY(8));
       fitBox("etiqueta de medalla", medalLabel(i), TS(2), U(100));
     }
     setSize(TS(2));
     fitWrapped("cancelar del reloj", T(S_CLOCK_CANCEL), TS(2), chordAvail(UY(424)), 2);
     // cadenas sueltas que no estaban cubiertas
-    fitBox("huevo (cabecera)", T(S_EGG_HDR), TS(3), UI_W - U(40));
+    { int hs = fitSize(T(S_EGG_HDR), TS(3), TS(2), UY(52));
+      if (!fitsChord(T(S_EGG_HDR), hs, UY(52))) { fprintf(stderr, "FALLA %-3s cabecera del huevo no cabe en el circulo\n", gFitLang); gFitFails++; } }
     fitChord("huevo legendario", T(S_EGG_LEGEND), TS(2), UY(316));
     fitChord("huevo raro", T(S_EGG_RARE), TS(2), UY(316));
     for (StrId id : { S_BERRY_RED, S_BERRY_BLUE, S_BERRY_GREEN }) {
@@ -577,6 +607,7 @@ static int runFitTests() {
     snprintf(b, sizeof(b), T(S_STR_GAIN_FMT), 9);
     fitBox("ganancia de fuerza", b, TS(3), UI_W - U(40));
   }
+  gFitFails += runWrapTests();
   fprintf(stderr, "%d textos que no caben\n", gFitFails);
   return gFitFails ? 1 : 0;
 }

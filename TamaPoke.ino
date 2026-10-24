@@ -515,6 +515,14 @@ void handleSerial() {
 
 // ---------- entrada tactil ----------
 
+// Un dialogo cuyo tiempo se agoto ya no esta en pantalla, aunque render() aun no lo haya
+// borrado: no debe recibir toques ni impedir gestos.
+void expireDialogs() {
+  if (choiceKind && !timeLeft(choiceUntil)) choiceKind = 0;
+  if (confirmUntil && !timeLeft(confirmUntil)) confirmUntil = 0;
+  if (feedMenuUntil && !timeLeft(feedMenuUntil)) feedMenuUntil = 0;
+}
+
 bool inPetZone(int16_t x, int16_t y) {
   return x > U(110) && x < U(356) && y > UY(95) && y < UY(310);
 }
@@ -591,6 +599,7 @@ void handleTouch() {
 void openClock();  // prototipo
 
 void onSwipeV(int dir) {
+  expireDialogs();
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (gameOpen || galleryOpen || kbOpen || sackOpen || pet.ceremony) return;
   if (clockOpen) { clockOpen = false; return; }
@@ -608,6 +617,7 @@ void onSwipeV(int dir) {
 
 // deslizar: dir +1 = hacia la derecha
 void onSwipe(int dir) {
+  expireDialogs();
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (gameOpen || kbOpen || clockOpen) return;
   if (cardOpen) {  // dentro de la ficha: cambiar entre las 4 paginas
@@ -668,10 +678,7 @@ void onTap(int16_t x, int16_t y) {
     clockTap(x, y);
     return;
   }
-  // un dialogo caducado aun no borrado por render() ya no esta en pantalla: no recibe toques
-  if (choiceKind && !timeLeft(choiceUntil)) choiceKind = 0;
-  if (confirmUntil && !timeLeft(confirmUntil)) confirmUntil = 0;
-  if (feedMenuUntil && !timeLeft(feedMenuUntil)) feedMenuUntil = 0;
+  expireDialogs();
   if (pet.ceremony) return;  // durante la despedida no hay botones
   if (cardOpen) {
     if (cardPage == 0 && y < CARD_NAME_ZONE_H) openKeyboard();  // tocar el nombre = renombrar
@@ -701,14 +708,14 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (confirmUntil) {        // dialogo "soltar?": SI / NO
-    if (timeLeft(confirmUntil) && x >= YES_X && x <= YES_X + YES_W && y >= YES_Y && y <= YES_Y + YES_H) {
+    if (x >= YES_X && x <= YES_X + YES_W && y >= YES_Y && y <= YES_Y + YES_H) {
       pet.release();
     }
     confirmUntil = 0;
     return;
   }
   if (feedMenuUntil) {       // selector de comida
-    if (timeLeft(feedMenuUntil) && y >= FEED_Y && y <= FEED_Y + FEED_H && x >= FEED_X && x <= FEED_X + FEED_W) {
+    if (y >= FEED_Y && y <= FEED_Y + FEED_H && x >= FEED_X && x <= FEED_X + FEED_W) {
       int item = (x - FEED_X) / FEED_STRIDE;
       if (item > 3) item = 3;  // el borde derecho del recuadro cuenta como la ultima casilla
       if (item == 3) pet.feedCandy();
@@ -1060,15 +1067,6 @@ int chordW(int y) {
   return h2 > 0 ? 2 * (int)sqrtf((float)h2) : 0;
 }
 
-// elige el tamano grande si el texto cabe en maxW px, y el pequeno si no. Deja puesto
-// el tamano elegido (con CJK textW() mide con el tamano ya aplicado: por eso se pone antes).
-int fitWidth(const char *s, int big, int small, int maxW) {
-  setSize(big);
-  if (textW(s, big) <= maxW) return big;
-  setSize(small);
-  return small;
-}
-
 // ancho disponible para una linea de texto con su borde superior en y: la cuerda visible
 // de la pantalla redonda en su punto mas estrecho (arriba o abajo de la linea) con
 // 4 px de diseno de aire por lado. Requiere el tamano ya aplicado (para textH()).
@@ -1094,7 +1092,7 @@ int fitSize(const char *s, int big, int small, int y) {
 static int charBytes(const char *s) {
   if (!gCjkFont) return 1;
   uint8_t c = (uint8_t)*s;
-  int n = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+  int n = c >= 0xFC ? 6 : c >= 0xF8 ? 5 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
   for (int i = 1; i < n; i++) if (!s[i]) return i;  // secuencia truncada
   return n;
 }
@@ -1111,8 +1109,9 @@ int wrapText(const char *s, int size, int maxW, int maxLines, int *start, int *l
     int i = pos, end = pos, lastSpace = -1;
     while (i < L) {
       int cl = charBytes(s + i);
+      // un espacio vale como corte si lo que hay antes cabe (aunque el espacio ya no quepa)
+      if (s[i] == ' ' && textWn(s + pos, i - pos, size) <= maxW) lastSpace = i;
       if (textWn(s + pos, i + cl - pos, size) > maxW) break;
-      if (s[i] == ' ') lastSpace = i;
       i += cl;
       end = i;
     }
@@ -1139,7 +1138,7 @@ void drawWrapped(const char *s, int size, int x, int yMid, int maxW, int maxLine
   int total = n * textH() + (n - 1) * gap;
   int y = yMid - total / 2;
   for (int i = 0; i < n; i++) {
-    char line[64];
+    char line[128];  // las cadenas del juego miden < 64 bytes; las lineas parten en limites de caracter
     int l = ln[i] < (int)sizeof(line) - 1 ? ln[i] : (int)sizeof(line) - 1;
     memcpy(line, s + st[i], l);
     line[l] = 0;
@@ -1291,7 +1290,7 @@ void render() {
       char q[48];
       snprintf(q, sizeof(q), T(S_RELEASE_FMT), dexName(pet.speciesId));
       gfx->setTextColor(UI_INK);
-      drawWrapped(q, TS(2), CX, UY(196) + 7 * TS(2) / 2, U(278) - U(16), 2, false);
+      drawWrapped(q, TS(2), CX, UY(203), U(278) - U(16), 2, false);
       setSize(TS(2));
       gfx->fillRoundRect(YES_X, YES_Y, YES_W, YES_H, U(12), UI_BAR_OK);
       gfx->setTextColor(UI_WHITE);
@@ -1741,8 +1740,8 @@ void renderClock() {
   printT(lp);
 
   gfx->setTextColor(UI_TRACK);
-  setSize(TS(2));  // cabe en la cuerda de la ultima linea; si no, pasa a dos lineas
-  drawWrapped(T(S_CLOCK_CANCEL), TS(2), CX, UY(410), chordAvail(UY(424)), 2, false);
+  setSize(TS(2));  // cabe en una linea o pasa a dos; el ancho es el de la cuerda donde cae la 2a linea
+  drawWrapped(T(S_CLOCK_CANCEL), TS(2), CX, UY(410), chordAvail(UY(410) + (textH() + U(4)) / 2), 2, false);
 
   // --- hora, botones, OK y version: siempre en la fuente latina, aunque el idioma sea CJK ---
   useLatinFont();
