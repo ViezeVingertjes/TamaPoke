@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Arma las imagenes del README (docs/screens/) con las capturas de referencia de
-golden/: la redonda de 466 px se recorta en circulo y la cuadrada de 480 px lleva
-las esquinas redondeadas del panel.
+"""Builds the README images (docs/screens/) from the reference screenshots in
+golden/: the 466 px round one is cropped to a circle and the 480 px square one gets
+the panel's rounded corners.
 
-    readme_shots.py        (desde test/render; despues de `make golden`)"""
+    readme_shots.py        (from test/render; after `make golden`)"""
 import os
 
 from PIL import Image, ImageDraw

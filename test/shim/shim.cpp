@@ -5,14 +5,14 @@
 #include <vector>
 #include <stdarg.h>
 
-// ---------------- reloj falso ----------------
+// ---------------- fake clock ----------------
 static uint32_t gMillis = 0;
 uint32_t millis() { return gMillis; }
 void mockSetMillis(uint32_t ms) { gMillis = ms; }
 void mockAdvanceMillis(uint32_t ms) { gMillis += ms; }
 
-// ---------------- random determinista ----------------
-// LCG propio: reproducible entre plataformas (no depende de rand()).
+// ---------------- deterministic random ----------------
+// Own LCG: reproducible across platforms (does not depend on rand()).
 static uint32_t gSeed = 12345;
 static bool gForced = false;
 static long gForcedValue = 0;
@@ -61,7 +61,7 @@ void sfxPlay(uint8_t) {}
 void audioSetEnabled(bool on) { gAudioOn = on; }
 bool audioEnabled() { return gAudioOn; }
 
-// ---------------- Preferences en memoria ----------------
+// ---------------- in-memory Preferences ----------------
 typedef std::map<std::string, std::vector<uint8_t> > KV;
 static std::map<std::string, KV> gStore;
 
@@ -145,7 +145,7 @@ size_t Preferences::getBytes(const char *k, void *buf, size_t maxLen) {
   if (!open_) return 0;
   KV &kv = gStore[ns_];
   KV::iterator it = kv.find(k);
-  if (it == kv.end()) return 0;   // como la NVS real: deja el buffer intacto
+  if (it == kv.end()) return 0;   // like the real NVS: leaves the buffer untouched
   size_t n = it->second.size() < maxLen ? it->second.size() : maxLen;
   memcpy(buf, &it->second[0], n);
   return n;

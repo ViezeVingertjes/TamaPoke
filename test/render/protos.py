@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Genera una copia de TamaPoke.ino lista para compilar como C++: inserta los
-prototipos que el IDE de Arduino anade solo, justo antes de la primera funcion."""
+"""Generates a copy of TamaPoke.ino ready to build as C++: inserts the
+prototypes that the Arduino IDE adds on its own, right before the first function."""
 import re
 import sys
 

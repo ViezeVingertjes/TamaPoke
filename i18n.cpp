@@ -1,7 +1,7 @@
 #include "i18n.h"
 #include "pet.h"        // MED_COUNT
 
-// Tabla de cadenas por id. Sin acentos ni enes: la fuente bitmap del firmware no los tiene.
+// String table by id. No accents or n-tildes: the firmware's bitmap font does not have them.
 static const char *const STRINGS[] = {
   "Evolving!", "Yum yum!", "It likes it!", "It's hungry!", "Needs a bath!",
   "Worn out...", "Feeling sad...", "A bit chubby...", "It's SHINY!!", "It's happy",
@@ -31,14 +31,14 @@ static const char *const STRINGS[] = {
   "No sprites", "Load them onto the SD",
 };
 
-// Nombre de medalla (banner) y descripcion larga [medalla].
+// Medal name (banner) and long description [medal].
 static const char *const MED_NAME[] = { "Lv.10", "Lv.25", "Lv.50", "BERRY", "7 STREAK", "BOND", "TOP FORM", "IN SHAPE" };
 static const char *const MED_DSC[] = {
   "LEVEL 10", "LEVEL 25", "LEVEL 50", "BERRY FOUND", "7 DAY STREAK", "MAX BOND", "FINAL FORM", "IN SHAPE",
 };
 
 #define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
-// con el tamano sin declarar, una tabla corta o larga ya no pasa en silencio
+// with the size left undeclared, a table that is too short or too long no longer slips by silently
 static_assert(COUNT_OF(STRINGS) == STR_COUNT, "STRINGS y StrId no coinciden");
 static_assert(COUNT_OF(MED_NAME) == MED_COUNT, "MED_NAME y MED_COUNT no coinciden");
 static_assert(COUNT_OF(MED_DSC) == MED_COUNT, "MED_DSC y MED_COUNT no coinciden");

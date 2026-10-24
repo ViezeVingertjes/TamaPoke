@@ -1,13 +1,13 @@
-// TamaPoke - tamagotchi pixel art inspirado en la gen 1
-// para Waveshare ESP32-S3-Touch-AMOLED-1.75
+// TamaPoke - pixel art tamagotchi inspired by gen 1
+// for the Waveshare ESP32-S3-Touch-AMOLED-1.75
 //
-// Librerias (Library Manager o repo de Waveshare):
-//   - "GFX Library for Arduino" (moononournation), con soporte CO5300 QSPI
-//   - "SensorLib" (Lewis He), driver tactil CST9217
+// Libraries (Library Manager or the Waveshare repo):
+//   - "GFX Library for Arduino" (moononournation), with CO5300 QSPI support
+//   - "SensorLib" (Lewis He), CST9217 touch driver
 //
-// Placa: ESP32S3 Dev Module | Flash 16MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
+// Board: ESP32S3 Dev Module | Flash 16MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
 //
-// Los sprites y la tabla de especies se generan con tools/sprites.py (emit).
+// The sprites and the species table are generated with tools/sprites.py (emit).
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -28,76 +28,76 @@
 #include "blit.h"
 #include "layout.h"
 
-// Version del firmware. Subir este numero en cada release (y manifest.json para
-// el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
+// Firmware version. Bump this number on every release (and manifest.json for
+// the web installer). Shown on the settings screen and over serial at boot.
 #define FW_VERSION "1.17"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
 Arduino_CO5300 *panel = new Arduino_CO5300(
   bus, LCD_RESET, 0 /*rotation*/, LCD_WIDTH, LCD_HEIGHT, LCD_OFF_X, LCD_OFF_Y, 0, 0);
-// Framebuffer completo en PSRAM: dibujamos todo y hacemos flush() (sin parpadeo)
+// Full framebuffer in PSRAM: we draw everything and then flush() (no flicker)
 Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
 
 TouchDrvCST92xx touch;
 #define TOUCH_ADDR 0x5A  // CST9217
 Pet pet;
 
-// sprite animado de la SD para la especie actual (si existe el archivo)
-SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
-PmdMon pmd;         // sprite PMD multi-accion (pantalla principal)
-// vecinos (TamaPokes cercanos): un sprite por hueco, cargado de la SD de uno en uno
+// animated sprite from the SD for the current species (if the file exists)
+SdMon mon;          // B/W sprite (fallback, and for the minigame when there is no PMD)
+PmdMon pmd;         // multi-action PMD sprite (main screen)
+// neighbors (nearby TamaPokes): one sprite per slot, loaded from the SD one at a time
 struct NbSlot { uint32_t id; uint8_t species; bool shiny; };
 PmdMon nbPmd[NB_MAX_SHOWN];
 NbSlot nbSlot[NB_MAX_SHOWN];
-PmdMon evoPmd;      // forma anterior, solo durante el parpadeo de evolucion
+PmdMon evoPmd;      // previous form, only during the evolution blink
 int16_t monFor = -2;
 bool monShinyFor = false;
 
-// comportamiento del bicho en pantalla
+// on-screen behavior of the pet
 struct {
-  uint8_t mode = 0;     // 0 idle, 1 paseo, 2 gesto one-shot
+  uint8_t mode = 0;     // 0 idle, 1 walk, 2 one-shot gesture
   uint8_t act = PMD_IDLE;
-  uint32_t t0 = 0;      // inicio de la animacion en curso
-  uint32_t until = 0;   // fin del estado actual
+  uint32_t t0 = 0;      // start of the current animation
+  uint32_t until = 0;   // end of the current state
   float x = CX, targetX = CX;
 } beh;
-uint32_t walkLast = 0;  // instante del ultimo paso del paseo (0 = ninguno aun)
-#define PET_GROUND UY(304)  // linea de suelo de la mascota
-PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2, legal)
+uint32_t walkLast = 0;  // time of the last walk step (0 = none yet)
+#define PET_GROUND UY(304)  // pet ground line
+PmdMon galleryPmd;  // big sprite of the gallery detail view (PMD/TPK2, legal)
 
-// galeria pokedex
+// pokedex gallery
 bool galleryOpen = false;
 bool galleryDirty = false;
-int galleryPage = 0;        // 10 paginas de 16
-int16_t galleryDetail = 0;  // dex en vista detalle, 0 = rejilla
+int galleryPage = 0;        // 10 pages of 16
+int16_t galleryDetail = 0;  // dex in detail view, 0 = grid
 
-bool screenOff = false;       // pulsacion corta del boton PWR
-bool cardOpen = false;        // ficha del bicho (deslizar vertical)
-bool kbOpen = false;          // teclado para renombrar al bicho
+bool screenOff = false;       // short press of the PWR button
+bool cardOpen = false;        // pet card (vertical swipe)
+bool kbOpen = false;          // keyboard to rename the pet
 char nameBuf[12] = "";
 uint8_t nameLen = 0;
-uint8_t cardPage = 0;         // 0 perfil, 1 stats+medallas
-bool clockOpen = false;       // pantalla de ajuste de hora (deslizar abajo)
-int clockH = 12, clockM = 0;  // hora en edicion
+uint8_t cardPage = 0;         // 0 profile, 1 stats+medals
+bool clockOpen = false;       // clock-setting screen (swipe down)
+int clockH = 12, clockM = 0;  // hour being edited
 
-// escena de bano: espuma sobre el bicho y limpieza al reventar
+// bath scene: foam over the pet and cleanup when it pops
 uint32_t bathUntil = 0;
 bool bathPending = false;
 struct { int16_t x, y; uint8_t r, ph; } bubbles[14];
-uint32_t feedMenuUntil = 0;   // selector de comida abierto hasta este millis
+uint32_t feedMenuUntil = 0;   // food picker open until this millis
 
-// minijuego "toques": mantener la pokeball en el aire
+// "touches" minigame: keep the pokeball in the air
 bool gameOpen = false;
 uint32_t gameOverUntil = 0;
 float ballX, ballY, ballVX, ballVY, gamePetX;
-uint32_t lastGameStep = 0;  // ultima llamada a stepGame(): fisica por tiempo real, no por frame
+uint32_t lastGameStep = 0;  // last stepGame() call: physics runs on real time, not per frame
 uint8_t gameScore, gameMisses;
-float hitX, hitY;             // ultimo golpe (anillo de impacto)
+float hitX, hitY;             // last hit (impact ring)
 uint32_t hitTime = 0;
 bool gameNewHi = false;
 
-// saco de entrenamiento (entrena la fuerza)
+// training sack (trains strength)
 bool sackOpen = false;
 uint32_t sackUntil = 0, sackOverUntil = 0;
 uint16_t sackHits = 0;
@@ -105,90 +105,90 @@ float sackShake = 0;
 uint8_t sackGain = 0;
 bool sackNewHi = false;
 
-// las 9 especies con sprite propio en flash (respaldo sin SD): dex -> indice
+// the 9 species with their own sprite in flash (fallback without SD): dex -> index
 int flashIdxForDex(int16_t dex) {
   static const int8_t IDX[10] = { -1, 3, 4, 5, 0, 1, 2, 6, 7, 8 };
   return (dex >= 1 && dex <= 9) ? IDX[dex] : -1;
 }
 
-#define PET_CY UY(202)  // centro vertical del sprite
+#define PET_CY UY(202)  // vertical center of the sprite
 
 static const uint16_t INK_K = 0x18C4;  // spriteColor('k')
 
-// botones de icono siguiendo el arco inferior de la pantalla redonda
-// (los exteriores van mas altos para no salirse del circulo)
+// icon buttons following the bottom arc of the round screen
+// (the outer ones sit higher so they stay inside the circle)
 struct Btn {
   int16_t cx, cy;
   const char *const *icon;
 };
-// cuatro circulos de 80 px sobre un mismo arco, a distancias iguales: cada uno es una
-// necesidad (su nivel lo llena de abajo arriba) y a la vez su accion
+// four 80 px circles on a single arc, equally spaced: each one is a
+// need (its level fills from bottom to top) and also its action
 Btn buttons[4] = {
-  { U(105), UY(348), SPR_ICON_FOOD },   // comer
-  { U(186), UY(398), SPR_ICON_PLAY },   // jugar
-  { U(280), UY(398), SPR_ICON_LIGHT },  // luz
-  { U(361), UY(348), SPR_ICON_CLEAN },  // bano
+  { U(105), UY(348), SPR_ICON_FOOD },   // eat
+  { U(186), UY(398), SPR_ICON_PLAY },   // play
+  { U(280), UY(398), SPR_ICON_LIGHT },  // light
+  { U(361), UY(348), SPR_ICON_CLEAN },  // bath
 };
-#define BTN_R U(40)     // radio del circulo (80 px de diametro)
-#define BTN_HIT U(44)   // radio tactil (un poco mas generoso)
+#define BTN_R U(40)     // circle radius (80 px diameter)
+#define BTN_HIT U(44)   // touch radius (a bit more generous)
 
-// grietas del huevo (pixeles 'k' sobre el sprite)
+// egg cracks ('k' pixels over the sprite)
 static const uint8_t CRACK1[][2] = { {15,8},{16,9},{15,10} };
 static const uint8_t CRACK2[][2] = { {11,13},{12,14},{11,15},{20,12},{19,13},{20,14} };
-// estrellas del modo noche
+// night mode stars
 static const uint16_t STARS[][2] = { {120,140},{330,120},{370,210},{95,230},{280,90},{160,95} };
 
 bool wasPressed = false;
-// eleccion de inicial (primera partida): Bulbasaur / Charmander / Squirtle, 3 filas
+// starter choice (first game): Bulbasaur / Charmander / Squirtle, 3 rows
 static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define STARTER_ROW_X U(70)
 #define STARTER_ROW_W U(326)
 #define STARTER_ROW_Y UY(110)
 #define STARTER_ROW_H UY(70)
 #define STARTER_ROW_GAP UY(8)
-// boton-CTA de evolucion (centrado, mitad de pantalla)
+// evolution CTA button (centered, middle of the screen)
 #define EVO_BTN_W U(176)
 #define EVO_BTN_H UY(72)
 #define EVO_BTN_X (CX - EVO_BTN_W / 2)
 #define EVO_BTN_Y UY(136)
-// boton-CTA de despedida (mas ancho: lleva el nombre + frase)
+// farewell CTA button (wider: holds the name + phrase)
 #define FAR_BTN_W U(408)
 #define FAR_BTN_H UY(72)
 #define FAR_BTN_X (CX - FAR_BTN_W / 2)
 #define FAR_BTN_Y UY(150)
-// Cajas de los dialogos del juego: el dibujo y el toque usan las mismas, asi no
-// pueden desajustarse.
-// dialogo de decision (evolucionar/mantener, despedirse/quedaros)
+// Boxes of the game dialogs: drawing and touch use the same ones, so they
+// cannot drift apart.
+// decision dialog (evolve/keep, say goodbye/stay together)
 #define CHOICE_X U(113)
 #define CHOICE_W U(240)
 #define CHOICE_BH UY(72)
 #define CHOICE_B1_Y UY(232)
 #define CHOICE_B2_Y UY(316)
-// dialogo "soltar?": mantener arriba (acento), soltar debajo; YES_* es SOLTAR
+// "release?" dialog: keep on top (accent), release below; YES_* is RELEASE
 #define YES_X CHOICE_X
 #define YES_Y CHOICE_B2_Y
 #define YES_W CHOICE_W
 #define YES_H CHOICE_BH
 #define NO_X CHOICE_X
 #define NO_Y CHOICE_B1_Y
-// selector de comida: los 4 circulos del panel cambian de icono (FEED_ICON_* = centro del icono i)
+// food picker: the 4 panel circles swap icons (FEED_ICON_* = center of icon i)
 #define FEED_X (buttons[0].cx - BTN_R)
 #define FEED_Y (buttons[0].cy - BTN_R)
 #define FEED_W (buttons[3].cx + BTN_R - FEED_X)
 #define FEED_H (buttons[1].cy + BTN_R - FEED_Y)
 #define FEED_ICON_X(i) (buttons[i].cx - 8 * SC(3))
 #define FEED_ICON_Y(i) (buttons[i].cy - 8 * SC(3))
-// pastillas de medallas de la ficha: dos columnas
-// boton ENTRENAR FUERZA de la ficha
+// card medal pills: two columns
+// card TRAIN STRENGTH button
 #define TRAIN_X U(113)
 #define TRAIN_Y UY(268)
 #define TRAIN_W U(240)
 #define TRAIN_H UY(68)
-// pantalla de ajuste de hora: botones +/-, interruptor de sonido y OK
+// clock-setting screen: +/- buttons, sound switch and OK
 #define CLOCK_BTN_W U(72)
 #define CLOCK_BTN_H UY(72)
 #define CLOCK_BTN_Y UY(160)
-// grupos hora (- +) y minutos (- +) de 152 de ancho con 24 de hueco, centrados en la pantalla
+// hour (- +) and minutes (- +) groups, 152 wide with a 24 gap, centered on the screen
 #define CLK_X0 (CX - U(164))
 #define CLK_X1 (CX - U(84))
 #define CLK_X2 (CX + U(12))
@@ -200,77 +200,77 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define CLOCK_OK_W U(140)
 #define CLOCK_OK_H UY(68)
 #define CLOCK_CANCEL_X (CX - U(4) - CLOCK_OK_W)
-// zonas de toque de arriba: la cabecera sale/abandona; el nombre de la ficha abre el teclado
+// top touch zones: the header exits/abandons; the card name opens the keyboard
 #define HEADER_ZONE_H UY(72)
 #define CARD_NAME_ZONE_H UY(84)
-// el CST9217 avisa por el pin INT cuando hay datos tactiles; lo usamos para no
-// leer el bus I2C mientras el chip esta dormido (esa lectura se colgaba ~1s)
+// the CST9217 signals touch data on the INT pin; we use it to avoid
+// reading the I2C bus while the chip is asleep (that read hung for ~1s)
 volatile bool gTouchIrq = false;
 void IRAM_ATTR touchIsr() { gTouchIrq = true; }
 uint32_t lastRender = 0;
-uint32_t sdEpoch = 0;  // +1 cada vez que se recarga la SD (las miniaturas cambian)
-// proteccion del AMOLED: atenuado por inactividad
+uint32_t sdEpoch = 0;  // +1 each time the SD is reloaded (thumbnails change)
+// AMOLED protection: dimmed on inactivity
 uint32_t lastInteract = 0;
-uint8_t dimStage = 0;        // 0 despierto, 1 atenuado (90s), 2 casi apagado (5min)
-bool swallowGesture = false; // el toque que despierta no acciona nada
-uint32_t holdStart = 0;     // pulsacion larga sobre el bicho
-uint32_t confirmUntil = 0;  // dialogo "soltar?" activo hasta este millis
-uint8_t choiceKind = 0;     // dialogo de decision: 0 ninguno, 1 evolucion, 2 despedida
-uint32_t choiceUntil = 0;   // se cierra solo a este millis
-int16_t tX0, tY0, tXl, tYl; // gesto en curso (inicio y ultima posicion)
+uint8_t dimStage = 0;        // 0 awake, 1 dimmed (90s), 2 almost off (5min)
+bool swallowGesture = false; // the touch that wakes the screen triggers nothing
+uint32_t holdStart = 0;     // long press on the pet
+uint32_t confirmUntil = 0;  // "release?" dialog active until this millis
+uint8_t choiceKind = 0;     // decision dialog: 0 none, 1 evolution, 2 farewell
+uint32_t choiceUntil = 0;   // closes by itself at this millis
+int16_t tX0, tY0, tXl, tYl; // gesture in progress (start and last position)
 uint32_t tStart = 0;
 bool holdFired = false;
 
 void setup() {
-  Serial.setRxBufferSize(8192);  // la transferencia a SD llega en bloques de 2 KB
+  Serial.setRxBufferSize(8192);  // SD transfer arrives in 2 KB blocks
   Serial.begin(115200);
-  // CRITICO: sin esto, Serial.print BLOQUEA el juego cuando no hay un
-  // monitor serie abierto en el host (el bufer TX del USB CDC se llena
-  // y nadie lo vacia) -> con timeout 0 los mensajes se descartan
+  // CRITICAL: without this, Serial.print BLOCKS the game when no
+  // serial monitor is open on the host (the USB CDC TX buffer fills
+  // and nobody drains it) -> with timeout 0 messages are dropped
   Serial.setTxTimeoutMs(0);
   Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
   Wire.begin(IIC_SDA, IIC_SCL);
-  // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
-  // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
-  // tactil; el cuelgue del tactil dormido se resuelve gateando por INT, ver
+  // CST9217 (touch), AXP2101 (PMU) and PCF85063 (RTC) share this I2C bus.
+  // Safety net for PMU/RTC (SensorLib does NOT honor this timeout on the
+  // touch; the sleeping-touch hang is solved by gating on INT, see
   // handleTouch).
   Wire.setTimeOut(50);
 
-  // CRITICO: encender la alimentacion del panel (BLDO1=OLED VDD 3.3V) ANTES de
-  // inicializar el display. Si el PMU se reseteo (drenaje total), este rail
-  // queda OFF y la pantalla se ve negra aunque el resto de la placa funcione.
-#ifndef BOARD_AMOLED_216  // los ejemplos de Waveshare 2.16 arrancan el panel sin tocar los rails
+  // CRITICAL: power up the panel supply (BLDO1=OLED VDD 3.3V) BEFORE
+  // initializing the display. If the PMU was reset (fully drained), this rail
+  // stays OFF and the screen looks black even though the rest of the board works.
+#ifndef BOARD_AMOLED_216  // Waveshare 2.16 examples start the panel without touching the rails
   pmuEnablePanel();
 #endif
 
-  // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
-  // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
+  // QSPI at 80MHz (default 40): the framebuffer flush is the fps
+  // bottleneck (~56ms at 40MHz). If the panel shows garbage, drop back to 40M.
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
 #ifdef BOARD_AMOLED_216
-  // orientacion de Waveshare para la 2.16 (MADCTL); va emparejada con el
-  // swap/mirror del tactil de mas abajo: si cambia una, cambia la otra
+  // Waveshare orientation for the 2.16 (MADCTL); paired with the touch
+  // swap/mirror below: if one changes, change the other
   bus->writeC8D8(0x36, 0xA0);
 #endif
   panel->setBrightness(180);
 
   touch.setPins(TP_RESET, TP_INT);
   bool touchOk = false;
-  for (int i = 0; i < 3 && !touchOk; i++) {  // a veces falla al primer intento
+  for (int i = 0; i < 3 && !touchOk; i++) {  // sometimes fails on the first try
     touchOk = touch.begin(Wire, 0x5A, IIC_SDA, IIC_SCL);
     if (!touchOk) delay(150);
   }
   if (!touchOk) Serial.println("tactil CST92xx no detectado");
-  // begin() deja el chip en modo comando (lee la identidad y no sale);
-  // hace falta un reset por hardware para que vuelva a reportar toques
+  // begin() leaves the chip in command mode (reads the identity and does not exit);
+  // a hardware reset is needed for it to report touches again
   touch.reset();
   touch.setMaxCoordinates(LCD_WIDTH, LCD_HEIGHT);
 #ifdef BOARD_AMOLED_216
-  touch.setSwapXY(true);  // combinacion del ejemplo oficial de Waveshare 2.16
+  touch.setSwapXY(true);  // combination from the official Waveshare 2.16 example
   touch.setMirrorXY(true, false);
 #else
-  touch.setMirrorXY(true, true);  // el panel esta montado girado 180 grados
+  touch.setMirrorXY(true, true);  // the panel is mounted rotated 180 degrees
 #endif
-  // INT activo-bajo: salta cuando hay datos. Gatea las lecturas I2C (ver loop)
+  // INT is active-low: fires when data is ready. Gates the I2C reads (see loop)
   pinMode(TP_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TP_INT), touchIsr, FALLING);
 
@@ -278,20 +278,20 @@ void setup() {
   sdBegin();
   thumbs.load();
 
-  // reloj real: aplica el tiempo que estuvo apagado
+  // real clock: applies the time the device was off
   rtcBegin();
   batBegin();
   pwrSetup();
   uint32_t e = rtcEpoch();
   if (e == 0) {
-    // Sin pila de respaldo, el PCF85063 pierde la hora al cortar la
-    // alimentacion. Sembrar siempre la fecha fija haria RETROCEDER el tiempo de
-    // juego respecto a lo ya guardado, y eso rompe la racha, la edad y la hora
-    // de la escena. Se siembra con la ultima hora vista, si es posterior, para
-    // que el tiempo no vaya nunca hacia atras. Los minutos apagado se pierden
-    // igual (sin RTC no hay forma de saberlos), pero nada se descuadra.
-    uint32_t seed = 1767225600UL;             // RTC virgen de verdad
-    uint32_t seen = pet.savedEpoch();         // usa la NVS que pet ya tiene abierta
+    // Without a backup battery, the PCF85063 loses the time when power
+    // is cut. Always seeding the fixed date would make game time GO BACK
+    // relative to what is already saved, breaking the streak, the age and the
+    // scene hour. It is seeded with the last seen time, if later, so
+    // time never goes backwards. Minutes spent off are lost
+    // anyway (without an RTC there is no way to know them), but nothing gets out of sync.
+    uint32_t seed = 1767225600UL;             // truly blank RTC
+    uint32_t seen = pet.savedEpoch();         // uses the NVS that pet already has open
     if (seen > seed) seed = seen;
     rtcSetEpoch(seed);
     e = rtcEpoch();
@@ -300,17 +300,17 @@ void setup() {
   }
   pet.syncClock(e);
 
-  nearbyBegin();  // id de este aparato; la radio solo se enciende en ventanas cortas (nearby.cpp)
-  audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
+  nearbyBegin();  // id of this device; the radio only turns on in short windows (nearby.cpp)
+  audioBegin();  // ES8311 + I2S + amplifier (plays a boot jingle)
 
   lastInteract = millis();
 }
 
-// carga/descarga el sprite de SD cuando cambia la especie
+// load/unload the SD sprite when the species changes
 void ensureMon() {
   if (pet.speciesId == monFor && monShinyFor == pet.shiny && !sdDirty) return;
-  // los ficheros recien recibidos pueden incluir un thumbs.bin nuevo, que se
-  // cargaba solo en setup(): sin esto no se veia en la galeria hasta reiniciar
+  // freshly received files may include a new thumbs.bin, which used to be
+  // loaded only in setup(): without this it did not show in the gallery until reboot
   if (sdDirty) { thumbs.unload(); thumbs.load(); sdEpoch++; }
   sdDirty = false;
   monFor = pet.speciesId;
@@ -321,8 +321,8 @@ void ensureMon() {
   beh.mode = 0;
   beh.until = 0;
   if (pet.speciesId >= 1 && pet.speciesId <= DEX_COUNT) {
-    pmd.load(pet.speciesId, pet.shiny);          // principal: PMD
-    if (!pmd.loaded) mon.load(pet.speciesId, pet.shiny);  // respaldo: B/N
+    pmd.load(pet.speciesId, pet.shiny);          // main: PMD
+    if (!pmd.loaded) mon.load(pet.speciesId, pet.shiny);  // fallback: B/W
   }
 }
 
@@ -330,18 +330,18 @@ void loop() {
   uint32_t now = millis();
   pet.update(now);
 
-  // el amplificador sigue al estado de sueno (la llamada sale sola si no cambia).
-  // Aqui cubre todas las vias: el boton de luz, el sueno nocturno y el que llega
-  // aplicado desde la progresion offline.
+  // the amplifier follows the sleep state (the call returns early if unchanged).
+  // Here it covers every path: the light button, night sleep and the one
+  // arriving applied from offline progression.
   audioSetSleeping(pet.sleeping);
 
-  // avisa con un sonido cuando el bicho pasa a estar listo para evolucionar
-  // (incluye el caso de cumplir al despertar). canEvolveNow es false durmiendo.
+  // play a sound when the pet becomes ready to evolve
+  // (includes the case of qualifying on wake-up). canEvolveNow is false while sleeping.
   static bool wasEvoReady = false;
   bool evoReady = pet.wantEvolveButton();
   if (evoReady && !wasEvoReady) sfxPlay(SFX_MEDAL);
   wasEvoReady = evoReady;
-  // aviso sombrio cuando el bicho esta a punto de escaparse por abandono
+  // gloomy warning when the pet is about to run away from neglect
   static bool wasRunReady = false;
   bool runReady = pet.canRunawayNow();
   if (runReady && !wasRunReady) sfxPlay(SFX_DENY);
@@ -351,7 +351,7 @@ void loop() {
   handleSerial();
   ensureMon();
 
-  // pulsacion corta del PWR: pantalla on/off
+  // short PWR press: screen on/off
   static uint32_t lastPwr = 0;
   if (now - lastPwr > 250) {
     lastPwr = now;
@@ -363,24 +363,24 @@ void loop() {
 
   updateBrightness(now);
 
-  // bateria al limite seguro (sin USB): se guarda la partida y se apaga el PMU antes de que la
-  // celda baje mas; el RTC conserva la hora
+  // battery at the safe limit (no USB): save the game and power off the PMU before the
+  // cell drops further; the RTC keeps the time
   if (batShouldShutdown() && !usbPresentNow()) {
     pet.flushSave();
     panel->setBrightness(0);
     batPowerOff();
   }
 
-  // vuelca el autoguardado periodico SOLO con la pantalla atenuada/apagada o
-  // durmiendo: la escritura a NVS congela ~1s ambos cores (caché de flash off),
-  // y aqui no hay animacion que se corte ni dedo esperando respuesta. Con 90s
-  // de inactividad la pantalla ya atenua, asi que se vuelca enseguida; el uso
-  // activo persiste igual por los guardados de cada accion (comer/jugar/...).
+  // flush the periodic autosave ONLY with the screen dimmed/off or
+  // sleeping: the NVS write freezes both cores for ~1s (flash cache off),
+  // and here there is no animation to cut off and no finger waiting for a response. After 90s
+  // of inactivity the screen already dims, so it flushes right away; active
+  // use persists anyway through the saves of each action (eat/play/...).
   if (pet.savePending() && (screenOff || dimStage >= 1 || pet.sleeping)) {
     pet.flushSave();
   }
 
-  // anota la hora real cada 30 s (se persiste en cada save del juego)
+  // record the real time every 30 s (persisted on every game save)
   static uint32_t lastClock = 0;
   if (now - lastClock > 30000) {
     lastClock = now;
@@ -388,7 +388,7 @@ void loop() {
     if (e) pet.lastSeenEpoch = e;
   }
 
-  // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
+  // health heartbeat every 5 min (for the soak test; dropped if no monitor)
   static uint32_t lastHealth = 0;
   if (now - lastHealth > 300000) {
     lastHealth = now;
@@ -398,19 +398,19 @@ void loop() {
                   usbPresent() ? 1 : 0, dimStage, screenOff ? 1 : 0);
   }
 
-  // Ritmo de dibujo (power.h): 10 fps con el bicho en uso, menos cuanto mas rato sin tocar,
-  // 85 ms en juego/saco (margen seguro para que el redibujado no pise el envio DMA del frame
-  // anterior: a 40-65 ms solapaba y causaba flashes negros).
-  // Con la pantalla apagada no se dibuja: a brillo 0 no se ve nada, pero el redibujado y el
-  // flush DMA del framebuffer del lienzo seguian corriendo a 10 fps, y medido son 70 ms de
-  // trabajo por cada 100 (46 de ellos solo el volcado). Cada render repinta la escena
-  // entera, asi que no queda nada a medias; y al quedarse lastRender congelado, el primer
-  // frame tras despertar sale en el acto.
+  // Draw pacing (power.h): 10 fps while the pet is in use, less the longer without touch,
+  // 85 ms in game/sack (safe margin so the redraw does not overrun the DMA send of the previous
+  // frame: at 40-65 ms it overlapped and caused black flashes).
+  // With the screen off nothing is drawn: at brightness 0 nothing is visible, but the redraw and the
+  // canvas framebuffer DMA flush kept running at 10 fps, and measured that is 70 ms of
+  // work per 100 (46 of them just the flush). Each render repaints the whole scene,
+  // so nothing is left half-done; and since lastRender stays frozen, the first
+  // frame after waking comes out immediately.
   PowerCtx pc = powerCtx(millis());
   NbSelf nbSelf = { !pet.isEgg() && pet.speciesId >= 1, (uint8_t)pet.speciesId, pet.shiny, pet.sleeping, pet.level() };
   nearbyPoll(now, pc, nbSelf);
   if (!screenOff) ensureNeighbors();
-  audioSetIdle(!amplifierWanted(pc));  // el amplificador consume en reposo
+  audioSetIdle(!amplifierWanted(pc));  // the amplifier draws power at idle
   batSetPollMs(powerCacheMs(pc));
   uint32_t interval = frameIntervalMs(pc);
   bool drewFrame = false;
@@ -418,12 +418,12 @@ void loop() {
     lastRender = now;
     drewFrame = render();
   }
-  // cede la CPU en los pases que no dibujan: sin esto el loop gira a pleno rendimiento
-  // entre frames; 1 ms no se nota en el tactil (se lee cada 20 ms) y el frame no se retrasa
+  // yield the CPU on passes that do not draw: without this the loop spins at full speed
+  // between frames; 1 ms is not noticeable on touch (read every 20 ms) and the frame is not delayed
   if (!drewFrame) idleWait(pc);
 }
 
-// estado de consumo actual (ver power.h)
+// current power state (see power.h)
 PowerCtx powerCtx(uint32_t now) {
   PowerCtx c;
   c.idleMs = idleSince(now, lastInteract);
@@ -436,21 +436,21 @@ PowerCtx powerCtx(uint32_t now) {
   return c;
 }
 
-// el usuario ha interactuado: vuelve el ritmo normal de dibujo (sin esperar al proximo
-// frame de un ritmo lento) y el amplificador se enciende antes de que suene nada
+// the user interacted: normal draw pacing returns (without waiting for the next
+// frame of a slow pace) and the amplifier turns on before anything sounds
 void wakeUI() {
   uint32_t now = millis();
   uint32_t iv = frameIntervalMs(powerCtx(now));
-  bool slow = !iv || iv > 100;  // pantalla apagada o ritmo lento: se dibuja ya, sin esperar al frame
+  bool slow = !iv || iv > 100;  // screen off or slow pace: draw now, without waiting for the frame
   lastInteract = now;
-  // el frame forzado respeta los 85 ms entre redibujados (si no, solapa el DMA del anterior)
+  // the forced frame respects the 85 ms between redraws (otherwise it overlaps the previous DMA)
   if (slow) lastRender = (now - lastRender >= 85) ? 0 : lastRender - 15;
   audioSetIdle(false);
 }
 
-// brillo segun sueno + inactividad (proteccion del AMOLED) y bateria
+// brightness by sleep + inactivity (AMOLED protection) and battery
 void updateBrightness(uint32_t now) {
-  // los eventos visibles despiertan la pantalla solos
+  // visible events wake the screen by themselves
   if (!screenOff && (pet.evolving() || pet.ceremony || pet.eating() || pet.showHeart())) {
     if (dimStageFor(idleSince(now, lastInteract)) != DIM_AWAKE) wakeUI();
     else lastInteract = now;
@@ -465,30 +465,30 @@ void updateBrightness(uint32_t now) {
   }
 }
 
-// Pausa de un pase del bucle que no ha dibujado. Con la pantalla apagada, o encendida pero casi
-// apagada (5 min sin tocar), y sin USB se duerme la CPU (light sleep) hasta el proximo frame o
-// 200 ms: despierta por el temporizador o por un toque (el INT del tactil baja). Con USB no, para
-// no perder el puerto serie de la tarjeta SD: se mira sin cache, por si se acaba de enchufar.
+// Pause for a loop pass that did not draw. With the screen off, or on but almost
+// off (5 min untouched), and without USB the CPU sleeps (light sleep) until the next frame or
+// 200 ms: it wakes on the timer or on a touch (the touch INT goes low). Not with USB, so as
+// not to lose the SD card serial port: checked uncached, in case it was just plugged in.
 void idleWait(PowerCtx c) {
-  // no se duerme justo tras dibujar (el volcado DMA del frame sigue en marcha) ni con un aviso sonando
+  // do not sleep right after drawing (the frame's DMA flush is still running) nor with a warning sounding
   if (lightSleepAllowed(c) && millis() - lastRender >= 100 && !audioBusy() && !nearbyRadioOn()) {
     c.usb = usbPresentNow();
     if (!lightSleepAllowed(c)) { delay(idleDelayMs(c)); return; }
-    if (digitalRead(TP_INT) == LOW) { gTouchIrq = true; delay(1); return; }  // toque pendiente: no se duerme
+    if (digitalRead(TP_INT) == LOW) { gTouchIrq = true; delay(1); return; }  // touch pending: do not sleep
     uint32_t ms = POWER_SLEEP_MS;
     uint32_t iv = frameIntervalMs(c);
-    if (iv) {  // pantalla encendida: hasta el proximo frame
+    if (iv) {  // screen on: until the next frame
       uint32_t due = lastRender + iv - millis();
       if ((int32_t)due < (int32_t)ms) ms = (int32_t)due > 1 ? due : 1;
     }
-    uint32_t nb = nearbyNextEventMs(millis());  // el sueno no pasa de la proxima ventana de radio
+    uint32_t nb = nearbyNextEventMs(millis());  // sleep does not go past the next radio window
     if (nb && nb < ms) ms = nb;
     esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000);
     gpio_wakeup_enable((gpio_num_t)TP_INT, GPIO_INTR_LOW_LEVEL);
     esp_sleep_enable_gpio_wakeup();
     esp_light_sleep_start();
-    // la interrupcion del tactil vuelve a ser por flanco (como la dejo attachInterrupt); un toque
-    // que ya haya bajado la linea se registra a mano
+    // the touch interrupt goes back to edge-triggered (as attachInterrupt left it); a touch
+    // that already pulled the line low is registered by hand
     gpio_wakeup_disable((gpio_num_t)TP_INT);
     gpio_set_intr_type((gpio_num_t)TP_INT, GPIO_INTR_NEGEDGE);
     if (digitalRead(TP_INT) == LOW) gTouchIrq = true;
@@ -497,7 +497,7 @@ void idleWait(PowerCtx c) {
   delay(idleDelayMs(c));
 }
 
-// ---------- consola serie (provision de SD + depuracion) ----------
+// ---------- serial console (SD provisioning + debugging) ----------
 
 void handleSerial() {
   if (!Serial.available()) return;
@@ -526,7 +526,7 @@ void handleSerial() {
     pet.setClock(e);
     Serial.printf("rtc=%u\n", rtcEpoch());
     Serial.println("DONE");
-  } else if (line.startsWith("RTCSET ")) {  // solo RTC (simular apagados en pruebas)
+  } else if (line.startsWith("RTCSET ")) {  // RTC only (simulate power-offs in tests)
     rtcSetEpoch((uint32_t)line.substring(7).toInt());
     Serial.printf("rtc=%u\n", rtcEpoch());
     Serial.println("DONE");
@@ -540,14 +540,14 @@ void handleSerial() {
     if (!galleryOpen) galleryPmd.unload();
     Serial.println("DONE");
   } else if (line == "EGGS") {
-    // simula 20 tiradas de huevo (no cambia el estado del juego)
+    // simulates 20 egg rolls (does not change the game state)
     for (int i = 0; i < 20; i++) {
       int16_t d = pet.pickEggSpecies();
       Serial.printf("%d:%s(r%u) ", d, DEX_TBL[d].name, DEX_TBL[d].rarity);
     }
     Serial.println();
     Serial.println("DONE");
-  } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
+  } else if (line == "SHINY") {  // toggles shiny on the current one (tests)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);
     Serial.println("DONE");
@@ -555,7 +555,7 @@ void handleSerial() {
     pet.rename(line.substring(5).c_str());
     Serial.printf("nick=%s\n", pet.nick);
     Serial.println("DONE");
-  } else if (line == "CAREDAY") {  // simula un dia nuevo cuidado (pruebas)
+  } else if (line == "CAREDAY") {  // simulates a new cared-for day (tests)
     pet.setClock(pet.lastSeenEpoch + 86400);
     pet.caress();
     Serial.printf("streak=%u bond=%u medals=0x%X\n", pet.streak, pet.bond, pet.medals);
@@ -567,13 +567,13 @@ void handleSerial() {
     pet.startRunaway();
     Serial.println("DONE");
   } else if (line == "BEEP") {
-    sfxPlay(SFX_HATCH);  // prueba de audio
+    sfxPlay(SFX_HATCH);  // audio test
     Serial.println("DONE");
   } else if (line == "ABANDON") {
-    pet.dbgRunawayReady();  // fuerza el estado "lista para escaparse" (test del boton)
+    pet.dbgRunawayReady();  // forces the "ready to run away" state (button test)
     Serial.println("DONE");
   } else if (line == "WIPE") {
-    pet.factoryReset();     // borra NVS y reinicia -> partida nueva (eleccion de inicial)
+    pet.factoryReset();     // wipes NVS and restarts -> new game (starter choice)
     Serial.println("DONE");
     delay(100);
     ESP.restart();
@@ -606,8 +606,8 @@ void handleSerial() {
 
 // ---------- entrada tactil ----------
 
-// Un dialogo cuyo tiempo se agoto ya no esta en pantalla, aunque render() aun no lo haya
-// borrado: no debe recibir toques ni impedir gestos.
+// A dialog whose time ran out is no longer on screen, even if render() has not yet
+// erased it: it must not receive touches or block gestures.
 void expireDialogs() {
   if (choiceKind && !timeLeft(choiceUntil)) choiceKind = 0;
   if (confirmUntil && !timeLeft(confirmUntil)) confirmUntil = 0;
@@ -618,35 +618,35 @@ bool inPetZone(int16_t x, int16_t y) {
   return x > U(110) && x < U(356) && y > UY(95) && y < UY(310);
 }
 
-// el toque se resuelve al LEVANTAR el dedo para distinguir tap de deslizar
+// the touch is resolved on finger LIFT to tell a tap from a swipe
 void handleTouch() {
   static uint32_t lastPoll = 0;
-  if (millis() - lastPoll < 20) return;  // 50 Hz le sobra a un dedo
+  if (millis() - lastPoll < 20) return;  // 50 Hz is plenty for a finger
   lastPoll = millis();
-  // solo tocamos el bus si el chip aviso por INT o si el dedo sigue abajo (hay
-  // que detectar el levantamiento). Leer el CST9217 dormido se colgaba ~1s y
-  // congelaba el loop entero; SensorLib no respeta el timeout de Wire.
+  // we only touch the bus if the chip signaled via INT or if the finger is still down (we
+  // must detect the lift). Reading the sleeping CST9217 hung for ~1s and
+  // froze the whole loop; SensorLib does not honor the Wire timeout.
   if (!gTouchIrq && !wasPressed) return;
   gTouchIrq = false;
-  // Un ciclo de solo direccion antes de leer. Sin esto, getPoint() se colgaba
-  // exactamente 1000 ms (el timeout por defecto del driver I2C, que SensorLib no
-  // acota) y congelaba el loop entero: es lo que se percibia como "el minijuego
-  // se congela 2-3 segundos al tocar la bola" (issue #16), porque ahi los toques
-  // son rapidos y seguidos.
+  // An address-only cycle before reading. Without it, getPoint() hung for
+  // exactly 1000 ms (the default timeout of the I2C driver, which SensorLib does not
+  // bound) and froze the whole loop: this is what was perceived as "the minigame
+  // freezes for 2-3 seconds when touching the ball" (issue #16), because there the touches
+  // are fast and back to back.
   //
-  // Medido en placa, jugando lo mismo (~470 lecturas, marcador ~50):
-  //   sin esta linea: 5 parones de 1000 ms en 60 s
-  //   con ella:       0
-  // El contador de rechazos salio 0 en ambos casos, asi que NO funciona
-  // saltandose lecturas cuando el chip no contesta: lo que hace es despertarlo,
-  // para que la lectura siguiente no se encuentre el CST9217 dormido.
+  // Measured on the board, playing the same thing (~470 reads, score ~50):
+  //   without this line: 5 stalls of 1000 ms in 60 s
+  //   with it:          0
+  // The reject counter came out 0 in both cases, so it does NOT work by
+  // skipping reads when the chip does not answer: what it does is wake it up,
+  // so the next read does not find the CST9217 asleep.
   Wire.beginTransmission(TOUCH_ADDR);
-  if (Wire.endTransmission() != 0) return;  // no responde: se reintenta en 20 ms
+  if (Wire.endTransmission() != 0) return;  // no response: retry in 20 ms
   int16_t x, y;
   bool pressed = touch.getPoint(&x, &y, 1) > 0;
-  expireDialogs();  // la pulsacion larga y los gestos ven el mismo estado que el dibujo
+  expireDialogs();  // long press and gestures see the same state as the drawing
 
-  // saco de entrenamiento: cada toque cuenta al instante (aporrear rapido)
+  // training sack: every touch counts instantly (rapid mashing)
   if (sackOpen) {
     if (pressed && !wasPressed) {
       wakeUI();
@@ -656,25 +656,25 @@ void handleTouch() {
     return;
   }
 
-  if (pressed && !wasPressed) {  // empieza el gesto
+  if (pressed && !wasPressed) {  // gesture starts
     tX0 = tXl = x;
     tY0 = tYl = y;
     tStart = millis();
     holdFired = false;
-    swallowGesture = (dimStage > 0) || screenOff;  // si estaba a oscuras, solo despierta
+    swallowGesture = (dimStage > 0) || screenOff;  // if it was dark, it only wakes up
     screenOff = false;
     wakeUI();
-  } else if (pressed) {  // sigue apoyado
+  } else if (pressed) {  // still pressed
     tXl = x;
     tYl = y;
-    // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
+    // long press without moving on the pet -> release dialog
     if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < U(30) && abs(tYl - tY0) < UY(30) && inPetZone(tX0, tY0) &&
         !pet.isEgg() && !confirmUntil && !pet.ceremony) {
       confirmUntil = millis() + 10000;
       holdFired = true;
     }
-  } else if (wasPressed) {  // levanta el dedo: resolver gesto
+  } else if (wasPressed) {  // finger lifts: resolve gesture
     wakeUI();
     int dx = tXl - tX0, dy = tYl - tY0;
     uint32_t dt = millis() - tStart;
@@ -687,33 +687,33 @@ void handleTouch() {
   wasPressed = pressed;
 }
 
-// deslizar vertical: abre/cierra la ficha del bicho
-void openClock();  // prototipo
+// vertical swipe: opens/closes the pet card
+void openClock();  // prototype
 
 void onSwipeV(int dir) {
   expireDialogs();
-  if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
+  if (pet.awaitingStarter()) return;  // blocked during the starter choice
   if (gameOpen || galleryOpen || kbOpen || sackOpen || pet.ceremony) return;
   if (clockOpen) { clockOpen = false; return; }
   if (cardOpen) {
-    if (dir < 0) cardOpen = false;  // arriba cierra la ficha
+    if (dir < 0) cardOpen = false;  // up closes the card
     return;
   }
-  if (dir > 0) {                    // deslizar abajo: ajustar hora
+  if (dir > 0) {                    // swipe down: set the time
     if (!confirmUntil && !feedMenuUntil) openClock();
   } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
-    cardOpen = true;                // deslizar arriba: ficha
+    cardOpen = true;                // swipe up: card
     cardPage = 0;
   }
 }
 
-// deslizar: dir +1 = hacia la derecha
+// swipe: dir +1 = to the right
 void onSwipe(int dir) {
   expireDialogs();
-  if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
+  if (pet.awaitingStarter()) return;  // blocked during the starter choice
   if (gameOpen || kbOpen || clockOpen) return;
-  if (cardOpen) {  // dentro de la ficha: cambiar entre las 4 paginas
-    int p = (int)cardPage + (dir > 0 ? -1 : 1);  // izquierda avanza
+  if (cardOpen) {  // inside the card: switch between the 4 pages
+    int p = (int)cardPage + (dir > 0 ? -1 : 1);  // left advances
     cardPage = p < 0 ? 0 : (p > 3 ? 3 : p);
     return;
   }
@@ -726,14 +726,14 @@ void onSwipe(int dir) {
     }
     return;
   }
-  if (galleryDetail) {  // en detalle: volver a la rejilla
+  if (galleryDetail) {  // in detail: back to the grid
     galleryDetail = 0;
     galleryPmd.unload();
     galleryDirty = true;
     return;
   }
-  int np = galleryPage - dir;  // deslizar a la izquierda avanza pagina
-  if (np < 0) {                // retroceder desde la primera = salir
+  int np = galleryPage - dir;  // swiping left advances a page
+  if (np < 0) {                // going back from the first = exit
     galleryOpen = false;
     galleryPmd.unload();
     return;
@@ -746,8 +746,8 @@ void onSwipe(int dir) {
 }
 
 void onTap(int16_t x, int16_t y) {
-  // Serial.printf("TOUCH %d %d\n", x, y);  // diagnostico (silenciado: satura el log)
-  if (pet.awaitingStarter()) {  // primera partida: elegir inicial
+  // Serial.printf("TOUCH %d %d\n", x, y);  // diagnostic (silenced: floods the log)
+  if (pet.awaitingStarter()) {  // first game: pick a starter
     for (int i = 0; i < 3; i++) {
       int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
       if (x >= STARTER_ROW_X && x <= STARTER_ROW_X + STARTER_ROW_W && y >= ry && y <= ry + STARTER_ROW_H) {
@@ -771,11 +771,11 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   expireDialogs();
-  if (pet.ceremony) return;  // durante la despedida no hay botones
+  if (pet.ceremony) return;  // no buttons during the farewell
   if (cardOpen) {
-    if (cardPage == 0 && y < CARD_NAME_ZONE_H) openKeyboard();  // tocar el nombre = renombrar
+    if (cardPage == 0 && y < CARD_NAME_ZONE_H) openKeyboard();  // touching the name = rename
     else if (cardPage == 1 && y >= TRAIN_Y && y <= TRAIN_Y + TRAIN_H && x >= TRAIN_X && x <= TRAIN_X + TRAIN_W) {
-      cardOpen = false;            // boton ENTRENAR FUERZA
+      cardOpen = false;            // TRAIN STRENGTH button
       startSack();
     } else {
       cardOpen = false;
@@ -786,27 +786,27 @@ void onTap(int16_t x, int16_t y) {
     gameTap(x, y);
     return;
   }
-  if (choiceKind) {          // dialogo de decision: boton accion (arriba) / mantener (abajo)
-    bool b1 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B1_Y && y <= CHOICE_B1_Y + CHOICE_BH);  // accion
-    bool b2 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B2_Y && y <= CHOICE_B2_Y + CHOICE_BH);  // mantener / quedaros
-    if (choiceKind == 1) {                 // evolucion
+  if (choiceKind) {          // decision dialog: action button (top) / keep (bottom)
+    bool b1 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B1_Y && y <= CHOICE_B1_Y + CHOICE_BH);  // action
+    bool b2 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B2_Y && y <= CHOICE_B2_Y + CHOICE_BH);  // keep / stay together
+    if (choiceKind == 1) {                 // evolution
       if (b1) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
       else if (b2) pet.declineEvolve();
-    } else if (choiceKind == 2) {          // despedida
+    } else if (choiceKind == 2) {          // farewell
       if (b1) pet.startFarewell();
       else if (b2) pet.declineFarewell();
     }
     choiceKind = 0;
     return;
   }
-  if (confirmUntil) {        // dialogo "soltar?": SI / NO
+  if (confirmUntil) {        // "release?" dialog: YES / NO
     if (x >= YES_X && x <= YES_X + YES_W && y >= YES_Y && y <= YES_Y + YES_H) {
       pet.release();
     }
     confirmUntil = 0;
     return;
   }
-  if (feedMenuUntil) {       // selector de comida
+  if (feedMenuUntil) {       // food picker
     for (int item = 0; item < 4; item++) {
       int dx = x - buttons[item].cx, dy = y - buttons[item].cy;
       if (dx * dx + dy * dy <= BTN_HIT * BTN_HIT) {
@@ -824,13 +824,13 @@ void onTap(int16_t x, int16_t y) {
     sfxPlay(SFX_TAP);
     return;
   }
-  // boton de evolucion: abre el dialogo evolucionar/mantener
+  // evolution button: opens the evolve/keep dialog
   if (pet.wantEvolveButton() && x >= EVO_BTN_X && x <= EVO_BTN_X + EVO_BTN_W &&
       y >= EVO_BTN_Y && y <= EVO_BTN_Y + EVO_BTN_H) {
     choiceKind = 1; choiceUntil = millis() + 12000;
     return;
   }
-  // botones de final (mismo recuadro): escapada directa; despedida abre dialogo
+  // ending buttons (same box): direct run-away; farewell opens a dialog
   if (x >= FAR_BTN_X && x <= FAR_BTN_X + FAR_BTN_W &&
       y >= FAR_BTN_Y && y <= FAR_BTN_Y + FAR_BTN_H) {
     if (pet.canRunawayNow()) { pet.startRunaway(); return; }
@@ -853,7 +853,7 @@ void onTap(int16_t x, int16_t y) {
       return;
     }
   }
-  // tocar al bicho = caricia
+  // touching the pet = caress
   if (inPetZone(x, y)) {
     Serial.println("PET");
     pet.caress();
@@ -863,12 +863,12 @@ void onTap(int16_t x, int16_t y) {
 
 // ---------- render ----------
 
-bool gNight = false;  // noche real (por hora) o durmiendo: lo fija render()
+bool gNight = false;  // real night (by hour) or sleeping: set by render()
 uint16_t inkColor() { return gNight ? UI_INK_NIGHT : UI_INK; }
 
 #define C565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 
-// paleta y piezas de la interfaz (definidas mas abajo, junto a drawHeader)
+// UI palette and pieces (defined further down, next to drawHeader)
 #define UI_ACC C565(0xFF, 0xC2, 0x1A)
 static uint16_t uiBg();
 static uint16_t uiSurf();
@@ -880,9 +880,9 @@ static void uiPill(int x, int y, int w, int h, const char *t, bool primary);
 static void drawPanelBase();
 static void drawRecordPill(int y);
 
-// ---------- escena de fondo: bioma del tipo + hora real del RTC ----------
+// ---------- background scene: type biome + real RTC time ----------
 
-#define HORIZON UY(232)  // linea donde el cielo se encuentra con el suelo
+#define HORIZON UY(232)  // line where the sky meets the ground
 
 uint16_t lerp565(uint16_t a, uint16_t b, int i, int n) {
   if (n <= 0) return a;
@@ -892,43 +892,43 @@ uint16_t lerp565(uint16_t a, uint16_t b, int i, int n) {
                     (((ag + (bg - ag) * i / n) << 5)) | (ab + (bb - ab) * i / n));
 }
 
-// hora del dia 0-23 (de la hora real cacheada cada 30s; 13 si no hay reloj)
+// hour of day 0-23 (from the real time cached every 30s; 13 if there is no clock)
 int sceneHour() {
   uint32_t e = pet.lastSeenEpoch;
   return e ? (int)((e / 3600) % 24) : 13;
 }
 
-// colores del cielo segun la hora (arriba y abajo del degradado)
+// sky colors by hour (top and bottom of the gradient)
 static void skyColors(bool night, uint16_t &top, uint16_t &bot) {
   int h = sceneHour();
   if (night)            { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
-  else if (h < 8)       { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }  // amanecer
-  else if (h < 18)      { top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }  // dia
-  else                  { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }  // atardecer
+  else if (h < 8)       { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }  // dawn
+  else if (h < 18)      { top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }  // day
+  else                  { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }  // dusk
 }
 
-// cielo en bandas hasta el horizonte
+// sky in bands down to the horizon
 static void drawSky(int horizon, uint16_t top, uint16_t bot) {
   for (int y = 0; y < horizon; y += UY(8))
     gfx->fillRect(0, y, UI_W, UY(8), lerp565(top, bot, y, horizon));
 }
 
-// el suelo de noche se mezcla hacia el azul nocturno
+// the night ground blends toward night blue
 static uint16_t nightSoil(uint16_t soil) { return lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16); }
 
-// suelo de cada bioma de dia (de noche se mezcla hacia el azul nocturno)
+// ground of each biome by day (at night it blends toward night blue)
 static const uint16_t BIOME_SOIL[6] = {
-  C565(0x7e, 0xc0, 0x7f),  // 0 pradera
-  C565(0xdc, 0xca, 0x94),  // 1 playa (arena)
-  C565(0x4f, 0x8a, 0x55),  // 2 bosque
-  C565(0x8a, 0x55, 0x44),  // 3 volcan
-  C565(0xa8, 0x90, 0x6a),  // 4 montana
-  C565(0xe6, 0xee, 0xf5),  // 5 nieve
+  C565(0x7e, 0xc0, 0x7f),  // 0 meadow
+  C565(0xdc, 0xca, 0x94),  // 1 beach (sand)
+  C565(0x4f, 0x8a, 0x55),  // 2 forest
+  C565(0x8a, 0x55, 0x44),  // 3 volcano
+  C565(0xa8, 0x90, 0x6a),  // 4 mountain
+  C565(0xe6, 0xee, 0xf5),  // 5 snow
 };
 
 void drawClouds(uint32_t now, uint16_t col) {
   for (int k = 0; k < 2; k++) {
-    int cx = (int)(U(now / 50 + k * 250) % (UI_W + U(94))) - U(40);  // px/s proporcionales al panel
+    int cx = (int)(U(now / 50 + k * 250) % (UI_W + U(94))) - U(40);  // px/s proportional to the panel
     int cy = UY(70 + k * 34);
     gfx->fillCircle(cx, cy, U(16), col);
     gfx->fillCircle(cx + U(18), cy + UY(3), U(13), col);
@@ -942,19 +942,19 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
   skyColors(night, top, bot);
   drawSky(HORIZON, top, bot);
 
-  // sol o luna
+  // sun or moon
   if (night) {
     gfx->fillCircle(U(360), UY(78), U(24), C565(0xe8, 0xee, 0xf5));
-    gfx->fillCircle(U(370), UY(72), U(22), lerp565(top, bot, UY(78), HORIZON));  // creciente
+    gfx->fillCircle(U(370), UY(72), U(22), lerp565(top, bot, UY(78), HORIZON));  // crescent
     for (auto &st : STARS) gfx->fillRect(U(st[0]), UY(st[1]), SC(4), SC(4), UI_WHITE);
   } else if (h < 18) {
     gfx->fillCircle(U(360), UY(84), U(26), h < 8 ? C565(0xff, 0xd9, 0x8a) : C565(0xff, 0xe7, 0x9f));
     drawClouds(now, C565(0xff, 0xff, 0xff));
   } else {
-    gfx->fillCircle(CX, HORIZON - UY(6), U(34), C565(0xff, 0xf1, 0xc8));  // sol poniente
+    gfx->fillCircle(CX, HORIZON - UY(6), U(34), C565(0xff, 0xf1, 0xc8));  // setting sun
   }
 
-  // mar de la playa: una franja de agua sobre la arena
+  // beach sea: a strip of water over the sand
   uint16_t soil = BIOME_SOIL[biome < 6 ? biome : 0];
   if (night) soil = nightSoil(soil);
   if (biome == 1) {
@@ -968,42 +968,42 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
     }
   }
 
-  // suelo
+  // ground
   gfx->fillRect(0, HORIZON, UI_W, UI_H - HORIZON, soil);
   uint16_t hill = lerp565(soil, night ? C565(0x0c, 0x12, 0x24) : C565(0xff, 0xff, 0xff), 3, 16);
   gfx->fillRoundRect(-U(60), HORIZON - UY(14), UI_W + U(120), UY(60), U(30), hill);
 
-  // detalles del bioma
+  // biome details
   uint16_t dk = lerp565(soil, C565(0x10, 0x18, 0x20), night ? 11 : 7, 16);
-  if (biome == 2) {  // bosque: coniferas en silueta
+  if (biome == 2) {  // forest: silhouette conifers
     for (int tx : { U(60), U(150), U(360), U(416) }) {
       gfx->fillTriangle(tx, HORIZON - UY(46), tx - U(16), HORIZON, tx + U(16), HORIZON, dk);
       gfx->fillTriangle(tx, HORIZON - UY(60), tx - U(12), HORIZON - UY(28), tx + U(12), HORIZON - UY(28), dk);
     }
-  } else if (biome == 3) {  // volcan: rocas y brasas
+  } else if (biome == 3) {  // volcano: rocks and embers
     gfx->fillTriangle(U(70), HORIZON, U(40), HORIZON + UY(30), U(100), HORIZON + UY(30), dk);
     gfx->fillTriangle(U(400), HORIZON + UY(4), U(372), HORIZON + UY(30), U(430), HORIZON + UY(30), dk);
     if (!night)
       for (int e = 0; e < 4; e++)
         gfx->fillRect(U(120 + e * 70), HORIZON + UY(8 + (e % 2) * 6), SC(4), SC(4), C565(0xff, 0x9b, 0x3a));
-  } else if (biome == 4) {  // montana: cumbres al fondo
+  } else if (biome == 4) {  // mountain: peaks in the background
     gfx->fillTriangle(U(140), HORIZON - UY(50), U(60), HORIZON, U(220), HORIZON, dk);
     gfx->fillTriangle(U(330), HORIZON - UY(38), U(250), HORIZON, U(410), HORIZON, dk);
-  } else if (biome == 5 && !night) {  // nieve: copos cayendo
+  } else if (biome == 5 && !night) {  // snow: falling flakes
     for (int f = 0; f < 10; f++) {
       int fx = U(f * 53 + now / 40) % UI_W;
       int fy = UY(f * 90 + now / 18) % HORIZON;
       gfx->fillRect(fx, fy, SC(3), SC(3), UI_WHITE);
     }
-  } else if (biome == 0) {  // pradera: matas de hierba
+  } else if (biome == 0) {  // meadow: grass tufts
     for (int gx : { U(80), U(175), U(300), U(395) })
       for (int b = -1; b <= 1; b++)
         gfx->fillRect(gx + U(b * 5), HORIZON + UY(6), SC(2), UY(8 + (b == 0 ? 4 : 0)), dk);
   }
 }
 
-// fondo de los menus: un disco sobre negro en la pantalla redonda, todo el lienzo en la
-// cuadrada
+// menu background: a disc on black on the round screen, the whole canvas on the
+// square one
 void drawScreenBg() {
 #if LCD_ROUND
   gfx->fillScreen(RGB565_BLACK);
@@ -1013,7 +1013,7 @@ void drawScreenBg() {
 #endif
 }
 
-// primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
+// first game: pick a starter among Bulbasaur / Charmander / Squirtle
 void renderStarterSelect() {
   drawScreenBg();
   const char *t = T(S_CHOOSE_STARTER);
@@ -1025,7 +1025,7 @@ void renderStarterSelect() {
     int16_t d = STARTER_DEX[i];
     int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
     gfx->fillRoundRect(STARTER_ROW_X, ry, STARTER_ROW_W, STARTER_ROW_H, STARTER_ROW_H / 2, uiSurf());
-    const uint8_t *th = thumbs.get(d);     // miniatura del inicial (si la SD esta lista)
+    const uint8_t *th = thumbs.get(d);     // starter thumbnail (if the SD is ready)
     if (th) drawThumb(th, U(76), ry - UY(5), SC(3), false);
     gfx->setTextColor(inkColor());
     setSize(TS(3));
@@ -1035,9 +1035,9 @@ void renderStarterSelect() {
   gfx->flush();
 }
 
-// ---------- texto: tamano y medida ----------
-// setSize() guarda la escala aplicada porque la libreria tiene textsize_x protegido y textH()
-// necesita saberla. La fuente es la 5x7 clasica de Arduino_GFX (CP437, 6 px de avance por caracter).
+// ---------- text: size and measurement ----------
+// setSize() stores the applied scale because the library has textsize_x protected and textH()
+// needs to know it. The font is the classic Arduino_GFX 5x7 (CP437, 6 px advance per character).
 uint8_t gTextSize = 1;
 
 void setSize(int n) {
@@ -1045,17 +1045,17 @@ void setSize(int n) {
   gfx->setTextSize(n);
 }
 
-// ancho de un texto a la escala `size`
+// width of a text at scale `size`
 uint16_t textW(const char *s, int size) { return (uint16_t)strlen(s) * 6 * size; }
 
-// alto de una linea de texto con el tamano aplicado
+// height of a text line at the applied size
 static int textH() { return 7 * gTextSize; }
 
-// x del cursor para dejar el texto centrado en CX
+// cursor x to leave the text centered on CX
 int centerX(const char *s, int size) { return CX - textW(s, size) / 2; }
 
-// ancho visible de la pantalla a la altura y (px): en la redonda, la cuerda del circulo UI_R;
-// en la cuadrada, todo el ancho
+// visible screen width at height y (px): on the round one, the chord of the UI_R circle;
+// on the square one, the full width
 int chordW(int y) {
 #if LCD_ROUND
   int dy = y - CY;
@@ -1066,31 +1066,31 @@ int chordW(int y) {
 #endif
 }
 
-// ancho disponible para una linea de texto con su borde superior en y: la cuerda visible
-// de la pantalla (en la redonda, la de su punto mas estrecho: arriba o abajo de la linea),
-// con 4 px de diseno de aire por lado. Requiere el tamano ya aplicado (para textH()).
+// available width for a text line with its top edge at y: the visible chord
+// of the screen (on the round one, that of its narrowest point: above or below the line),
+// with 4 px of design margin per side. Requires the size already applied (for textH()).
 int chordAvail(int y) {
   int topW = chordW(y), botW = chordW(y + textH());
   return (topW < botW ? topW : botW) - U(8);
 }
 
-// cabe el texto, a ese tamano, en la cuerda a la altura y?
+// does the text fit, at that size, in the chord at height y?
 bool fitsChord(const char *s, int size, int y) {
   setSize(size);
   return textW(s, size) <= chordAvail(y);
 }
 
-// elige el tamano grande si el texto cabe en la cuerda de su linea, y el pequeno si no
+// picks the big size if the text fits in its line's chord, and the small one if not
 int fitSize(const char *s, int big, int small, int y) {
   if (fitsChord(s, big, y)) return big;
   setSize(small);
   return small;
 }
 
-// Parte s en hasta maxLines lineas de <= maxW px a la escala aplicada: corta en el ultimo
-// espacio que cabe (o en cualquier caracter si no hay espacios). Rellena
-// start/len y devuelve el numero de lineas; si el texto no cabe en maxLines, la ultima
-// se queda cortada.
+// Splits s into up to maxLines lines of <= maxW px at the applied scale: cuts at the last
+// space that fits (or at any character if there are no spaces). Fills
+// start/len and returns the number of lines; if the text does not fit in maxLines, the last
+// one is left truncated.
 int wrapText(const char *s, int size, int maxW, int maxLines, int *start, int *len) {
   int n = 0, pos = 0, L = (int)strlen(s);
   while (pos < L && n < maxLines) {
@@ -1098,17 +1098,17 @@ int wrapText(const char *s, int size, int maxW, int maxLines, int *start, int *l
     if (pos >= L) break;
     int i = pos, end = pos, lastSpace = -1;
     while (i < L) {
-      // llegar a i implica que s[pos..i) cabe: un espacio aqui es un corte valido aunque
-      // el propio espacio ya no quepa (una palabra que acaba justo en maxW)
+      // reaching i implies s[pos..i) fits: a space here is a valid cut even if
+      // the space itself no longer fits (a word that ends exactly at maxW)
       if (s[i] == ' ') lastSpace = i;
       if ((i + 1 - pos) * 6 * size > maxW) break;
       end = ++i;
     }
     int cut;
-    if (i >= L) cut = L;                           // todo el resto cabe
+    if (i >= L) cut = L;                           // the whole remainder fits
     else cut = lastSpace > pos ? lastSpace : (end > pos ? end : pos + 1);
     int e = cut;
-    while (e > pos && s[e - 1] == ' ') e--;        // sin espacios al final de la linea
+    while (e > pos && s[e - 1] == ' ') e--;        // no trailing spaces on the line
     start[n] = pos;
     len[n] = e - pos;
     n++;
@@ -1117,8 +1117,8 @@ int wrapText(const char *s, int size, int maxW, int maxLines, int *start, int *l
   return n;
 }
 
-// Escribe s a la escala `size`, partido en <= maxLines lineas de <= maxW px, con el bloque
-// centrado verticalmente en yMid. leftAlign: x es el borde izquierdo; si no, el centro.
+// Writes s at scale `size`, split into <= maxLines lines of <= maxW px, with the block
+// vertically centered on yMid. leftAlign: x is the left edge; otherwise, the center.
 void drawWrapped(const char *s, int size, int x, int yMid, int maxW, int maxLines, bool leftAlign) {
   setSize(size);
   int st[4], ln[4];
@@ -1127,7 +1127,7 @@ void drawWrapped(const char *s, int size, int x, int yMid, int maxW, int maxLine
   int total = n * textH() + (n - 1) * gap;
   int y = yMid - total / 2;
   for (int i = 0; i < n; i++) {
-    char line[128];  // las cadenas del juego miden < 64 bytes
+    char line[128];  // game strings are < 64 bytes
     int l = ln[i] < (int)sizeof(line) - 1 ? ln[i] : (int)sizeof(line) - 1;
     memcpy(line, s + st[i], l);
     line[l] = 0;
@@ -1136,13 +1136,13 @@ void drawWrapped(const char *s, int size, int x, int yMid, int maxW, int maxLine
   }
 }
 
-// Pantallas que solo cambian con un toque (o con un dato que cambia muy de vez en cuando):
-// mientras su "clave" no cambie no se repintan ni se vuelcan por QSPI.
+// Screens that only change on a touch (or on data that changes very rarely):
+// while their "key" does not change they are not repainted or flushed over QSPI.
 static bool staticScreen() {
   if (pet.awaitingStarter()) return true;
-  if (galleryOpen || gameOpen || sackOpen) return false;  // la galeria gestiona su propio repintado
+  if (galleryOpen || gameOpen || sackOpen) return false;  // the gallery handles its own repainting
   if (kbOpen || clockOpen) return true;
-  return cardOpen && cardPage != 0;  // la pagina 0 tiene el retrato animado
+  return cardOpen && cardPage != 0;  // page 0 has the animated portrait
 }
 static uint32_t mixKey(uint32_t h, uint32_t v) { return (h ^ v) * 16777619u; }
 static uint32_t screenKey() {
@@ -1167,13 +1167,13 @@ static uint32_t screenKey() {
   }
   return h;
 }
-bool screenKeyValid = false;  // (el renderer del host lo invalida entre escenas)
+bool screenKeyValid = false;  // (the host renderer invalidates it between scenes)
 uint32_t lastScreenKey = 0;
 
-// Dibuja un frame y devuelve true si lo ha volcado al panel.
+// Draws a frame and returns true if it flushed it to the panel.
 bool render() {
   int h = sceneHour();
-  gNight = pet.sleeping || h < 6 || h >= 20;  // tema: oscuro de noche o durmiendo, claro de dia
+  gNight = pet.sleeping || h < 6 || h >= 20;  // theme: dark at night or while sleeping, light by day
   if (staticScreen()) {
     uint32_t k = screenKey();
     if (screenKeyValid && k == lastScreenKey) return false;
@@ -1182,7 +1182,7 @@ bool render() {
   } else {
     screenKeyValid = false;
   }
-  if (pet.awaitingStarter()) {  // primera partida: elegir inicial (prioridad total)
+  if (pet.awaitingStarter()) {  // first game: pick a starter (top priority)
     renderStarterSelect();
     return true;
   }
@@ -1210,8 +1210,8 @@ bool render() {
     renderCard();
     return true;
   }
-  // drawScene cubre el lienzo completo: sin fillScreen(NEGRO) previo para
-  // que un flush DMA solapado nunca capture negro a medias (anti-parpadeo)
+  // drawScene covers the whole canvas: no fillScreen(BLACK) beforehand so
+  // an overlapping DMA flush never captures a half-black frame (anti-flicker)
   if (choiceKind) {
     if (!timeLeft(choiceUntil)) choiceKind = 0;
     else { drawScreenBg(); drawChoiceDialog(); gfx->flush(); return true; }
@@ -1260,7 +1260,7 @@ bool render() {
     const char *base = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
     snprintf(name, sizeof(name), "%s%s", pet.shiny ? "*" : "", base);
     snprintf(lvl, sizeof(lvl), T(S_LVL_FMT), pet.level());
-    // la segunda linea solo cuenta algo cuando pasa algo; si no, el nivel
+    // the second line only says something when something is happening; otherwise, the level
     const char *st = statusMsg();
     bool calm = (st == T(S_HAPPY));
     bool alert = !pet.sleeping && !pet.eating() && pet.lowestStat() < 25;
@@ -1269,16 +1269,16 @@ bool render() {
     drawPet();
     drawBath();
     drawPoops();
-    // panel inferior: base limpia con el borde curvo; los cuatro circulos son necesidad + accion
+    // bottom panel: clean base with the curved edge; the four circles are need + action
     drawPanelBase();
     drawDeck();
     drawCelebration();
-    // sin dialogo abierto encima: el boton de despedida es mas ancho que el dialogo y asomaba por los lados
+    // no dialog open on top: the farewell button is wider than the dialog and peeked out at the sides
     if ((choiceKind && timeLeft(choiceUntil)) || timeLeft(confirmUntil) || timeLeft(feedMenuUntil)) {
-      // un dialogo tapa el boton
-    } else if (pet.wantEvolveButton()) drawEvolveButton();        // CTA rojo: evolucionar
-    else if (pet.canRunawayNow()) drawRunawayButton();     // CTA sombrio: escapada (abandono)
-    else if (pet.wantFarewellButton()) drawFarewellButton();  // CTA dorado: despedida
+      // a dialog covers the button
+    } else if (pet.wantEvolveButton()) drawEvolveButton();        // red CTA: evolve
+    else if (pet.canRunawayNow()) drawRunawayButton();     // gloomy CTA: run away (neglect)
+    else if (pet.wantFarewellButton()) drawFarewellButton();  // gold CTA: farewell
   }
 
   if (pet.sleeping) {
@@ -1288,7 +1288,7 @@ bool render() {
     gfx->print("Zz");
   }
 
-  // selector de comida: los cuatro circulos pasan a ser las comidas
+  // food picker: the four circles become the foods
   if (feedMenuUntil) {
     if (!timeLeft(feedMenuUntil)) {
       feedMenuUntil = 0;
@@ -1305,7 +1305,7 @@ bool render() {
   return true;
 }
 
-// ---------- minijuego: toques con la pokeball ----------
+// ---------- minigame: touches with the pokeball ----------
 
 void startGame() {
   if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
@@ -1323,7 +1323,7 @@ void startGame() {
 void respawnBall() {
   ballX = U(150) + random(U(166));
   ballY = UY(96);
-  float sp = 1.6f + gameScore * 0.05f;  // mas viva segun avanzas
+  float sp = 1.6f + gameScore * 0.05f;  // livelier as you progress
   if (sp > 4.0f) sp = 4.0f;
   sp *= UI_F;
   ballVX = random(2) ? sp : -sp;
@@ -1332,15 +1332,15 @@ void respawnBall() {
 
 void gameTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
-  if (y < HEADER_ZONE_H) {  // tocar la cabecera = abandonar sin premio
+  if (y < HEADER_ZONE_H) {  // touching the header = quit without reward
     gameOpen = false;
     return;
   }
   float dx = ballX - x, dy = ballY - y;
-  if (dx * dx + dy * dy < (float)U(74) * U(74)) {  // toque a la bola!
+  if (dx * dx + dy * dy < (float)U(74) * U(74)) {  // ball touched!
     gameScore++;
     sfxPlay(SFX_PLAY);
-    // golpe mas suave: impulso moderado que crece poco a poco con la puntuacion
+    // softer hit: moderate impulse that grows slowly with the score
     float lift = (6.6f + (gameScore > 16 ? 3.5f : gameScore * 0.22f)) * UI_F;
     ballVY = -lift;
     ballVX += dx * 0.12f;
@@ -1355,24 +1355,24 @@ void gameTap(int16_t x, int16_t y) {
 
 void stepGame() {
   uint32_t now = millis();
-  // paso relativo a 85 ms, el periodo de frame con el que se afinaron estas
-  // constantes (ver el planificador de render en loop()): sin esto la fisica
-  // avanzaba "un paso por frame" y el juego iba mas rapido o mas lento segun
-  // lo que tardara en dibujarse el frame anterior, que depende del tamano del
-  // sprite cargado. Con un Charizard la bola caia mas despacio que con un
-  // Diglett, asi que el record no era comparable entre especies.
+  // step relative to 85 ms, the frame period these constants were tuned
+  // for (see the render scheduler in loop()): without this the physics
+  // advanced "one step per frame" and the game ran faster or slower depending on
+  // how long the previous frame took to draw, which depends on the size of the
+  // loaded sprite. With a Charizard the ball fell more slowly than with a
+  // Diglett, so the record was not comparable between species.
   float k = lastGameStep ? (now - lastGameStep) / 85.0f : 1.0f;
-  if (k > 3.0f) k = 3.0f;  // frame anormalmente tardio: no dar un salto enorme
+  if (k > 3.0f) k = 3.0f;  // abnormally late frame: do not take a huge jump
   lastGameStep = now;
 
-  float grav = 0.40f + gameScore * 0.013f;  // cae un poco mas rapido cada vez
+  float grav = 0.40f + gameScore * 0.013f;  // falls a bit faster each time
   if (grav > 0.80f) grav = 0.80f;
   grav *= UI_F;
   ballVY += grav * k;
   ballX += ballVX * k;
   ballY += ballVY * k;
 #if LCD_ROUND
-  // rebote en la pared circular
+  // bounce off the circular wall
   float dx = ballX - CX, dy = ballY - CY;
   float d = sqrtf(dx * dx + dy * dy);
   if (d > BALL_R) {
@@ -1386,23 +1386,23 @@ void stepGame() {
     ballY = CY + ny * BALL_R;
   }
 #else
-  // rebote en las paredes y el techo del cuadrado (el mismo margen que la pared circular):
-  // la posicion se corrige siempre y la velocidad solo se invierte si la bola va hacia fuera
+  // bounce off the square's walls and ceiling (same margin as the circular wall):
+  // the position is always corrected and the velocity is only reversed if the ball is heading outward
   if (ballX < CX - BALL_R) { ballX = CX - BALL_R; if (ballVX < 0) ballVX *= -0.85f; }
   else if (ballX > CX + BALL_R) { ballX = CX + BALL_R; if (ballVX > 0) ballVX *= -0.85f; }
   if (ballY < CY - BALL_R) { ballY = CY - BALL_R; if (ballVY < 0) ballVY *= -0.85f; }
 #endif
-  if (ballY > UY(384)) {  // al suelo
+  if (ballY > UY(384)) {  // to the ground
     if (++gameMisses >= 3) {
       gameNewHi = (gameScore > pet.gameHi);
-      pet.playResult(gameScore);  // actualiza el record y da felicidad
+      pet.playResult(gameScore);  // updates the record and gives happiness
       sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
       gameOverUntil = millis() + 4000;
     } else {
       respawnBall();
     }
   }
-  // el bicho la sigue por abajo
+  // the pet follows it from below
   float chase = (ballX - gamePetX) * 0.12f;
   const float cmax = 7 * UI_F;
   if (chase > cmax) chase = cmax;
@@ -1410,7 +1410,7 @@ void stepGame() {
   gamePetX += chase * k;
 }
 
-// ---------- saco de entrenamiento (entrena la fuerza) ----------
+// ---------- training sack (trains strength) ----------
 
 void startSack() {
   if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
@@ -1422,27 +1422,27 @@ void startSack() {
   sackNewHi = false;
 }
 
-// toque con el saco abierto: la cabecera abandona, el resto golpea
+// touch with the sack open: the header quits, the rest hits
 void sackTouch(int16_t y) {
   if (y < HEADER_ZONE_H) sackOpen = false;
   else sackTap();
 }
 
 void sackTap() {
-  if (!timeLeft(sackUntil)) return;  // ya termino el tiempo
+  if (!timeLeft(sackUntil)) return;  // time is already up
   sackHits++;
-  sackShake = 16 * UI_F;  // sacude el saco
+  sackShake = 16 * UI_F;  // shakes the sack
 }
 
-void drawGameScene();  // prototipo (definida mas abajo)
+void drawGameScene();  // prototype (defined further down)
 
 void renderSack() {
   uint32_t now = millis();
-  drawGameScene();  // fondo del habitat
+  drawGameScene();  // habitat background
   bool night = sceneHour() < 6 || sceneHour() >= 20;
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
-  // pantalla de resultado
+  // result screen
   if (sackOverUntil) {
     if (!timeLeft(sackOverUntil)) { sackOpen = false; return; }
     char b[20];
@@ -1471,7 +1471,7 @@ void renderSack() {
     return;
   }
 
-  // se acabaron los 10 s: aplicar entrenamiento
+  // the 10 s are up: apply training
   if (!timeLeft(sackUntil)) {
     sackNewHi = (sackHits > pet.strHi);
     sackGain = pet.trainStrength(sackHits);
@@ -1481,18 +1481,18 @@ void renderSack() {
     return;
   }
 
-  // aporreo activo
+  // active mashing
   sackShake *= 0.84f;
   int off = (int)(sackShake * sinf(now * 0.05f));
   int sx = CX + off, top = UY(86);
-  gfx->fillRect(CX - U(3), UY(56), U(6), top - UY(56), ink);          // gancho/cuerda
-  gfx->fillRect(sx - U(4), top - UY(30), U(8), UY(34), ink);          // cadena
-  gfx->fillRoundRect(sx - U(42), top, U(84), UY(150), U(26), C565(0xb5, 0x3a, 0x3a));  // saco
-  gfx->fillRoundRect(sx - U(42), top, U(84), UY(22), U(18), C565(0x7e, 0x28, 0x28));   // tapa
+  gfx->fillRect(CX - U(3), UY(56), U(6), top - UY(56), ink);          // hook/rope
+  gfx->fillRect(sx - U(4), top - UY(30), U(8), UY(34), ink);          // chain
+  gfx->fillRoundRect(sx - U(42), top, U(84), UY(150), U(26), C565(0xb5, 0x3a, 0x3a));  // sack
+  gfx->fillRoundRect(sx - U(42), top, U(84), UY(22), U(18), C565(0x7e, 0x28, 0x28));   // lid
   gfx->drawRoundRect(sx - U(42), top, U(84), UY(150), U(26), ink);
-  gfx->fillRect(sx - U(42), top + UY(70), U(84), UY(4), C565(0x7e, 0x28, 0x28));        // costura
+  gfx->fillRect(sx - U(42), top + UY(70), U(84), UY(4), C565(0x7e, 0x28, 0x28));        // stitching
 
-  // contador de golpes
+  // hit counter
   char buf[8];
   snprintf(buf, sizeof(buf), "%u", sackHits);
   gfx->setTextColor(ink);
@@ -1504,7 +1504,7 @@ void renderSack() {
   gfx->setCursor(centerX(T(S_HIT_FAST), TS(2)), UY(322));
   gfx->print(T(S_HIT_FAST));
 
-  // barra de tiempo
+  // time bar
   uint32_t left = sackUntil - now;
   int bw = U(280), fw = (int)((uint32_t)bw * left / 10000);
   gfx->fillRoundRect(CX - bw / 2, UY(350), bw, UY(16), U(5), UI_TRACK);
@@ -1513,7 +1513,7 @@ void renderSack() {
   gfx->flush();
 }
 
-// fondo del minijuego: hatibat del bicho (cielo por hora + suelo del bioma)
+// minigame background: the pet's habitat (sky by hour + biome ground)
 void drawGameScene() {
   int hh = sceneHour();
   bool night = hh < 6 || hh >= 20;
@@ -1530,9 +1530,9 @@ void drawGameScene() {
 }
 
 void renderGame() {
-  // sin fillScreen(NEGRO): drawGameScene cubre el lienzo completo. Si el
-  // DMA del flush anterior aun lee el buffer, vera contenido valido (no negro
-  // a medio pintar), que era el parpadeo a 25 fps.
+  // no fillScreen(BLACK): drawScene covers the whole canvas. If the
+  // previous flush's DMA is still reading the buffer, it will see valid content (not
+  // half-painted black), which was the flicker at 25 fps.
   bool night = sceneHour() < 6 || sceneHour() >= 20;
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
@@ -1569,21 +1569,21 @@ void renderGame() {
   drawGameScene();
   stepGame();
 
-  // marcador, record y vidas
+  // score, record and lives
   char buf[8];
   snprintf(buf, sizeof(buf), "%u", gameScore);
   gfx->setTextColor(ink);
   setSize(TS(4));
   gfx->setCursor(centerX(buf, TS(4)), UY(30));
   gfx->print(buf);
-  // las tallas de los buffers de texto las vigila TestBuffersDeTexto en test/test_tools.py
+  // text buffer sizes are guarded by TestBuffersDeTexto in test/test_tools.py
   char rec[24];
   snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.gameHi);
   setSize(TS(2));
   gfx->setCursor(centerX(rec, TS(2)), UY(76));
   gfx->print(rec);
   for (int i = 0; i < 3; i++) {
-    // tres puntos separados 28 px de diseno, centrados bajo el marcador
+    // three dots spaced 28 design px apart, centered under the score
     if (i < 3 - gameMisses) gfx->fillCircle(CX + U((i - 1) * 28), UY(104), U(6), UI_BAR_BAD);
     else gfx->drawCircle(CX + U((i - 1) * 28), UY(104), U(6), UI_TRACK);
   }
@@ -1606,7 +1606,7 @@ void renderGame() {
     }
   }
 
-  // anillo de impacto que se expande y desvanece (feedback suave del golpe)
+  // impact ring that expands and fades (soft hit feedback)
   uint32_t ht = millis() - hitTime;
   if (hitTime && ht < 260) {
     int rad = U(22 + (int)(ht / 6));
@@ -1614,18 +1614,18 @@ void renderGame() {
     gfx->drawCircle((int)hitX, (int)hitY, rad - U(2), C565(0xff, 0xd9, 0x8a));
   }
 
-  // la pokeball
-  int bs = SC(3);  // pokeball 16x16, centrada en (ballX, ballY)
+  // the pokeball
+  int bs = SC(3);  // 16x16 pokeball, centered at (ballX, ballY)
   drawMap(SPR_ICON_PLAY, 16, (int)ballX - 8 * bs, (int)ballY - 8 * bs, bs, false);
 
   gfx->flush();
 }
 
-// ---------- ficha del bicho (deslizar vertical) ----------
+// ---------- pet card (vertical swipe) ----------
 
-// x donde arrancan las barras de la ficha: tras la etiqueta mas larga (4 letras a escala 2) y
-// 12 px de diseno de aire, con 150 como minimo.
-// barra fina de relleno plano (sin degradados): pista en superficie, relleno en tinta
+// x where the card bars start: after the longest label (4 letters at scale 2) and
+// 12 design px of margin, with 150 as a minimum.
+// thin flat-fill bar (no gradients): track in surface color, fill in ink
 static void uiBar(int x, int y, int w, int h, int val, int maxv, uint16_t fill) {
   gfx->fillRoundRect(x, y, w, h, h / 2, uiSurf());
   int fw = maxv ? (int)((int32_t)val * w / maxv) : 0;
@@ -1634,7 +1634,7 @@ static void uiBar(int x, int y, int w, int h, int val, int maxv, uint16_t fill) 
   else if (fw > 0) gfx->fillRoundRect(x, y, h, h, h / 2, fill);
 }
 
-// fila de la ficha: etiqueta, barra y valor a la derecha
+// card row: label, bar and value on the right
 void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar) {
   gfx->setTextColor(inkColor());
   setSize(TS(2));
@@ -1647,9 +1647,9 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar) {
   uiBar(U(168), y - UY(1), U(160), UY(16), val, maxBar, inkColor());
 }
 
-// ---------- ajuste de hora en pantalla (deslizar abajo) ----------
-// El usuario pone su hora LOCAL a ojo; el firmware la usa tal cual, asi que
-// no hay que gestionar zona horaria. Preserva el dia (no rompe racha/edad).
+// ---------- on-screen clock setting (swipe down) ----------
+// The user sets their LOCAL time by eye; the firmware uses it as is, so
+// there is no timezone to manage. Preserves the day (does not break streak/age).
 
 void openClock() {
   uint32_t e = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
@@ -1666,7 +1666,7 @@ void applyClock() {
   clockOpen = false;
 }
 
-// boton redondo de paso (- / +): un signo dibujado con dos rectangulos
+// round step button (- / +): a sign drawn with two rectangles
 void drawClockBtn(int x, int y, const char *l) {
   int cx = x + CLOCK_BTN_W / 2, cy = y + CLOCK_BTN_H / 2, r = CLOCK_BTN_W / 2, a = U(14), t = U(3);
   gfx->fillCircle(cx, cy, r, uiSurf());
@@ -1674,7 +1674,7 @@ void drawClockBtn(int x, int y, const char *l) {
   if (l[0] == '+') gfx->fillRect(cx - t / 2, cy - a, t, 2 * a + 1, inkColor());
 }
 
-// interruptor de sonido: ancho completo, en acento cuando esta activo
+// sound switch: full width, in accent when active
 #define SND_PILL_Y UY(256)
 #define SND_PILL_H UY(68)
 
@@ -1686,7 +1686,7 @@ void renderClock() {
   gfx->setCursor(centerX(T(S_SET_TIME), TS(3)), UY(40));
   gfx->print(T(S_SET_TIME));
 
-  // hora y minutos, cada uno sobre su pareja de botones
+  // hour and minutes, each above its pair of buttons
   char hh[4], mm[4];
   snprintf(hh, sizeof(hh), "%02d", clockH);
   snprintf(mm, sizeof(mm), "%02d", clockM);
@@ -1699,8 +1699,8 @@ void renderClock() {
   gfx->setCursor(CX - textW(":", TS(7)) / 2, ty);
   gfx->print(":");
 
-  drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-");  // hora -
-  drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+");  // hora +
+  drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-");  // hour -
+  drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+");  // hour +
   drawClockBtn(CLK_X2, CLOCK_BTN_Y, "-");  // min -
   drawClockBtn(CLK_X3, CLOCK_BTN_Y, "+");  // min +
 
@@ -1711,7 +1711,7 @@ void renderClock() {
   uiPill(CLOCK_CANCEL_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, T(S_CLOCK_CANCEL), false);
   uiPill(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, "Done", true);
 
-  // version del firmware (discreta, abajo del todo)
+  // firmware version (discreet, at the very bottom)
   char ver[20];
   snprintf(ver, sizeof(ver), "v%s", FW_VERSION);
   gfx->setTextColor(uiDim());
@@ -1723,16 +1723,16 @@ void renderClock() {
 }
 
 void clockTap(int16_t x, int16_t y) {
-  if (y >= CLOCK_BTN_Y && y <= CLOCK_BTN_Y + CLOCK_BTN_H) {  // fila de botones +/-
+  if (y >= CLOCK_BTN_Y && y <= CLOCK_BTN_Y + CLOCK_BTN_H) {  // row of +/- buttons
     if (x >= CLK_X0 && x < CLK_X0 + CLOCK_BTN_W) clockH = (clockH + 23) % 24;
     else if (x >= CLK_X1 && x < CLK_X1 + CLOCK_BTN_W) clockH = (clockH + 1) % 24;
     else if (x >= CLK_X2 && x < CLK_X2 + CLOCK_BTN_W) clockM = (clockM + 59) % 60;
     else if (x >= CLK_X3 && x < CLK_X3 + CLOCK_BTN_W) clockM = (clockM + 1) % 60;
     return;
   }
-  if (y >= SND_PILL_Y && y <= SND_PILL_Y + SND_PILL_H && x >= SND_PILL_X && x < SND_PILL_X + SND_PILL_W) {  // interruptor de sonido
+  if (y >= SND_PILL_Y && y <= SND_PILL_Y + SND_PILL_H && x >= SND_PILL_X && x < SND_PILL_X + SND_PILL_W) {  // sound switch
     audioSetEnabled(!audioEnabled());
-    if (audioEnabled()) sfxPlay(SFX_TAP);    // confirma al encender
+    if (audioEnabled()) sfxPlay(SFX_TAP);    // confirms when turning on
     return;
   }
   if (y >= CLOCK_OK_Y && y <= CLOCK_OK_Y + CLOCK_OK_H) {
@@ -1741,8 +1741,8 @@ void clockTap(int16_t x, int16_t y) {
   }
 }
 
-// llama + numero de racha arriba a la izquierda
-// banner temporal: medalla nueva o hito de racha (pastilla amarilla arriba, sobre la cabecera)
+// flame + streak number at the top left
+// temporary banner: new medal or streak milestone (yellow pill at the top, over the header)
 void drawCelebration() {
   const char *l1 = nullptr, *l2 = nullptr;
   char buf[32];
@@ -1763,7 +1763,7 @@ void drawCelebration() {
   uiTextIn(x, y + UY(40), w, UY(36), l2, sz, RGB565_BLACK);
 }
 
-// ---------- ficha del bicho: 4 paginas con punto de pagina y boton Atras ----------
+// ---------- pet card: 4 pages with page dot and Back button ----------
 static void drawCardNav() {
   int ds = U(12), gap = U(14), x0 = CX - (3 * (ds + gap)) / 2 - ds / 2;
   for (int i = 0; i < 4; i++)
@@ -1771,18 +1771,18 @@ static void drawCardNav() {
   uiPill(CX - U(75), UY(372), U(150), UY(68), T(S_BACK), false);
 }
 
-static void drawPencil(int x, int y, int s, uint16_t col) {  // lapiz de 20x20 diseno: cuerpo + punta
+static void drawPencil(int x, int y, int s, uint16_t col) {  // 20x20 design pencil: body + tip
   gfx->fillTriangle(x + s * 14 / 20, y, x + s, y + s * 6 / 20, x + s * 6 / 20, y + s, col);
   gfx->fillTriangle(x + s * 14 / 20, y, x, y + s * 14 / 20, x + s * 6 / 20, y + s, col);
   gfx->fillTriangle(x, y + s * 14 / 20, x + s * 6 / 20, y + s, x, y + s, col);
 }
 
-// pagina 0: perfil (nombre editable, retrato, vinculo, racha, baya y edad)
+// page 0: profile (editable name, portrait, bond, streak, berry and age)
 void renderCardProfile() {
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   char head[40];
   snprintf(head, sizeof(head), "%s%s", pet.shiny ? "*" : "", nm);
-  // el nombre es un boton: pastilla con lapiz (tocarla abre el teclado)
+  // the name is a button: pill with a pencil (touching it opens the keyboard)
   int pw = U(250), ph = UY(52), px = CX - pw / 2, py = UY(34);
   gfx->fillRoundRect(px, py, pw, ph, ph / 2, uiSurf());
   setSize(TS(3));
@@ -1793,7 +1793,7 @@ void renderCardProfile() {
   gfx->setCursor(px + gx, py + (ph - 7 * hs) / 2);
   gfx->print(head);
   drawPencil(px + gx + tw + U(10), py + (ph - pen) / 2, pen, uiDim());
-  if (pet.nick[0]) {  // especie real bajo el apodo
+  if (pet.nick[0]) {  // real species under the nickname
     char par[32];
     snprintf(par, sizeof(par), "(%s)", dexName(pet.speciesId));
     gfx->setTextColor(uiDim());
@@ -1802,10 +1802,10 @@ void renderCardProfile() {
     gfx->print(par);
   }
 
-  // retrato animado
+  // animated portrait
   if (pmd.loaded) drawPmdAct(PMD_IDLE, CX, UY(226), millis(), true, false, SC(4));
 
-  // vinculo
+  // bond
   setSize(TS(2));
   gfx->setTextColor(inkColor());
   gfx->setCursor(U(92), UY(244));
@@ -1816,7 +1816,7 @@ void renderCardProfile() {
   gfx->setCursor(U(388) - textW(num, TS(2)), UY(244));
   gfx->print(num);
 
-  // racha, con su llama
+  // streak, with its flame
   char rl[40];
   snprintf(rl, sizeof(rl), T(S_STREAK_FMT), pet.streak, pet.bestStreak);
   int fw = U(18), sx = CX - (fw + U(10) + textW(rl, TS(2))) / 2, sy = UY(272);
@@ -1826,7 +1826,7 @@ void renderCardProfile() {
   gfx->setCursor(sx + fw + U(10), sy + UY(3));
   gfx->print(rl);
 
-  // baya favorita y edad
+  // favorite berry and age
   const char *berry = !pet.berryKnown ? T(S_BERRY_UNK)
                       : pet.lovesBerry(0) ? T(S_BERRY_RED)
                       : pet.lovesBerry(1) ? T(S_BERRY_BLUE)
@@ -1838,7 +1838,7 @@ void renderCardProfile() {
   gfx->print(info);
 }
 
-// pagina 1: combate (4 barras + boton de entrenar)
+// page 1: combat (4 bars + train button)
 void renderCardStats() {
   gfx->setTextColor(inkColor());
   setSize(TS(3));
@@ -1850,10 +1850,10 @@ void renderCardStats() {
   drawCardStat(UY(192), T(S_STAT_SPE), pet.speStat(), 260);
   drawCardStat(UY(236), T(S_STAT_WGT), pet.weight, 100);
 
-  uiPill(TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H, T(S_TRAIN_STR), true);  // saco de entrenamiento de fuerza
+  uiPill(TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H, T(S_TRAIN_STR), true);  // strength training sack
 }
 
-// medalla: circulo con su marca (nivel en cifras, o un dibujo) y debajo su nombre
+// medal: circle with its mark (level in digits, or a drawing) and its name below
 static void drawMedalGlyph(int i, int cx, int cy, uint16_t col) {
   int u = U(14);
   switch (i) {
@@ -1864,26 +1864,26 @@ static void drawMedalGlyph(int i, int cx, int cy, uint16_t col) {
       break;
     }
     case 3: { int is = SC(2); drawMap(SPR_ICON_FOOD, 16, cx - 8 * is, cy - 8 * is, is, false); break; }
-    case 4:  // llama
+    case 4:  // flame
       gfx->fillTriangle(cx, cy - u * 3 / 2, cx - u, cy + u, cx + u, cy + u, col);
       break;
-    case 5:  // corazon
+    case 5:  // heart
       gfx->fillCircle(cx - u / 2, cy - u / 3, u * 2 / 3, col);
       gfx->fillCircle(cx + u / 2, cy - u / 3, u * 2 / 3, col);
       gfx->fillTriangle(cx - u * 9 / 8, cy, cx + u * 9 / 8, cy, cx, cy + u * 3 / 2, col);
       break;
-    case 6:  // estrella
+    case 6:  // star
       gfx->fillTriangle(cx, cy - u * 3 / 2, cx - u * 4 / 3, cy + u * 3 / 4, cx + u * 4 / 3, cy + u * 3 / 4, col);
       gfx->fillTriangle(cx, cy + u * 3 / 2, cx - u * 4 / 3, cy - u * 3 / 4, cx + u * 4 / 3, cy - u * 3 / 4, col);
       break;
-    default:  // rayo
+    default:  // bolt
       gfx->fillTriangle(cx + u / 2, cy - u * 3 / 2, cx - u, cy + u / 4, cx + u / 4, cy + u / 4, col);
       gfx->fillTriangle(cx - u / 2, cy + u * 3 / 2, cx + u, cy - u / 4, cx - u / 4, cy - u / 4, col);
       break;
   }
 }
 
-// pagina 2: medallas, 4 x 2: conseguida = amarilla, pendiente = solo contorno
+// page 2: medals, 4 x 2: earned = yellow, pending = outline only
 void renderCardMedals() {
   static const char *const LBL[MED_COUNT] = { "Level", "Level", "Level", "Berry", "7 days", "Bond", "Final", "Fit" };
   int got = 0;
@@ -1910,7 +1910,7 @@ void renderCardMedals() {
   }
 }
 
-// pagina 3: progreso (nivel, evolucion, descuidos)
+// page 3: progress (level, evolution, neglect)
 void renderCardProgress() {
   const DexEntry &d = DEX_TBL[pet.speciesId];
   gfx->setTextColor(inkColor());
@@ -1924,7 +1924,7 @@ void renderCardProgress() {
   gfx->setCursor(centerX(lv, TS(5)), UY(84));
   gfx->print(lv);
 
-  // barra hasta el siguiente nivel (1 nivel = 60 min de juego)
+  // bar to the next level (1 level = 60 min of play)
   uint8_t into = pet.ageMinutes % MINUTES_PER_LEVEL;
   uiBar(U(103), UY(158), U(260), UY(18), into, MINUTES_PER_LEVEL, inkColor());
   char nx[32];
@@ -1934,7 +1934,7 @@ void renderCardProgress() {
   gfx->setCursor(centerX(nx, TS(2)), UY(190));
   gfx->print(nx);
 
-  // estado de evolucion
+  // evolution status
   char evoBuf[32];
   const char *evo;
   uint16_t evoCol = inkColor();
@@ -1954,7 +1954,7 @@ void renderCardProgress() {
   gfx->setCursor(centerX(evo, TS(2)), UY(240));
   gfx->print(evo);
 
-  // descuidos (retrasan la evolucion)
+  // neglect (delays evolution)
   char ms[24];
   snprintf(ms, sizeof(ms), T(S_MISTAKES_FMT), pet.careMistakes);
   gfx->setTextColor(pet.careMistakes > 0 ? uiAlert() : uiDim());
@@ -1972,14 +1972,14 @@ void renderCard() {
   gfx->flush();
 }
 
-// ---------- teclado para renombrar ----------
+// ---------- keyboard to rename ----------
 
 static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK = 30
 #define KB_COLS 6
-// 6 columnas x 5 filas centradas; la fila de abajo cabe dentro del circulo
+// 6 columns x 5 rows, centered; the bottom row fits inside the circle
 #define KB_W U(58)
 #define KB_H UY(52)
-#define KB_X (CX - (KB_COLS * KB_W - U(6)) / 2)  // la ultima columna no lleva el hueco de 6 a la derecha
+#define KB_X (CX - (KB_COLS * KB_W - U(6)) / 2)  // the last column has no 6 gap on the right
 #define KB_Y UY(108)
 
 void openKeyboard() {
@@ -1991,7 +1991,7 @@ void openKeyboard() {
 
 void renderKeyboard() {
   drawScreenBg();
-  // el nombre en una pastilla, con el cursor en acento
+  // the name in a pill, with the cursor in accent
   int fw = U(240), fh = UY(52), fx = CX - fw / 2, fy = UY(38);
   gfx->fillRoundRect(fx, fy, fw, fh, fh / 2, uiSurf());
   const char *shown = nameLen ? nameBuf : "";
@@ -2005,7 +2005,7 @@ void renderKeyboard() {
 
   for (int i = 0; i < 30; i++) {
     int x = KB_X + (i % KB_COLS) * KB_W, y = KB_Y + (i / KB_COLS) * KB_H;
-    int kw = KB_W - U(6), kh = KB_H - UY(6);  // tecla: la casilla menos 6 px de diseno de separacion
+    int kw = KB_W - U(6), kh = KB_H - UY(6);  // key: the cell minus 6 design px of spacing
     bool ok = (i == 29);
     gfx->fillRoundRect(x, y, kw, kh, U(14), ok ? UI_ACC : uiSurf());
     gfx->setTextColor(ok ? RGB565_BLACK : inkColor());
@@ -2020,15 +2020,15 @@ void renderKeyboard() {
 }
 
 void keyboardTap(int16_t x, int16_t y) {
-  // filtra ANTES de dividir: con x/y menores que KB_X/KB_Y la resta da negativo
-  // y la division entera trunca hacia cero (no hacia -inf), asi que col/row
-  // saldria 0 en vez de negativo y el filtro de abajo no lo detectaria
+  // filter BEFORE dividing: with x/y below KB_X/KB_Y the subtraction is negative
+  // and integer division truncates toward zero (not toward -inf), so col/row
+  // would come out 0 instead of negative and the filter below would not catch it
   if (x < KB_X || y < KB_Y) return;
   int col = (x - KB_X) / KB_W, row = (y - KB_Y) / KB_H;
   if (col >= KB_COLS || row >= 5) return;
   int i = row * KB_COLS + col;
   if (i >= 30) return;
-  if (i == 28) {  // borrar
+  if (i == 28) {  // delete
     if (nameLen) nameBuf[--nameLen] = 0;
   } else if (i == 29) {  // OK
     pet.rename(nameBuf);
@@ -2039,14 +2039,14 @@ void keyboardTap(int16_t x, int16_t y) {
   }
 }
 
-// ---------- galeria pokedex ----------
+// ---------- pokedex gallery ----------
 
 #define GAL_X U(73)
 #define GAL_Y UY(84)
-#define GAL_CELL U(80)    // ancho de celda
-#define GAL_CELL_Y UY(80)  // alto de celda
+#define GAL_CELL U(80)    // cell width
+#define GAL_CELL_Y UY(80)  // cell height
 
-// dibuja una miniatura centrada en su celda; sil=true la pinta en tinta
+// draws a thumbnail centered in its cell; sil=true paints it in ink
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
   uint8_t w = b[0], h = b[1], n = b[2];
   const uint8_t *pal = b + 3;
@@ -2064,15 +2064,15 @@ void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
 }
 
 void renderGallery() {
-  if (galleryDetail) {  // vista detalle: se redibuja siempre (animada)
+  if (galleryDetail) {  // detail view: always redrawn (animated)
     drawScreenBg();
     bool reg = pet.isRegistered(galleryDetail);
     char head[32];
     snprintf(head, sizeof(head), "N.%03d %s%s", galleryDetail,
              pet.isShinyRegistered(galleryDetail) ? "*" : "", reg ? dexName(galleryDetail) : "???");
     gfx->setTextColor(inkColor());
-    // auto-encoge nombres largos (no caben a t3), midiendo en vez de contar
-    // bytes; 13 caracteres a tamano 3 son los 234 px de antes.
+    // auto-shrinks long names (they do not fit at t3), measuring instead of counting
+    // bytes; 13 characters at size 3 are the 234 px from before.
     setSize(TS(3));
     bool big = textW(head, TS(3)) <= U(234);
     int gts = big ? TS(3) : TS(2);
@@ -2080,25 +2080,25 @@ void renderGallery() {
     gfx->setCursor(centerX(head, gts), UY(big ? 56 : 60));
     gfx->print(head);
     if (galleryPmd.loaded) {
-      // animado y a color si esta registrado; silueta estatica si no (estilo "?")
+      // animated and in color if registered; static silhouette if not ("?" style)
       drawPmdActM(galleryPmd, PMD_IDLE, CX, UY(300), reg ? millis() : 0, true, !reg, SC(6));
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL / 2, UY(135), SC(4), !reg);  // drawThumb centra en su celda
+      if (t) drawThumb(t, CX - GAL_CELL / 2, UY(135), SC(4), !reg);  // drawThumb centers in its cell
     }
     uiPill(CX - U(75), UY(372), U(150), UY(68), T(S_DETAIL_BACK), false);
     gfx->flush();
     return;
   }
 
-  if (!galleryDirty) return;  // la rejilla es estatica
+  if (!galleryDirty) return;  // the grid is static
   galleryDirty = false;
 
   drawScreenBg();
   char head[24];
   snprintf(head, sizeof(head), T(S_POKEDEX_FMT), pet.registeredCount());
   gfx->setTextColor(inkColor());
-  int hs = fitSize(head, TS(3), TS(2), UY(48));  // a 36 el borde de "POKEDEX" salia del circulo
+  int hs = fitSize(head, TS(3), TS(2), UY(48));  // at 36 the edge of "POKEDEX" went outside the circle
   gfx->setCursor(centerX(head, hs), UY(48));
   gfx->print(head);
 
@@ -2126,7 +2126,7 @@ void renderGallery() {
       }
     }
   }
-  // pagina actual
+  // current page
   char pg[20];
   snprintf(pg, sizeof(pg), "%d / 10", galleryPage + 1);
   gfx->setTextColor(uiDim());
@@ -2137,18 +2137,18 @@ void renderGallery() {
 }
 
 void galleryTap(int16_t x, int16_t y) {
-  if (galleryDetail) {  // volver a la rejilla
+  if (galleryDetail) {  // back to the grid
     galleryDetail = 0;
     galleryPmd.unload();
     galleryDirty = true;
     return;
   }
-  if (y < HEADER_ZONE_H) {  // tocar la cabecera = salir
+  if (y < HEADER_ZONE_H) {  // touching the header = exit
     galleryOpen = false;
     galleryPmd.unload();
     return;
   }
-  // mismo motivo que en el teclado: filtrar antes de dividir
+  // same reason as in the keyboard: filter before dividing
   if (x < GAL_X || y < GAL_Y) return;
   int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL_Y;
   if (c > 3 || r > 3) return;
@@ -2160,7 +2160,7 @@ void galleryTap(int16_t x, int16_t y) {
 
 void drawBattery() {
   int pc = batPercent();
-  if (pc < 0) return;  // sin bateria conectada
+  if (pc < 0) return;  // no battery connected
   int x = CX - U(14), y = UY(12), w = U(24), h = UY(11);
   bool charging = batCharging();
   uint16_t col = charging ? UI_BAR_OK
@@ -2168,9 +2168,9 @@ void drawBattery() {
                  : (pc >= 15) ? UI_BAR_WARN
                               : UI_BAR_BAD;
   gfx->drawRoundRect(x, y, w, h, U(2), col);
-  gfx->fillRect(x + w, y + UY(3), U(3), UY(5), col);  // borne
+  gfx->fillRect(x + w, y + UY(3), U(3), UY(5), col);  // terminal
   if (charging) {
-    // rayo de carga (zigzag) en vez de la barra de nivel
+    // charging bolt (zigzag) instead of the level bar
     uint16_t bolt = C565(0xff, 0xd9, 0x4a);
     int bx = x + w / 2;
     gfx->fillTriangle(bx + U(3), y + UY(1), bx - U(4), y + UY(6), bx + U(1), y + UY(6), bolt);
@@ -2181,29 +2181,29 @@ void drawBattery() {
   }
 }
 
-// ---------- interfaz: paleta y piezas comunes ----------
-// Oscura de noche, clara de dia. Un solo acento (amarillo) para lo primario o elegido;
-// el rojo solo avisa de una necesidad baja.
+// ---------- UI: palette and common pieces ----------
+// Dark at night, light by day. A single accent (yellow) for the primary or chosen;
+// red only warns of a low need.
 static uint16_t uiBg()    { return gNight ? RGB565_BLACK : C565(0xF3, 0xF5, 0xF4); }
 static uint16_t uiSurf()  { return gNight ? C565(0x3D, 0x3A, 0x34) : C565(0xDC, 0xE0, 0xDD); }
 static uint16_t uiFill()  { return gNight ? C565(0xED, 0xE7, 0xD6) : C565(0x8E, 0x96, 0x8F); }
 static uint16_t uiAlert() { return gNight ? C565(0xFF, 0x5A, 0x47) : C565(0xD9, 0x3A, 0x2B); }
 static uint16_t uiDim()   { return gNight ? C565(0xB4, 0xAF, 0xA2) : C565(0x52, 0x57, 0x4F); }
 
-// texto centrado en una caja
+// text centered in a box
 static void uiTextIn(int x, int y, int w, int h, const char *t, int size, uint16_t col) {
   setSize(size);
   gfx->setTextColor(col);
   gfx->setCursor(x + (w - textW(t, size)) / 2, y + (h - 7 * size) / 2);
   gfx->print(t);
 }
-// "nuevo record": pastilla amarilla sobre el fondo del minijuego
+// "new record": yellow pill over the minigame background
 static void drawRecordPill(int y) {
   int w = U(220), h = UY(40);
   gfx->fillRoundRect(CX - w / 2, y, w, h, h / 2, UI_ACC);
   uiTextIn(CX - w / 2, y, w, h, T(S_NEW_RECORD), TS(2), RGB565_BLACK);
 }
-// pastilla de boton: primaria (acento) o secundaria (superficie)
+// button pill: primary (accent) or secondary (surface)
 static void uiPill(int x, int y, int w, int h, const char *t, bool primary) {
   gfx->fillRoundRect(x, y, w, h, h / 2, primary ? UI_ACC : uiSurf());
   setSize(TS(3));
@@ -2211,8 +2211,8 @@ static void uiPill(int x, int y, int w, int h, const char *t, bool primary) {
   uiTextIn(x, y, w, h, t, sz, primary ? RGB565_BLACK : inkColor());
 }
 
-// base del panel inferior: su borde superior se curva hacia arriba en los lados
-// (como el arco de los botones)
+// base of the bottom panel: its top edge curves upward at the sides
+// (like the arc of the buttons)
 static void drawPanelBase() {
   uint16_t bg = uiBg();
   gfx->fillRect(0, PANEL_Y, UI_W, UI_H - PANEL_Y, bg);
@@ -2224,10 +2224,10 @@ static void drawPanelBase() {
   }
 }
 
-// una necesidad: circulo que se llena de abajo arriba; por debajo del 25% anillo y relleno rojos
+// a need: circle that fills from bottom to top; below 25% the ring and fill turn red
 static void drawNeed(int i, int level) {
   int cx = buttons[i].cx, cy = buttons[i].cy, r = BTN_R;
-  bool off = pet.sleeping && i != 2;  // durmiendo solo funciona LUZ
+  bool off = pet.sleeping && i != 2;  // while sleeping only LIGHT works
   bool low = level < 25 && !pet.sleeping;
   if (i == 2 && pet.sleeping) {
     gfx->fillCircle(cx, cy, r, UI_ACC);
@@ -2245,7 +2245,7 @@ static void drawNeed(int i, int level) {
       for (int k = 0; k < U(4); k++) gfx->drawCircle(cx, cy, r - k, uiAlert());
   }
   if (!off) {
-    int is = SC(3);  // icono 16x16 a escala entera, centrado
+    int is = SC(3);  // 16x16 icon at an integer scale, centered
     drawMap(buttons[i].icon, 16, cx - 8 * is, cy - 8 * is, is, false);
   }
 }
@@ -2256,11 +2256,11 @@ void drawDeck() {
   drawNeed(3, pet.hygiene);
 }
 
-// cabecera: nombre y, debajo, el nivel o lo que le pasa (en rojo si es una necesidad)
+// header: name and, below it, the level or what is happening to the pet (in red if it is a need)
 void drawHeader(const char *name, const char *msg, bool alert) {
   drawBattery();
   gfx->setTextColor(inkColor());
-  int hs = fitSize(name, TS(3), TS(2), UY(52));  // nombres largos no caben a tamano 3 en la parte alta del circulo
+  int hs = fitSize(name, TS(3), TS(2), UY(52));  // long names do not fit at size 3 in the upper part of the circle
   gfx->setCursor(centerX(name, hs), UY(52) + (TS(3) * 7 - textH()) / 2);
   gfx->print(name);
   gfx->setTextColor(alert ? (gNight ? C565(0xFF, 0x6B, 0x58) : C565(0xB3, 0x26, 0x1E)) : uiDim());
@@ -2269,34 +2269,34 @@ void drawHeader(const char *name, const char *msg, bool alert) {
   gfx->print(msg);
 }
 
-// animacion de la ceremonia (10s): despedida = reverencia con corazones y se
-// aleja caminando; escapada = se asusta y sale corriendo. Sustituye al idle.
+// ceremony animation (10s): farewell = bow with hearts and it
+// walks away; run-away = gets scared and runs off. Replaces idle.
 void drawCeremony() {
-  if (!pmd.loaded) { drawPet(); return; }  // respaldo si no hay sprite PMD
+  if (!pmd.loaded) { drawPet(); return; }  // fallback if there is no PMD sprite
   uint32_t now = millis();
-  float t = pet.ceremonyT();               // 0..1 a lo largo de los 10s
+  float t = pet.ceremonyT();               // 0..1 over the 10s
   bool panic = (pet.ceremony == CER_RUNAWAY);
   int x = CX, y = PET_GROUND;
   uint8_t act = PMD_IDLE;
 
   if (panic) {
-    // final triste: penumbra azulada + lluvia
+    // sad ending: bluish gloom + rain
     for (int i = 0; i < 46; i++) {
       int rx = U(i * 47 + now / 3) % UI_W;
       int ry = UY(i * 91 + now / 2) % (UI_H + UY(4));
       gfx->drawLine(rx, ry, rx - U(3), ry + UY(12), C565(0x6a, 0x84, 0xb0));
     }
     bool fade = false;
-    if (t < 0.30f) {                       // cabizbajo, temblando
+    if (t < 0.30f) {                       // head down, trembling
       act = pmd.has(PMD_HURT) ? PMD_HURT : PMD_IDLE;
       x = CX + (int)(U(4) * sinf(now * 0.04f));
-    } else {                               // se aleja despacio y se desvanece
+    } else {                               // slowly walks away and fades
       act = pmd.has(PMD_WALKL) ? PMD_WALKL : PMD_IDLE;
       x = CX - (int)(((t - 0.30f) / 0.70f) * (CX + U(120)));
-      fade = (t > 0.6f) && ((now / 160) % 2 == 0);  // parpadea hacia la silueta
+      fade = (t > 0.6f) && ((now / 160) % 2 == 0);  // blinks toward the silhouette
     }
-    drawPmdAct(act, x, y, now, true, fade, SC(5));  // fade=silueta: se difumina al irse
-    // lagrima cayendo del bicho
+    drawPmdAct(act, x, y, now, true, fade, SC(5));  // fade=silhouette: blurs out as it leaves
+    // tear falling from the pet
     if (t < 0.55f) {
       int ty = y - UY(150) + UY((int)((now / 6) % 40));
       gfx->fillRect(x + U(6), ty, SC(3), UY(6), C565(0x9a, 0xc4, 0xe8));
@@ -2304,7 +2304,7 @@ void drawCeremony() {
     return;
   }
 
-  // despedida epica: halo dorado pulsante + chispas y corazones que ascienden
+  // epic farewell: pulsing golden halo + sparks and hearts rising
   int gcy = PET_GROUND - UY(96);
   for (int k = 0; k < 4; k++) {
     int r = U(60 + k * 34) + (int)(U(10) * sinf(now * 0.02f));
@@ -2312,25 +2312,25 @@ void drawCeremony() {
   }
   for (int i = 0; i < 16; i++) {
     int px = U(i * 71 + 28) % UI_W;
-    int py = UY(410) - UY((int)((now / 8 + i * 70) % 360));   // suben y reaparecen abajo
+    int py = UY(410) - UY((int)((now / 8 + i * 70) % 360));   // rise and reappear at the bottom
     if (py < UY(30)) continue;
-    if (i % 4 == 0) drawMap(SPR_HEART, 32, px - U(8), py - UY(8), SC(1), false);  // corazoncito
+    if (i % 4 == 0) drawMap(SPR_HEART, 32, px - U(8), py - UY(8), SC(1), false);  // little heart
     else gfx->fillRect(px, py, SC(4), SC(4), (i % 2) ? C565(0xff, 0xe7, 0x9f) : C565(0xff, 0x9a, 0xc0));
   }
 
-  if (t < 0.45f) {                         // reverencia / pose de despedida
+  if (t < 0.45f) {                         // bow / farewell pose
     act = pmd.has(PMD_POSE) ? PMD_POSE : (pmd.has(PMD_NOD) ? PMD_NOD : PMD_IDLE);
-  } else {                                 // se aleja por la derecha
+  } else {                                 // walks off to the right
     act = pmd.has(PMD_WALKR) ? PMD_WALKR : PMD_IDLE;
     x = CX + (int)(((t - 0.45f) / 0.55f) * (CX + U(140)));
   }
   drawPmdAct(act, x, y, now, true, false, SC(5));
-  if (pet.showHeart())                     // corazon grande siguiendo al bicho
+  if (pet.showHeart())                     // big heart following the pet
     drawMap(SPR_HEART, 32, x + U(50), y - UY(190), SC(2), false);
 }
 
-// dialogo de decision a pantalla completa (2 pastillas apiladas): evolucionar/mantener o
-// despedirse/quedaros. Lo que no se deshace queda secundario; la opcion de seguir, en acento.
+// full-screen decision dialog (2 stacked pills): evolve/keep or
+// say goodbye/stay together. What cannot be undone stays secondary; the option to carry on is in accent.
 void drawChoiceDialog() {
   const char *q, *o1, *o2;
   bool evo = (choiceKind == 1);
@@ -2343,7 +2343,7 @@ void drawChoiceDialog() {
   uiPill(CHOICE_X, CHOICE_B2_Y, CHOICE_W, CHOICE_BH, o2, !evo);
 }
 
-// dialogo "soltar?" a pantalla completa: mantener (acento) arriba, soltar (contorno rojo) debajo
+// full-screen "release?" dialog: keep (accent) on top, release (red outline) below
 void drawReleaseDialog() {
   if (pmd.loaded) drawPmdAct(PMD_IDLE, CX, UY(160), millis(), true, false, SC(3));
   char q[28];
@@ -2356,13 +2356,13 @@ void drawReleaseDialog() {
   uiTextIn(YES_X, YES_Y, YES_W, YES_H, T(S_YES), TS(2), uiAlert());
 }
 
-// botones-CTA: pastilla amarilla que late poco (evolucionar, despedida) o apagada (abandono)
+// CTA buttons: yellow pill that pulses gently (evolve, farewell) or muted (neglect)
 static void drawCta(int bx, int by, int bw, int bh, int amp, float rate, bool primary, const char *t, int size, bool wrapped) {
   int p = (int)(amp * sinf(millis() * rate));
   int x = bx - p, y = by - p, w = bw + 2 * p, h = bh + 2 * p;
   gfx->fillRoundRect(x, y, w, h, h / 2, primary ? UI_ACC : uiSurf());
   gfx->setTextColor(primary ? RGB565_BLACK : inkColor());
-  if (wrapped) drawWrapped(t, size, CX, y + h / 2, w - U(48), 2, false);  // con nombres largos pasa a dos lineas
+  if (wrapped) drawWrapped(t, size, CX, y + h / 2, w - U(48), 2, false);  // with long names it goes to two lines
   else uiTextIn(x, y, w, h, t, size, primary ? RGB565_BLACK : inkColor());
 }
 void drawEvolveButton() { drawCta(EVO_BTN_X, EVO_BTN_Y, EVO_BTN_W, EVO_BTN_H, U(3), 0.006f, true, T(S_EVO_TAP), TS(3), false); }
@@ -2372,7 +2372,7 @@ void drawFarewellButton() {
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
   drawCta(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H, U(2), 0.005f, true, buf, TS(2), true);
 }
-// final triste: superficie apagada y latido lento
+// sad ending: muted surface and slow pulse
 void drawRunawayButton() {
   char buf[52];
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
@@ -2380,45 +2380,45 @@ void drawRunawayButton() {
   drawCta(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H, U(2), 0.003f, false, buf, TS(2), true);
 }
 
-// animacion epica de evolucion: halo radial + rayos giratorios + parpadeo del
-// sprite acelerando + chispas que salen disparadas + fogonazo final
+// epic evolution animation: radial halo + rotating rays + accelerating
+// sprite blink + sparks shooting out + final flash
 void drawEvolveFX(uint32_t now) {
   float t = pet.evolveT();          // 0..1
   int cx = CX, cy = PET_GROUND - UY(96);
 
-  // halo radial que crece y pulsa
+  // radial halo that grows and pulses
   int halo = U(36) + (int)(t * U(150)) + (int)(U(8) * sinf(now * 0.02f));
   for (int k = 0; k < 4; k++) {
     int r = halo - U(k * 7);
     if (r > 0) gfx->drawCircle(cx, cy, r, UI_WHITE);
   }
-  // rayos giratorios desde el centro del bicho
+  // rotating rays from the center of the pet
   float base = now * 0.004f;
   for (int i = 0; i < 12; i++) {
     float a = base + i * (float)(PI / 6);
     int len = U(90) + (int)(U(70) * (0.5f + 0.5f * sinf(now * 0.012f + i)));
     gfx->drawLine(cx, cy, cx + (int)(cosf(a) * len), cy + (int)(sinf(a) * len), UI_WHITE);
   }
-  // parpadeo entre la forma ANTERIOR y la NUEVA (siluetas), acelerando; al
-  // final (t>0.9) se queda fija en la nueva para el fogonazo de revelado
+  // blink between the PREVIOUS and the NEW form (silhouettes), accelerating; at the
+  // end (t>0.9) it stays fixed on the new one for the reveal flash
   int period = 60 + (int)(220 * (1.0f - t));
   bool showOld = t < 0.9f && evoPmd.loaded && ((now / period) % 2) == 0;
   if (showOld) drawPmdActM(evoPmd, PMD_IDLE, cx, PET_GROUND, 0, true, true, SC(5));
   else drawPmdAct(PMD_IDLE, cx, PET_GROUND, 0, true, true, SC(5));
-  // chispas que salen disparadas
+  // sparks shooting out
   for (int i = 0; i < 10; i++) {
     float a = i * (float)(PI / 5) + t * 4.0f;
     int d = (int)(U(now / 14 + i * 33) % U(200));
     int sx = cx + (int)(cosf(a) * d), sy = cy + (int)(sinf(a) * d);
-    int q = SC(5);  // chispa cuadrada centrada en (sx, sy)
+    int q = SC(5);  // square spark centered at (sx, sy)
     gfx->fillRect(sx - q / 2, sy - q / 2, q, q, (i & 1) ? C565(0xff, 0xe0, 0x70) : UI_WHITE);
   }
-  // fogonazo final antes de revelar la forma nueva
+  // final flash before revealing the new form
   if (t > 0.9f) gfx->fillCircle(cx, cy, (int)(U(300) * (t - 0.9f) / 0.1f), UI_WHITE);
 }
 
-// Carga el sprite de un vecino por pase (cada lectura de la SD tarda); suelta los huecos que
-// se vaciaron o cambiaron de bicho.
+// Loads one neighbor's sprite per pass (each SD read is slow); frees slots that
+// were emptied or changed pet.
 void ensureNeighbors() {
   const NbEntry *sh[NB_MAX_SHOWN];
   int n = nearbyShown(sh);
@@ -2426,7 +2426,7 @@ void ensureNeighbors() {
     NbSlot want = i < n ? NbSlot{ sh[i]->id, sh[i]->species, sh[i]->shiny } : NbSlot{ 0, 0, false };
     NbSlot &have = nbSlot[i];
     if (want.id == have.id && want.species == have.species && want.shiny == have.shiny) continue;
-    if (want.id) {  // como mucho una carga por segundo: un desconocido que se invente ids no satura la SD
+    if (want.id) {  // at most one load per second: a stranger who makes up ids does not saturate the SD
       static uint32_t lastLoad = 0;
       uint32_t now = millis();
       if (!sdReady || (lastLoad && now - lastLoad < 1000)) continue;
@@ -2436,26 +2436,26 @@ void ensureNeighbors() {
     have = want;
     if (want.id) {
       nbPmd[i].load(want.species, want.shiny);
-      return;  // uno por pase
+      return;  // one per pass
     }
   }
 }
 
-// Los vecinos se quedan quietos detras y a los lados del bicho, mas pequenos y mas arriba, como
-// un grupo: dos delante (a los lados) y dos al fondo (entre medias, mas altos y chicos).
+// Neighbors stay still behind and beside the pet, smaller and higher up, like
+// a group: two in front (at the sides) and two at the back (between them, higher and smaller).
 void drawNeighbors() {
   const NbEntry *sh[NB_MAX_SHOWN];
   int n = nearbyShown(sh);
   struct Pos { int16_t dx, up; uint8_t s; };
   const Pos pos[NB_MAX_SHOWN] = { { -135, 14, 3 }, { 135, 14, 3 }, { -70, 34, 2 }, { 70, 34, 2 } };
-  const uint8_t order[NB_MAX_SHOWN] = { 2, 3, 0, 1 };  // primero el fondo
+  const uint8_t order[NB_MAX_SHOWN] = { 2, 3, 0, 1 };  // back ones first
   uint32_t now = millis();
   for (uint8_t i : order) {
     if (i >= n) continue;
     PmdMon &m = nbPmd[i];
     if (!m.loaded || nbSlot[i].id != sh[i]->id) continue;
     uint8_t act = sh[i]->sleeping && m.has(PMD_SLEEP) ? PMD_SLEEP : PMD_IDLE;
-    uint32_t t = now + (sh[i]->id % 997) * 13;  // cada uno en su momento de la animacion
+    uint32_t t = now + (sh[i]->id % 997) * 13;  // each at its own moment of the animation
     drawPmdActM(m, act, CX + U(pos[i].dx), PET_GROUND - UY(pos[i].up), t, true, false, SC(pos[i].s));
   }
 }
@@ -2471,10 +2471,10 @@ void drawPet() {
   }
   int fi = flashIdxForDex(pet.speciesId);
   if (fi < 0) {
-    // sin SD y sin sprite de flash: aviso claro de que faltan sprites
+    // no SD and no flash sprite: clear notice that sprites are missing
     gfx->setTextColor(inkColor());
     setSize(TS(6));
-    gfx->setCursor(CX - 3 * TS(6), PET_CY - UY(80));  // "?" mide 6 px por escala: la mitad es 3 * escala
+    gfx->setCursor(CX - 3 * TS(6), PET_CY - UY(80));  // "?" is 6 px wide per scale: half is 3 * scale
     gfx->print("?");
     setSize(TS(2));
     const char *l1 = T(S_NO_SPRITES);
@@ -2490,7 +2490,7 @@ void drawPet() {
   int x = CX - 16 * s;
   int y = PET_CY - 16 * s;
 
-  // animacion de evolucion: alterna la silueta de la forma anterior y la nueva
+  // evolution animation: alternates the silhouette of the previous and the new form
   if (pet.evolving()) {
     bool flash = (millis() / 300) % 2;
     int16_t showDex = (flash && pet.prevSpeciesId >= 0) ? pet.prevSpeciesId : pet.speciesId;
@@ -2504,11 +2504,11 @@ void drawPet() {
   }
 
   PetMood m = pet.mood();
-  if (m == MOOD_HAPPY && (millis() / 500) % 2) y -= UY(6);  // saltito
+  if (m == MOOD_HAPPY && (millis() / 500) % 2) y -= UY(6);  // little hop
 
   drawMap(sp.sprite, SPRITE_H, x, y, s, false);
 
-  // expresiones superpuestas usando las anclas de la especie
+  // overlaid expressions using the species anchors
   bool blink = (millis() % 3500 < 300);
   if (m == MOOD_SLEEPING || blink) {
     overlayEye(sp, x, y, s, sp.eyeColL);
@@ -2520,7 +2520,7 @@ void drawPet() {
   if (pet.showHeart()) drawMap(SPR_HEART, 32, x + 20 * s, y - 2 * s, SC(2), false);
 }
 
-// ---------- escena de bano ----------
+// ---------- bath scene ----------
 
 void startBath() {
   if (pet.isEgg() || pet.sleeping || pet.ceremony || bathUntil) return;
@@ -2542,7 +2542,7 @@ void drawBath() {
     if (bathPending) {
       bathPending = false;
       pet.clean();
-      // pose de alegria al quedar limpio
+      // joy pose on getting clean
       if (pmd.has(PMD_POSE)) {
         beh.mode = 2;
         beh.act = PMD_POSE;
@@ -2554,7 +2554,7 @@ void drawBath() {
   }
   uint32_t left = bathUntil - now;
   if (left > 800) {
-    // espuma: pompas meciendose y subiendo poco a poco
+    // foam: bubbles swaying and slowly rising
     float t = now / 220.0f;
     for (auto &b : bubbles) {
       int bx = b.x + (int)(sinf(t + b.ph) * U(6));
@@ -2564,19 +2564,19 @@ void drawBath() {
       gfx->fillCircle(bx - b.r / 3, by - b.r / 3, b.r / 4, UI_BG_DAY);
     }
   } else {
-    // las pompas revientan: destellos
+    // the bubbles pop: sparkles
     for (int i = 0; i < 8; i++) {
       auto &b = bubbles[i];
       int sx = b.x + U((i % 3) * 6 - 6), sy = b.y - UY(18);
       uint16_t col = (i % 2) ? UI_BAR_WARN : UI_WHITE;
-      int th = SC(3), len = U(13);  // cruz centrada en (sx, sy)
+      int th = SC(3), len = U(13);  // cross centered at (sx, sy)
       gfx->fillRect(sx - len / 2, sy - th / 2, len, th, col);
       gfx->fillRect(sx - th / 2, sy - len / 2, th, len, col);
     }
   }
 }
 
-// ---------- mascota PMD: comportamiento ----------
+// ---------- PMD pet: behavior ----------
 
 uint32_t pmdActTotalMs(const PmdAct &a) {
   uint32_t t = 0;
@@ -2589,8 +2589,8 @@ uint8_t pmdFrameAt(const PmdAct &a, uint32_t t, bool loop) {
   if (!loop && t >= total) return a.frames - 1;
   t %= total;
   uint8_t i = 0;
-  // guarda: nunca mas vueltas que frames, por si un .bin corrupto trae ms[]=0
-  // pese al saneo de la carga (defensa en profundidad)
+  // guard: never more loops than frames, in case a corrupt .bin brings ms[]=0
+  // despite the sanitizing on load (defense in depth)
   for (uint8_t guard = 0; guard < a.frames && t >= a.ms[i]; guard++) {
     t -= a.ms[i];
     i = (i + 1) % a.frames;
@@ -2598,8 +2598,8 @@ uint8_t pmdFrameAt(const PmdAct &a, uint32_t t, bool loop) {
   return i;
 }
 
-// dibuja una accion anclada por la base (centro-x, suelo) y devuelve su escala
-// dibuja una accion de un PmdMon concreto (m); drawPmdAct usa el global pmd
+// draws an action anchored at its base (center-x, ground) and returns its scale
+// draws an action of a specific PmdMon (m); drawPmdAct uses the global pmd
 void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool sil, uint8_t maxS) {
   const PmdAct &a = m.acts[actId];
   if (!a.frames) return;
@@ -2607,11 +2607,11 @@ void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t, bool
   if (sBase < SC(2)) sBase = SC(2);
   if (sBase > maxS) sBase = maxS;
   int s = sBase;
-  while (s > SC(2) && a.h * s > UY(250)) s--;  // acciones con frame grande (ataque)
+  while (s > SC(2) && a.h * s > UY(250)) s--;  // actions with a large frame (attack)
   uint8_t fi = pmdFrameAt(a, t, loop);
   const uint8_t *fr = a.data + (uint32_t)fi * a.w * a.h;
-  // anclar por los pies (a.base), no por el alto del lienzo: asi las acciones
-  // con padding distinto (Hurt, Eat...) quedan todas a la misma altura de suelo
+  // anchor by the feet (a.base), not by the canvas height: this way actions
+  // with different padding (Hurt, Eat...) all end up at the same ground height
   int x0 = cx - a.w * s / 2, y0 = groundY - (a.base ? a.base : a.h) * s;
   for (int r = 0; r < a.h; r++) {
     const uint8_t *row = fr + r * a.w;
@@ -2623,18 +2623,18 @@ void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool 
   drawPmdActM(pmd, actId, cx, groundY, t, loop, sil, maxS);
 }
 
-// elige el siguiente capricho del bicho cuando esta contento
+// picks the pet's next whim when it is content
 void behNext() {
   uint32_t now = millis();
   beh.t0 = now;
   int r = random(100);
   if (r < 35 && (pmd.has(PMD_WALKL) || pmd.has(PMD_WALKR))) {
-    beh.mode = 1;  // paseo
+    beh.mode = 1;  // walk
     beh.targetX = U(150) + random(U(176));
     beh.until = now + 15000;
   } else if (r < 60) {
-    // gesto aleatorio entre los disponibles
-    // (Hop fuera: salta demasiado alto; Sit fuera: mira hacia atras)
+    // random gesture among the available ones
+    // (Hop left out: jumps too high; Sit left out: looks backward)
     static const uint8_t flair[] = { PMD_POSE, PMD_NOD, PMD_BREATH };
     uint8_t pick[3], n = 0;
     for (uint8_t f : flair)
@@ -2648,7 +2648,7 @@ void behNext() {
     beh.mode = 0;
     beh.until = now + 2000 + random(3000);
   } else {
-    beh.mode = 0;  // mirar al frente
+    beh.mode = 0;  // look straight ahead
     beh.until = now + 2000 + random(3000);
   }
 }
@@ -2660,7 +2660,7 @@ void drawPetPMD() {
     drawEvolveFX(now);
     return;
   }
-  if (evoPmd.loaded) evoPmd.unload();  // termino la evolucion: libera la forma anterior
+  if (evoPmd.loaded) evoPmd.unload();  // evolution finished: frees the previous form
 
   PetMood m = pet.mood();
   uint8_t act;
@@ -2674,23 +2674,23 @@ void drawPetPMD() {
   } else if (m == MOOD_SAD && pmd.has(PMD_HURT)) {
     act = PMD_HURT;
   } else {
-    // contento: el planificador decide (idle / paseo / gesto)
+    // content: the scheduler decides (idle / walk / gesture)
     if (now > beh.until) behNext();
-    if (beh.mode != 1) walkLast = 0;  // al volver a caminar no se cuenta el tiempo parado
+    if (beh.mode != 1) walkLast = 0;  // when walking again, the time spent standing is not counted
     if (beh.mode == 1) {
       float d = beh.targetX - beh.x;
       if (fabsf(d) < 4.0f * UI_F) {
         behNext();
         act = PMD_IDLE;
       } else {
-        // 30 px/s de diseno (3 px por frame a 10 fps), midiendo el tiempo real: con menos frames
-        // por segundo camina igual de rapido
+        // 30 design px/s (3 px per frame at 10 fps), measuring real time: with fewer frames
+        // per second it walks just as fast
         uint32_t dt = walkLast ? now - walkLast : 100;
-        uint32_t cap = frameIntervalMs(powerCtx(now)) + 100;  // un hueco mayor (otra pantalla de por medio) no es un paso largo
+        uint32_t cap = frameIntervalMs(powerCtx(now)) + 100;  // a larger gap (another screen in between) is not a long step
         if (dt > cap) dt = cap;
         walkLast = now;
         float step = 30.0f * UI_F * dt / 1000.0f;
-        if (step > fabsf(d)) step = fabsf(d);  // un frame lento no sobrepasa el destino
+        if (step > fabsf(d)) step = fabsf(d);  // a slow frame does not overshoot the destination
         beh.x += d > 0 ? step : -step;
         act = (d > 0) ? PMD_WALKR : PMD_WALKL;
       }
@@ -2706,9 +2706,9 @@ void drawPetPMD() {
   if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + U(50), PET_GROUND - UY(190), SC(2), false);
 }
 
-// sprite animado desde la SD: zoom entero por pixel, frames a su ritmo
+// animated sprite from the SD: integer zoom per pixel, frames at their own pace
 void drawPetSD() {
-  int s = UY(200) / mon.h;  // como en la carga (200 / alto), pero con el escenario escalado
+  int s = UY(200) / mon.h;  // as on load (200 / height), but with the scene scaled
   if (s < SC(2)) s = SC(2);
   if (s > SC(5)) s = SC(5);
   int w = mon.w * s, h = mon.h * s;
@@ -2719,7 +2719,7 @@ void drawPetSD() {
   if (pet.evolving()) {
     sil = (millis() / 300) % 2;
   } else if (pet.mood() == MOOD_HAPPY && (millis() / 500) % 2) {
-    y -= UY(6);  // saltito
+    y -= UY(6);  // little hop
   }
 
   uint16_t fm = mon.frameMs ? mon.frameMs : 100;
@@ -2731,17 +2731,17 @@ void drawPetSD() {
             [&](int c0, int len, int k) { gfx->fillRect(x + c0 * s, y + r * s, len * s, s, sil ? INK_K : mon.pal[k]); });
   }
 
-  // emotes en vez de expresiones (los sprites importados no tienen anclas)
+  // emotes instead of expressions (imported sprites have no anchors)
   if (pet.showHeart()) drawMap(SPR_HEART, 32, x + w - U(30), y - UY(50), SC(2), false);
 }
 
-// ojo cerrado: borra el ojo 3x4 y dibuja el parpado
+// closed eye: erases the 3x4 eye and draws the eyelid
 void overlayEye(const Species &sp, int x, int y, int s, int col) {
   gfx->fillRect(x + col * s, y + sp.eyeRow * s, 3 * s, 4 * s, sp.bodyColor);
   gfx->fillRect(x + col * s, y + (sp.eyeRow + 2) * s, 3 * s, s, INK_K);
 }
 
-// borra la sonrisa base y pinta boca abierta (comer) o ceno (triste)
+// erases the base smile and paints an open mouth (eating) or a frown (sad)
 void overlayMouth(const Species &sp, int x, int y, int s, bool open) {
   int mc = sp.mouthCol, mr = sp.mouthRow;
   gfx->fillRect(x + (mc - 3) * s, y + mr * s, 7 * s, 2 * s, sp.bodyColor);
@@ -2770,7 +2770,7 @@ const char *eggMsg() {
 
 const char *statusMsg() {
   if (pet.evolving()) return T(S_EVOLVING);
-  if (bathUntil) return "Splish splash!";  // onomatopeya universal
+  if (bathUntil) return "Splish splash!";  // universal onomatopoeia
   if (pet.sleeping) return "Zzz...";
   if (pet.eating()) return T(S_EATING);
   if (pet.showHeart()) return T(S_LIKES);
@@ -2783,7 +2783,7 @@ const char *statusMsg() {
   return T(S_HAPPY);
 }
 
-// dibuja un mapa de n x n pixeles escalado; silhouette=true lo pinta en tinta
+// draws an n x n pixel map, scaled; silhouette=true paints it in ink
 void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette) {
   for (int r = 0; r < n; r++) {
     const char *row = map[r];

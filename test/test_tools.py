@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests de las herramientas del taller (tools/) y de los ficheros generados.
+"""Tests of the workshop tools (tools/) and of the generated files.
 
   python3 test/test_tools.py
 """
@@ -17,8 +17,8 @@ sys.path.insert(0, TOOLS)
 
 
 class TestLayoutConventions(unittest.TestCase):
-    """TS() es para tamanos de texto y SC() para escalas de sprite. Hoy hacen lo mismo,
-    pero se mantienen separados (ver layout.h): esto vigila que cada uno se use donde toca."""
+    """TS() is for text sizes and SC() for sprite scales. Today they do the same thing,
+    but they are kept separate (see layout.h): this checks that each is used where it belongs."""
 
     @classmethod
     def setUpClass(cls):
@@ -26,7 +26,7 @@ class TestLayoutConventions(unittest.TestCase):
             cls.src = fh.read()
 
     def llamadas(self, nombre):
-        """Argumentos completos (parentesis equilibrados) de cada llamada a `nombre(`."""
+        """Full arguments (balanced parentheses) of each call to `nombre(`."""
         for m in re.finditer(r'\b' + nombre + r'\(', self.src):
             i, depth = m.end(), 1
             while depth and i < len(self.src):
@@ -69,7 +69,7 @@ class TestToolsCompile(unittest.TestCase):
 
 
 class TestDexData(unittest.TestCase):
-    """Invariantes de la fuente de datos de la Pokedex."""
+    """Invariants of the Pokedex data source."""
 
     @classmethod
     def setUpClass(cls):
@@ -93,7 +93,7 @@ class TestDexData(unittest.TestCase):
             self.assertTrue(s.isascii(), f'slug no ASCII: {s}')
 
     def test_los_nombres_de_pantalla_son_ascii_en_mayusculas(self):
-        # la fuente GFX del firmware no tiene acentos ni minusculas
+        # the firmware GFX font has no accents or lowercase
         for num, slug, display, *_ in self.DEX:
             self.assertTrue(display.isascii(), f'{num} {display} no es ASCII')
             self.assertEqual(display, display.upper(), f'{num} {display} lleva minusculas')
@@ -148,7 +148,7 @@ class TestDexData(unittest.TestCase):
 
 
 class TestGeneratedFiles(unittest.TestCase):
-    """dex.h esta generado: si no coincide con su generador, alguien lo edito a mano."""
+    """dex.h is generated: if it does not match its generator, someone edited it by hand."""
 
     def test_gen_dex_reproduce_dex_h(self):
         tmp = tempfile.mkdtemp(prefix='tamapoke-gen-')
@@ -174,7 +174,7 @@ class TestGeneratedFiles(unittest.TestCase):
 
 
 class TestSketchSanity(unittest.TestCase):
-    """Comprobaciones baratas sobre el .ino que no necesitan compilarlo."""
+    """Cheap checks on the .ino that do not need compiling it."""
 
     @classmethod
     def setUpClass(cls):
@@ -182,8 +182,8 @@ class TestSketchSanity(unittest.TestCase):
             cls.ino = fh.read()
 
     def test_el_sketch_no_lleva_caracteres_no_ascii_en_literales_de_pantalla(self):
-        # los comentarios pueden llevar lo que quieran; los literales, no:
-        # la fuente GFX es ASCII y un acento sale como basura
+        # comments may contain whatever they want; literals may not:
+        # the GFX font is ASCII and an accent comes out as garbage
         for lineno, line in enumerate(self.ino.splitlines(), 1):
             code = line.split('//')[0]
             for chunk in code.split('"')[1::2]:
@@ -203,25 +203,25 @@ class TestSketchSanity(unittest.TestCase):
 
         fw = re.search(r'#define FW_VERSION "([^"]+)"', self.ino).group(1)
         badge = re.search(r'badge/firmware-v([\d.]+)-', leer('README.md')).group(1)
-        # la primera cabecera numerada (la de [Unreleased], si hay, no cuenta)
+        # the first numbered header (the [Unreleased] one, if any, doesn't count)
         log = re.search(r'^## \[(\d[\d.]*)\]', leer('CHANGELOG.md'), re.M).group(1)
         self.assertEqual((fw, badge), (log, log), 'FW_VERSION, badge del README y CHANGELOG no coinciden')
 
 
 class TestBuffersDeTexto(unittest.TestCase):
-    """Cada snprintf(buf, sizeof(buf), T(S_x), ...) cabe en su buffer.
+    """Every snprintf(buf, sizeof(buf), T(S_x), ...) fits in its buffer.
 
-    Un buffer corto trunca el texto en silencio: a veces corta a mitad de un caracter, que
-    la fuente ya no sabe dibujar. No lo avisa ni el compilador ni la pantalla, asi que se
-    comprueba aqui con el peor caso de cada argumento segun su tipo:
+    A short buffer silently truncates the text: sometimes it cuts in the middle of a character, which
+    the font can no longer draw. Neither the compiler nor the screen warns about it, so it is
+    checked here with the worst case of each argument according to its type:
 
-      %u / %d  -> 5 cifras (todos los argumentos son de 16 bits o menos)
-      %lu      -> 10 cifras
-      %s       -> lo que declare ARGS_S; un %s sin declarar hace fallar el
-                  test, para que quien lo anada piense cuanto puede ocupar
+      %u / %d  -> 5 digits (all arguments are 16 bits or less)
+      %lu      -> 10 digits
+      %s       -> whatever ARGS_S declares; an undeclared %s makes the
+                  test fail, so whoever adds it thinks about how much it can take
     """
 
-    ARGS_S = {  # que puede llegar por cada %s, en orden
+    ARGS_S = {  # what may arrive for each %s, in order
         'S_NAME_FMT': ('estrella', 'nombre_o_apodo'),
         'S_RELEASE_FMT': ('nombre',),
         'S_INFO_FMT': ('baya',),
@@ -249,11 +249,11 @@ class TestBuffersDeTexto(unittest.TestCase):
 
     @staticmethod
     def bytes_literal(literal):
-        """Bytes que ocupa en memoria un literal C escrito como en el fuente."""
+        """Bytes a C literal occupies in memory, written as in the source."""
         cuerpo = literal[1:-1].encode('utf-8')
         n = i = 0
         while i < len(cuerpo):
-            if cuerpo[i] == 0x5C:  # barra invertida: \ooo octal, o \n \" \\ ...
+            if cuerpo[i] == 0x5C:  # backslash: \ooo octal, or \n \" \\ ...
                 j = i + 1
                 while j < len(cuerpo) and j < i + 4 and 0x30 <= cuerpo[j] <= 0x37:
                     j += 1
@@ -265,7 +265,7 @@ class TestBuffersDeTexto(unittest.TestCase):
 
     def peor_caso(self, sid):
         lit = self.LIT[sid]
-        total = self.bytes_literal(lit) + 1  # + terminador
+        total = self.bytes_literal(lit) + 1  # + terminator
         pendientes = list(self.ARGS_S.get(sid, ()))
         for m in self.ESPEC.finditer(lit):
             total -= len(m.group(0))

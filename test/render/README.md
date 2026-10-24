@@ -1,21 +1,21 @@
-# Renderer del host
+# Host renderer
 
-Compila `TamaPoke.ino` tal cual contra el codigo grafico real de la libreria
-*GFX Library for Arduino* (`Arduino_GFX.cpp`, `Arduino_Canvas.cpp`) en el PC, lleva
-el juego a cada pantalla (huevo, escena de dia/noche, galeria, ficha, teclado,
-reloj, minijuegos, despedida) y guarda una captura de cada una. Sirve para ver y
-comparar la interfaz sin placa.
+Builds `TamaPoke.ino` as is against the real graphics code of the
+*GFX Library for Arduino* library (`Arduino_GFX.cpp`, `Arduino_Canvas.cpp`) on the PC, takes
+the game to every screen (egg, day/night scene, gallery, card, keyboard,
+clock, minigames, farewell) and saves a screenshot of each. It lets you see and
+compare the interface without a board.
 
-    make shots                # build/shots/*.ppm, 466x466, ingles
+    make shots                # build/shots/*.ppm, 466x466, English
 
-- Circulos, rectangulos redondeados y texto salen del mismo codigo que corre en la placa.
-- Los sprites salen de `tools/sdcard` (o de `SD_DIR=otra/carpeta`), como si fuera la SD.
-- Hora, bateria, `random()` y el estado del bicho son fijos y se reinician en cada
-  pantalla: dos ejecuciones dan la misma imagen, sea cual sea el orden.
-- Hace falta tener instalada la libreria *GFX Library for Arduino*
-  (`GFX_FONT_FILE=... make shots` si no esta en `~/Arduino/libraries`).
-- El panel real es redondo: lo que la captura pinta fuera del circulo de 466 px no se
-  ve en la placa.
-- Las referencias de `golden/en` y `golden/sq480` salen de g++ en Linux con
-  GFX Library for Arduino 1.6.9; `make check` las compara y
-  `make golden` las regenera (solo si el cambio de interfaz es intencionado).
+- Circles, rounded rectangles and text come out of the same code that runs on the board.
+- Sprites come from `tools/sdcard` (or from `SD_DIR=other/folder`), as if it were the SD.
+- Time, battery, `random()` and the critter state are fixed and reset on every
+  screen: two runs give the same image, whatever the order.
+- The *GFX Library for Arduino* library must be installed
+  (`GFX_FONT_FILE=... make shots` if it is not in `~/Arduino/libraries`).
+- The real panel is round: what the screenshot paints outside the 466 px circle is not
+  visible on the board.
+- The references in `golden/en` and `golden/sq480` come from g++ on Linux with
+  GFX Library for Arduino 1.6.9; `make check` compares against them and
+  `make golden` regenerates them (only if the interface change is intentional).

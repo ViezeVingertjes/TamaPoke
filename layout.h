@@ -2,10 +2,10 @@
 #include <stdint.h>
 #include "pin_config.h"
 
-// Geometria de la interfaz. Todo el dibujo esta maquetado para un lienzo de
-// 466x466 (UI_DESIGN); en otro tamano de panel las medidas se escalan con U()/UY(),
-// que en 466 devuelven exactamente su argumento. Los sprites y el texto no se
-// escalan por pixel: sus factores enteros salen de TS() (texto) y SC() (sprites), mas abajo.
+// UI geometry. All drawing is laid out for a canvas of
+// 466x466 (UI_DESIGN); on a different panel size the measures are scaled with U()/UY(),
+// which at 466 return exactly their argument. Sprites and text are not
+// scaled per pixel: their integer factors come from TS() (text) and SC() (sprites), below.
 #define UI_DESIGN 466
 
 #define UI_W LCD_WIDTH
@@ -13,39 +13,39 @@
 
 static_assert(LCD_WIDTH == LCD_HEIGHT, "la interfaz solo soporta paneles cuadrados o redondos");
 
-// Los nombres cortos (U, UY, TS, SC, CX, CY) son macros: incluir layout.h despues de
-// las librerias, nunca antes.
-// longitud de diseno (px en 466) -> px del panel, redondeando al mas cercano
-// (en 64 bits: long mide 32 en el ESP32 y los argumentos derivados de millis()
-// pasarian de 2^31 tras unas horas encendido)
+// The short names (U, UY, TS, SC, CX, CY) are macros: include layout.h after
+// the libraries, never before.
+// design length (px at 466) -> panel px, rounding to the nearest
+// (in 64 bits: long is 32 bits on the ESP32 and arguments derived from millis()
+// would exceed 2^31 after a few hours of uptime)
 constexpr int uiScale(int n, int panel) {
   return (int)(((int64_t)n * panel + (n >= 0 ? UI_DESIGN / 2 : -UI_DESIGN / 2)) / UI_DESIGN);
 }
-#define U(n) uiScale((n), UI_W)   // medidas y posiciones horizontales
-#define UY(n) uiScale((n), UI_H)  // medidas y posiciones verticales
+#define U(n) uiScale((n), UI_W)   // horizontal measures and positions
+#define UY(n) uiScale((n), UI_H)  // vertical measures and positions
 
-// factores enteros (nunca bajan de 1), redondeados HACIA ABAJO para que lo dibujado
-// no sea mas grande que la caja que se escalo con U()/UY():
-//  - TS: tamano de texto (setSize/textW/centerX). Medido con las cadenas reales:
-//    redondear al mas cercano desbordaba cajas en paneles de 360 y 240 px.
-//  - SC: escala de sprite o pixel-art (drawMap, drawPmdAct...).
-// Hoy son iguales; se mantienen dos nombres para que el uso quede claro (y test_tools.py
-// vigila que no se crucen) por si el redondeo del texto vuelve a separarse del de los
-// sprites. Contrapartida de redondear hacia abajo: en paneles de 233 a 465 px el texto de
-// tamano 2 pasa a 1 (la UI de 466 deja las cajas justas, y con el redondeo al mas cercano
-// el texto desbordaba a partir de ~440 px). Los objetivos reales son 466 y 480 px.
-// El minimo de 1 hace que, por debajo de ~233 px, el dibujo pueda ser mas grande que su caja.
+// integer factors (never below 1), rounded DOWN so that what is drawn
+// is never larger than the box scaled with U()/UY():
+//  - TS: text size (setSize/textW/centerX). Measured with the real strings:
+//    rounding to the nearest overflowed boxes on 360 and 240 px panels.
+//  - SC: sprite or pixel-art scale (drawMap, drawPmdAct...).
+// Today they are equal; two names are kept so the intent is clear (and test_tools.py
+// checks they are not mixed up) in case text rounding diverges from that of the
+// sprites. Downside of rounding down: on 233 to 465 px panels size 2 text
+// becomes 1 (the 466 UI leaves the boxes tight, and with round-to-nearest
+// the text overflowed from ~440 px). The real targets are 466 and 480 px.
+// The minimum of 1 means that below ~233 px the drawing can be larger than its box.
 constexpr int uiAtLeast1(int v) { return v < 1 ? 1 : v; }
 constexpr int uiScaleFit(int n, int panel) { return uiAtLeast1((int)((int64_t)n * panel / UI_DESIGN)); }
 #define TS(n) uiScaleFit((n), UI_W)
 #define SC(n) uiScaleFit((n), UI_W)
 
-// factor lineal respecto al diseno, para magnitudes que no son longitudes enteras
-// (velocidades y aceleraciones, en px por paso)
+// linear factor relative to the design, for quantities that are not integer lengths
+// (speeds and accelerations, in px per step)
 #define UI_F ((float)UI_W / UI_DESIGN)
 
-#define CX (UI_W / 2)             // centro de la pantalla
+#define CX (UI_W / 2)             // screen center
 #define CY (UI_H / 2)
-#define UI_R (UI_W / 2 - U(2))    // radio del fondo circular de los menus
-#define BALL_R (UI_R - U(26))     // radio de la pared del minijuego de la bola
-#define PANEL_Y UY(312)           // inicio de la franja inferior de botones
+#define UI_R (UI_W / 2 - U(2))    // radius of the circular menu background
+#define BALL_R (UI_R - U(26))     // radius of the ball minigame wall
+#define PANEL_Y UY(312)           // top of the bottom button strip

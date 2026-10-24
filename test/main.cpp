@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
       lastSuite = tc.suite;
     }
     gFailures.clear();
-    // estado limpio para cada test
+    // clean state for each test
     mockSetMillis(0);
     mockClearForcedRandom();
     randomSeed(0xC0FFEE);

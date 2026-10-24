@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Envia los sprites empaquetados a la SD de la placa por USB.
+"""Sends the packed sprites to the board's SD over USB.
 
-  python3 tools/send_sd.py                  # envia tools/sdcard/mons/*.bin
-  python3 tools/send_sd.py --port /dev/cu.usbmodem101   # o /dev/ttyACM0
-  python3 tools/send_sd.py --ls             # lista lo que hay en la SD
+  python3 tools/send_sd.py                  # sends tools/sdcard/mons/*.bin
+  python3 tools/send_sd.py --port /dev/cu.usbmodem101   # or /dev/ttyACM0
+  python3 tools/send_sd.py --ls             # lists what is on the SD
 """
 import argparse
 import glob
@@ -65,7 +65,7 @@ def main():
         with open(path, 'rb') as f:
             while chunk := f.read(2048):
                 ser.write(chunk)
-                # espera el ack '#' del bloque
+                # wait for the block's '#' ack
                 ack = ''
                 while ack not in ('#', 'ERR'):
                     ack = ser.readline().decode(errors='replace').strip()
