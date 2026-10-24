@@ -564,8 +564,15 @@ void handleSerial() {
     }
     Serial.println("DONE");
   } else if (line.startsWith("LVL ")) {
-    pet.ageMinutes = (uint32_t)line.substring(4).toInt() * MINUTES_PER_LEVEL;
-    pet.saveNow();
+    String arg = line.substring(4);
+    arg.trim();
+    long lv = arg.toInt();
+    if (arg.length() && isdigit((unsigned char)arg[0]) && lv <= 998) {  // written at once now: a typo must not reach the flash
+      pet.ageMinutes = (uint32_t)lv * MINUTES_PER_LEVEL;
+      pet.saveNow();
+    } else {
+      Serial.println("LVL 0..998");
+    }
     Serial.println("DONE");
   } else if (line.startsWith("TIME ")) {
     uint32_t e = (uint32_t)line.substring(5).toInt();
@@ -606,6 +613,7 @@ void handleSerial() {
   } else if (line == "CAREDAY") {  // simulates a new cared-for day (tests)
     pet.setClock(pet.lastSeenEpoch + 86400);
     pet.caress();
+    pet.saveNow();
     Serial.printf("streak=%u bond=%u medals=0x%X\n", pet.streak, pet.bond, pet.medals);
     Serial.println("DONE");
   } else if (line == "BYE") {
