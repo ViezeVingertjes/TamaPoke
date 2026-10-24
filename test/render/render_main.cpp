@@ -186,6 +186,18 @@ static void tapAt(int x, int y) {
   onTap((int16_t)x, (int16_t)y);
 }
 
+// one step of a scripted finger through the real handleTouch(): ms later, down or up at x,y
+static void touchStep(bool down, int x, int y, uint32_t ms) {
+  gShimTouchDown = down;
+  gShimTouchX = (int16_t)x;
+  gShimTouchY = (int16_t)y;
+  mockAdvanceMillis(ms);
+  gTouchIrq = true;
+  handleTouch();
+}
+static void fingerUp() { touchStep(false, 0, 0, 40); }
+static void touchReset() { gShimTouchDown = false; wasPressed = false; swallowGesture = false; holdFired = false; }
+
 static int runTapTests() {
   // neighbors: each slot loads its sprite and releases it when the neighbor leaves
   begin("nearby_4");
@@ -338,7 +350,7 @@ static int runTapTests() {
   EXPECT(!clockOpen, "OK cierra el reloj");
   // ball minigame: tapping the ball scores, outside does not, the header quits
   begin("game");
-  uint8_t sc0 = gameScore;
+  uint16_t sc0 = gameScore;
   tapAt((int)ballX, (int)ballY);
   EXPECT(gameScore == sc0 + 1 && ballVY < 0, "tocar la bola puntua y la lanza hacia arriba");
   begin("game");
@@ -406,6 +418,76 @@ static int runTapTests() {
   begin("sack");
   tapAt(CX, UY(30));
   EXPECT(!sackOpen, "tocar la cabecera abandona el saco");
+  // ---- hardening: sequences through the real gesture handler ----
+  touchReset();
+  begin("card_stats");
+  touchStep(true, TRAIN_X + TRAIN_W / 2, TRAIN_Y + TRAIN_H / 2, 40);
+  fingerUp();
+  EXPECT(sackOpen, "tocar ENTRENAR FUERZA abre el saco");
+  {
+    uint8_t joy0 = pet.joy;
+    touchStep(true, CX, UY(20), 40);      // the header quits the bag
+    EXPECT(!sackOpen, "la cabecera cierra el saco");
+    touchStep(true, CX, UY(20), 100);     // the finger is still down
+    fingerUp();
+    EXPECT(!sackOpen && !cardOpen && !gameOpen && !kbOpen && pet.joy == joy0,
+           "salir del saco con la cabecera no dispara un gesto al soltar");
+  }
+  touchReset();
+  begin("game");
+  {
+    uint16_t s0 = gameScore;
+    touchStep(true, (int)ballX, (int)ballY, 40);
+    EXPECT(gameScore == s0 + 1, "un golpe a la bola cuenta al tocar");
+    fingerUp();
+    EXPECT(gameScore == s0 + 1 && gameOpen, "y no cuenta otra vez al soltar");
+    touchStep(true, CX, UY(10), 40);
+    EXPECT(gameOpen, "tocar la cabecera no abandona el juego hasta soltar");
+    fingerUp();
+    EXPECT(!gameOpen, "soltar en la cabecera abandona el juego");
+  }
+  touchReset();
+  begin("game");
+  gameScore = 255;                         // a skilled run: the next hit must not wrap to 0
+  touchStep(true, (int)ballX, (int)ballY, 40);
+  EXPECT(gameScore == 256, "la puntuacion no da la vuelta a 0 en el golpe 256");
+  fingerUp();
+  touchReset();
+  begin("evolve_dialog");
+  onSwipeV(-1);
+  EXPECT(!cardOpen && !clockOpen && choiceKind == 1, "un deslizamiento vertical no abre nada tras el dialogo de evolucion");
+  onSwipeV(1);
+  EXPECT(!cardOpen && !clockOpen && choiceKind == 1, "ni hacia abajo");
+  onSwipe(1);
+  EXPECT(!galleryOpen && choiceKind == 1, "un deslizamiento lateral no abre la galeria con el dialogo abierto");
+  touchStep(true, CX, PET_CY, 40);
+  for (int i = 0; i < 80; i++) touchStep(true, CX, PET_CY, 40);  // 3.2 s held on the pet
+  EXPECT(!confirmUntil, "mantener pulsado no abre soltar encima de un dialogo de decision");
+  fingerUp();
+  begin("main_day");
+  {
+    uint32_t day = 1767225600UL + 5 * 86400;
+    pet.lastSeenEpoch = day + 9 * 3600 + 59 * 60 + 45;   // the cached time lags up to 30 s
+    rtcSetEpoch(day + 10 * 3600 + 0 * 60 + 10);
+    openClock();
+    EXPECT(clockH == 10 && clockM == 0, "el ajuste de hora muestra la hora del RTC, no la guardada hace unos segundos");
+    clockOpen = false;
+  }
+  touchReset();
+  begin("evolving");
+  startGame();
+  EXPECT(!gameOpen, "no se puede jugar durante la evolucion");
+  startSack();
+  EXPECT(!sackOpen, "ni entrenar durante la evolucion");
+  begin("evolve_dialog");
+  pet.fullness = 0;                        // no longer ready: the button must not evolve it
+  evoPmd.unload();
+  tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B1_Y + CHOICE_BH / 2);
+  EXPECT(pet.speciesId == 4 && !evoPmd.loaded, "el boton de evolucion comprueba que sigue lista");
+  begin("farewell_dialog");
+  pet.ageMinutes = 10;                     // too young to say goodbye
+  tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B1_Y + CHOICE_BH / 2);
+  EXPECT(pet.ceremony == CER_NONE, "el boton de despedida comprueba que sigue lista");
   fprintf(stderr, "%d fallos de toque\n", gTapFails);
   return gTapFails ? 1 : 0;
 }

@@ -122,7 +122,7 @@ After any ending, a **new egg** appears.
 ### Bonds, streaks, medals, Pokédex
 - **Streak** (player-wide, survives across pets): first care each real day; milestones
   at **3 / 7 / 30 / 100** days; skipping a day breaks it.
-- **Bond** (per pet, resets on hatch): grows with affection (**cap +8/day**), cools on
+- **Bond** (per pet, resets on hatch): grows with affection (**cap about +20/day** from actions, plus a +4 daily care bonus), cools on
   neglect. Both streak & bond improve egg/shiny odds.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.

@@ -34,6 +34,9 @@ void Pet::newEgg() {
   ageMinutes = 0;
   careMistakes = 0;
   mistakeCooldown = 0;
+  evoDeclinedLv = 0;   // offers the player turned down belong to the previous pet
+  farDeclinedAge = 0;
+  goodTicks = 0;
   sleeping = false;
   save();
 }
@@ -168,7 +171,7 @@ void Pet::tick() {
   // (with a cooldown so the same mistake is not counted every minute)
   if (mistakeCooldown > 0) mistakeCooldown--;
   if (lowestStat() <= 10 && mistakeCooldown == 0) {
-    careMistakes++;
+    if (careMistakes < 255) careMistakes++;  // saturate: wrapping to 0 would erase the penalty
     mistakeCooldown = 60;
     if (bond > 1) bond--;  // neglect cools the bond, but without wiping it out:
                            // at -3 every 30 min far more was lost than could
@@ -272,10 +275,16 @@ int Pet::careBonus() const {
 }
 
 // first care of the day: advances the streak and strengthens the bond
+// A day number one lower than the last one stored is a clock set back (RTC reseeded, a manual
+// change around midnight), not a new day: it must not break the streak, give the daily rewards
+// again or renew the bond cap. A bigger jump back (a wrong far-future date that was then
+// corrected) is treated as a real change.
+static bool clockSetBack(uint32_t d, uint32_t last) { return last && d < last && last - d <= 1; }
+
 void Pet::registerCare() {
   if (isEgg() || ceremony != CER_NONE) return;
   uint32_t d = today();
-  if (d == 0 || d == lastCareDay) return;  // no clock, or already counted today
+  if (d == 0 || d == lastCareDay || clockSetBack(d, lastCareDay)) return;  // no clock, already counted today, or set back
   if (lastCareDay == 0 || d == lastCareDay + 1) {
     streak++;
   } else {
@@ -283,7 +292,6 @@ void Pet::registerCare() {
     lastMilestone = 0;
   }
   lastCareDay = d;
-  bondToday = 0;
   if (streak > bestStreak) bestStreak = streak;
   bond = clamp100(bond + 4);
   uint16_t ms = (streak >= 100) ? 100 : (streak >= 30) ? 30
@@ -297,6 +305,11 @@ void Pet::registerCare() {
 }
 
 void Pet::addBond(uint8_t amt) {
+  uint32_t d = today();
+  if (d && d != bondDay && !clockSetBack(d, bondDay)) {  // renews with the real day, whatever the first act of it is
+    bondDay = d;
+    bondToday = 0;
+  }
   if (bondToday >= 20) return;  // daily cap: the bond cannot be farmed
   bond = clamp100(bond + amt);
   bondToday += amt;
@@ -475,27 +488,29 @@ void Pet::feedCandy() {
   save();
 }
 
-void Pet::playResult(uint8_t score) {
+void Pet::playResult(uint16_t score) {
   if (ceremony != CER_NONE || isEgg()) return;
-  uint8_t v = trSpe + score / 5;  // playing trains speed
+  uint16_t v = trSpe + score / 5;  // playing trains speed
   trSpe = v > 100 ? 100 : v;
   joy = clamp100(joy + 5 + (score > 15 ? 30 : score * 2));
-  energy = dropTo(energy, 10 + score / 2, 5);
+  energy = dropTo(energy, 10 + (score > 100 ? 50 : score / 2), 5);
   fullness = dropTo(fullness, 5, 5);
   int burn = (int)weight - score * 2;  // exercise burns weight
   weight = burn > 0 ? burn : 0;
   if (score >= 5) heartUntil = millis() + HEART_MS;
   if (score > gameHi) gameHi = score;  // new record
-  addBond(2);
-  registerCare();
+  if (score) {  // letting every ball fall is not playing: no bond, no daily care
+    addBond(2);
+    registerCare();
+  }
   save();
 }
 
 // training punching bag: hits train strength. Returns the gain.
 uint8_t Pet::trainStrength(uint16_t hits) {
   if (ceremony != CER_NONE || isEgg()) return 0;
-  uint8_t gain = hits / 4;          // ~4 hits = 1 training point
-  if (gain > 18) gain = 18;         // cap per session: STR is forged slowly
+  uint16_t raw = hits / 4;          // ~4 hits = 1 training point
+  uint8_t gain = raw > 18 ? 18 : raw;  // cap per session: STR is forged slowly (cap before narrowing)
   uint8_t antes = trAtk;
   uint16_t v = (uint16_t)trAtk + gain;
   trAtk = v > 100 ? 100 : (uint8_t)v;
@@ -552,7 +567,7 @@ void Pet::caress() {
 }
 
 void Pet::eggTap() {
-  if (!isEgg()) return;
+  if (!isEgg() || starterPick) return;  // the player picks first: the egg must not hatch by itself
   if (++eggTaps >= 3) hatch();
   else save();
 }
@@ -604,6 +619,8 @@ void Pet::save() {
   prefs.putUShort("ghi", gameHi);
   prefs.putUShort("shi", strHi);
   prefs.putString("nick", nick);
+  prefs.putUInt("bday", bondDay);
+  prefs.putUChar("btod", bondToday);
   prefs.putUInt("stday", stepDay);
   prefs.putUInt("stto", stepsToday);
   prefs.putUInt("stot", stepsTotal);
@@ -625,6 +642,7 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(nick);
   io(stepDay); io(stepsToday); io(stepsTotal); io(stepRewardMask);
   io(dexSeen);
+  io(bondDay); io(bondToday);
 }
 
 namespace {
@@ -682,7 +700,11 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   BackupReader r{ data + sizeof(BACKUP_MAGIC), data + length - 4 };
   backupFields(r);
   nick[sizeof(nick) - 1] = 0;
-  bool sane = r.p == r.end && speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
+  bool nickOk = true;
+  for (const char *c = nick; *c; c++) nickOk = nickOk && *c >= 32 && *c < 127;
+  bool geneOk = geneAtk >= 90 && geneAtk <= 110 && geneDef >= 90 && geneDef <= 110 && geneSpe >= 90 && geneSpe <= 110;
+  bool sane = r.p == r.end && (speciesId == -1 || (speciesId >= 1 && speciesId <= DEX_COUNT)) &&
+              nickOk && geneOk && weight <= 100 && !(starterPick && !isEgg()) && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
               fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
               bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE &&
               stepRewardMask < (1 << STEP_GOALS);
@@ -694,6 +716,10 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   ceremony = CER_NONE;
   evolveUntil = 0;
   neglectTicks = 0;
+  if (r.stopped) {  // an older layout without today's bond cap: it must not inherit the previous pet's
+    bondDay = 0;
+    bondToday = 0;
+  }
   lastSeenEpoch = 0;
   prefs.putUInt("seen", 0);  // no offline catch-up for the time since the backup was taken
   save();
@@ -702,7 +728,7 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
 
 void Pet::ensureStepDay() {
   uint32_t d = today();
-  if (!d || d == stepDay) return;  // no clock yet, or still the same day
+  if (!d || d == stepDay || clockSetBack(d, stepDay)) return;  // no clock yet, same day, or set back
   bool firstDay = stepDay == 0;    // steps counted before the clock was known belong to today
   stepDay = d;
   if (firstDay) return;
@@ -808,6 +834,8 @@ void Pet::load() {
   gameHi = prefs.getUShort("ghi", 0);
   strHi = prefs.getUShort("shi", 0);
   prefs.getString("nick", nick, sizeof(nick));
+  bondDay = prefs.getUInt("bday", 0);
+  bondToday = prefs.getUChar("btod", 0);
   stepDay = prefs.getUInt("stday", 0);
   stepsToday = prefs.getUInt("stto", 0);
   stepsTotal = prefs.getUInt("stot", 0);
