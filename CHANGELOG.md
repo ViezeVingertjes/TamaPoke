@@ -8,6 +8,19 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Changed
+
+- **New look for every screen.** One yellow accent for what you can press or have picked,
+  red only for a need that is running low, and a light theme by day / dark theme at night
+  that follows the clock. The four care buttons are now four 80 px circles on one arc:
+  each fills from the bottom with its need (food, joy, energy, hygiene) and turns red
+  under 25%, so the bars and their labels are gone. The header shows the name and the
+  level, or what is going on when something is. Dialogs, the profile cards, medals (now a
+  4 x 2 grid), settings, keyboard, starter choice and Pokedex use plain pills and circles
+  instead of outlined boxes, with a Back button on the cards. The streak badge moved off the
+  home screen to the profile card. Renders: `make -C test/render shots` (panel 466 round and
+  `SIZE=480 ROUND=0`); the reference images in `test/render/golden` were regenerated.
+
 ### Removed
 
 - **Every language except English.** The UI strings, the medal texts and the species

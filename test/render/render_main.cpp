@@ -196,8 +196,7 @@ static int runTapTests() {
   for (int i = 0; i < 4; i++) {
     begin("feed_menu");
     uint8_t w0 = pet.weight;
-    int is = SC(3);
-    tapAt(FEED_ICON_X(i) + 8 * is, FEED_ICON_Y + 8 * is);
+    tapAt(buttons[i].cx, buttons[i].cy);
     EXPECT(feedMenuUntil == 0, "el selector se cierra");
     EXPECT(pet.eating(), "el bicho come");
     // el #6 (Charizard) tiene por baya favorita la roja (casilla 0): solo esa da el corazon
@@ -206,21 +205,21 @@ static int runTapTests() {
     if (i == 3) EXPECT(pet.weight > w0, "la casilla 4 es la chuche (engorda)");
     else EXPECT(pet.weight == w0, "una baya no engorda");
   }
-  // el borde derecho del recuadro cuenta como la ultima casilla (la chuche)
+  // el borde del ultimo circulo sigue siendo la chuche
   begin("feed_menu");
   uint8_t w1 = pet.weight;
-  tapAt(FEED_X + FEED_W, FEED_Y + FEED_H / 2);
-  EXPECT(pet.weight > w1, "el ultimo pixel del selector es la chuche");
+  tapAt(buttons[3].cx + BTN_R - 2, buttons[3].cy);
+  EXPECT(pet.weight > w1, "el borde del ultimo circulo es la chuche");
   // fuera del recuadro: se cierra sin dar de comer
   begin("feed_menu");
-  tapAt(FEED_X - 5, FEED_Y + FEED_H / 2);
+  tapAt(CX, UY(250));
   EXPECT(feedMenuUntil == 0 && !pet.eating(), "tocar fuera cierra el selector sin comer");
   // dialogo de soltar: SI suelta; cualquier otro toque lo cierra sin soltar
   begin("release_dialog");
   tapAt(YES_X + YES_W / 2, YES_Y + YES_H / 2);
   EXPECT(pet.ceremony == CER_RELEASE, "SI suelta al bicho");
   begin("release_dialog");
-  tapAt(NO_X + YES_W / 2, YES_Y + YES_H / 2);
+  tapAt(NO_X + YES_W / 2, NO_Y + YES_H / 2);
   EXPECT(pet.ceremony == CER_NONE && !confirmUntil, "tocar NO cierra el dialogo sin soltar");
   // dialogos de decision
   begin("evolve_dialog");
@@ -521,11 +520,8 @@ static int runFitTests() {
     snprintf(b, sizeof(b), T(S_RUNAWAY_BTN), nm);
     fitWrapped("boton escapada", b, TS(2), FAR_BTN_W - U(16), 2, FAR_BTN_H - UY(8));
   }
-  for (int i = 0; i < MED_COUNT; i++) {
-    fitWrapped("descripcion de medalla", medalDesc(i), TS(2), MED_W - U(44) - U(6), 2, UY(44) - UY(8));
-  }
   setSize(TS(2));
-  fitWrapped("cancelar del reloj", T(S_CLOCK_CANCEL), TS(2), clockCancelW(), 2, UY(40));
+  fitBox("cancelar del reloj", T(S_CLOCK_CANCEL), TS(3), CLOCK_OK_W - U(16));
   // cadenas sueltas que no estaban cubiertas
   { int hs = fitSize(T(S_EGG_HDR), TS(3), TS(2), UY(52));
     if (!fitsChord(T(S_EGG_HDR), hs, UY(52))) { fprintf(stderr, "FALLA cabecera del huevo no cabe en el circulo\n"); gFitFails++; } }
