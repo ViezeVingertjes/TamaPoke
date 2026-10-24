@@ -57,7 +57,7 @@ struct {
   uint32_t until = 0;   // fin del estado actual
   float x = CX, targetX = CX;
 } beh;
-#define PET_GROUND 304  // linea de suelo de la mascota
+#define PET_GROUND UY(304)  // linea de suelo de la mascota
 PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2, legal)
 
 // galeria pokedex
@@ -105,7 +105,7 @@ int flashIdxForDex(int16_t dex) {
   return (dex >= 1 && dex <= 9) ? IDX[dex] : -1;
 }
 
-#define PET_CY 202  // centro vertical del sprite
+#define PET_CY UY(202)  // centro vertical del sprite
 
 static const uint16_t INK_K = 0x18C4;  // spriteColor('k')
 
@@ -713,7 +713,7 @@ uint16_t inkColor() { return gNight ? UI_INK_NIGHT : UI_INK; }
 // ---------- escena de fondo: bioma del tipo + hora real del RTC ----------
 
 #define C565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
-#define HORIZON 232  // linea donde el cielo se encuentra con el suelo
+#define HORIZON UY(232)  // linea donde el cielo se encuentra con el suelo
 
 uint16_t lerp565(uint16_t a, uint16_t b, int i, int n) {
   if (n <= 0) return a;
@@ -741,11 +741,11 @@ static const uint16_t BIOME_SOIL[6] = {
 
 void drawClouds(uint32_t now, uint16_t col) {
   for (int k = 0; k < 2; k++) {
-    int cx = (int)((now / 50 + k * 250) % (UI_W + 94)) - 40;
-    int cy = 70 + k * 34;
-    gfx->fillCircle(cx, cy, 16, col);
-    gfx->fillCircle(cx + 18, cy + 3, 13, col);
-    gfx->fillCircle(cx - 15, cy + 4, 12, col);
+    int cx = (int)(U(now / 50 + k * 250) % (UI_W + U(94))) - U(40);  // px/s proporcionales al panel
+    int cy = UY(70 + k * 34);
+    gfx->fillCircle(cx, cy, U(16), col);
+    gfx->fillCircle(cx + U(18), cy + UY(3), U(13), col);
+    gfx->fillCircle(cx - U(15), cy + UY(4), U(12), col);
   }
 }
 
@@ -758,19 +758,19 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
   else                  { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }  // atardecer
 
   // cielo en bandas
-  for (int y = 0; y < HORIZON; y += 8)
-    gfx->fillRect(0, y, UI_W, 8, lerp565(top, bot, y, HORIZON));
+  for (int y = 0; y < HORIZON; y += UY(8))
+    gfx->fillRect(0, y, UI_W, UY(8), lerp565(top, bot, y, HORIZON));
 
   // sol o luna
   if (night) {
-    gfx->fillCircle(360, 78, 24, C565(0xe8, 0xee, 0xf5));
-    gfx->fillCircle(370, 72, 22, lerp565(top, bot, 78, HORIZON));  // creciente
-    for (auto &st : STARS) gfx->fillRect(st[0], st[1], 4, 4, UI_WHITE);
+    gfx->fillCircle(U(360), UY(78), U(24), C565(0xe8, 0xee, 0xf5));
+    gfx->fillCircle(U(370), UY(72), U(22), lerp565(top, bot, UY(78), HORIZON));  // creciente
+    for (auto &st : STARS) gfx->fillRect(U(st[0]), UY(st[1]), SC(4), SC(4), UI_WHITE);
   } else if (h < 18) {
-    gfx->fillCircle(360, 84, 26, h < 8 ? C565(0xff, 0xd9, 0x8a) : C565(0xff, 0xe7, 0x9f));
+    gfx->fillCircle(U(360), UY(84), U(26), h < 8 ? C565(0xff, 0xd9, 0x8a) : C565(0xff, 0xe7, 0x9f));
     drawClouds(now, C565(0xff, 0xff, 0xff));
   } else {
-    gfx->fillCircle(CX, HORIZON - 6, 34, C565(0xff, 0xf1, 0xc8));  // sol poniente
+    gfx->fillCircle(CX, HORIZON - UY(6), U(34), C565(0xff, 0xf1, 0xc8));  // sol poniente
   }
 
   // mar de la playa: una franja de agua sobre la arena
@@ -778,46 +778,46 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
   if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
   if (biome == 1) {
     uint16_t sea = night ? C565(0x1c, 0x34, 0x52) : C565(0x4f, 0x96, 0xc4);
-    gfx->fillRect(0, HORIZON - 26, UI_W, 26, sea);
+    gfx->fillRect(0, HORIZON - UY(26), UI_W, UY(26), sea);
     for (int i = 0; i < 3; i++) {
-      int wy = HORIZON - 22 + i * 7;
+      int wy = HORIZON - UY(26) + UY(4 + i * 7);
       uint16_t fc = night ? C565(0x3a, 0x58, 0x78) : C565(0xbf, 0xe6, 0xf5);
-      gfx->fillRect(60 + ((now / 60 + i * 30) % 60), wy, 26, 2, fc);
-      gfx->fillRect(300 - ((now / 60 + i * 20) % 60), wy, 26, 2, fc);
+      gfx->fillRect(U(60) + (U(now / 60 + i * 30) % U(60)), wy, U(26), SC(2), fc);
+      gfx->fillRect(U(300) - (U(now / 60 + i * 20) % U(60)), wy, U(26), SC(2), fc);
     }
   }
 
   // suelo
   gfx->fillRect(0, HORIZON, UI_W, UI_H - HORIZON, soil);
   uint16_t hill = lerp565(soil, night ? C565(0x0c, 0x12, 0x24) : C565(0xff, 0xff, 0xff), 3, 16);
-  gfx->fillRoundRect(-60, HORIZON - 14, UI_W + 120, 60, 30, hill);
+  gfx->fillRoundRect(-U(60), HORIZON - UY(14), UI_W + U(120), UY(60), U(30), hill);
 
   // detalles del bioma
   uint16_t dk = lerp565(soil, C565(0x10, 0x18, 0x20), night ? 11 : 7, 16);
   if (biome == 2) {  // bosque: coniferas en silueta
-    for (int tx : { 60, 150, 360, 416 }) {
-      gfx->fillTriangle(tx, HORIZON - 46, tx - 16, HORIZON, tx + 16, HORIZON, dk);
-      gfx->fillTriangle(tx, HORIZON - 60, tx - 12, HORIZON - 28, tx + 12, HORIZON - 28, dk);
+    for (int tx : { U(60), U(150), U(360), U(416) }) {
+      gfx->fillTriangle(tx, HORIZON - UY(46), tx - U(16), HORIZON, tx + U(16), HORIZON, dk);
+      gfx->fillTriangle(tx, HORIZON - UY(60), tx - U(12), HORIZON - UY(28), tx + U(12), HORIZON - UY(28), dk);
     }
   } else if (biome == 3) {  // volcan: rocas y brasas
-    gfx->fillTriangle(70, HORIZON, 40, HORIZON + 30, 100, HORIZON + 30, dk);
-    gfx->fillTriangle(400, HORIZON + 4, 372, HORIZON + 30, 430, HORIZON + 30, dk);
+    gfx->fillTriangle(U(70), HORIZON, U(40), HORIZON + UY(30), U(100), HORIZON + UY(30), dk);
+    gfx->fillTriangle(U(400), HORIZON + UY(4), U(372), HORIZON + UY(30), U(430), HORIZON + UY(30), dk);
     if (!night)
       for (int e = 0; e < 4; e++)
-        gfx->fillRect(120 + e * 70, HORIZON + 8 + (e % 2) * 6, 4, 4, C565(0xff, 0x9b, 0x3a));
+        gfx->fillRect(U(120 + e * 70), HORIZON + UY(8 + (e % 2) * 6), SC(4), SC(4), C565(0xff, 0x9b, 0x3a));
   } else if (biome == 4) {  // montana: cumbres al fondo
-    gfx->fillTriangle(140, HORIZON - 50, 60, HORIZON, 220, HORIZON, dk);
-    gfx->fillTriangle(330, HORIZON - 38, 250, HORIZON, 410, HORIZON, dk);
+    gfx->fillTriangle(U(140), HORIZON - UY(50), U(60), HORIZON, U(220), HORIZON, dk);
+    gfx->fillTriangle(U(330), HORIZON - UY(38), U(250), HORIZON, U(410), HORIZON, dk);
   } else if (biome == 5 && !night) {  // nieve: copos cayendo
     for (int f = 0; f < 10; f++) {
-      int fx = (f * 53 + now / 40) % UI_W;
-      int fy = (f * 90 + now / 18) % HORIZON;
-      gfx->fillRect(fx, fy, 3, 3, UI_WHITE);
+      int fx = U(f * 53 + now / 40) % UI_W;
+      int fy = UY(f * 90 + now / 18) % HORIZON;
+      gfx->fillRect(fx, fy, SC(3), SC(3), UI_WHITE);
     }
   } else if (biome == 0) {  // pradera: matas de hierba
-    for (int gx : { 80, 175, 300, 395 })
+    for (int gx : { U(80), U(175), U(300), U(395) })
       for (int b = -1; b <= 1; b++)
-        gfx->fillRect(gx + b * 5, HORIZON + 6, 2, 8 + (b == 0 ? 4 : 0), dk);
+        gfx->fillRect(gx + U(b * 5), HORIZON + UY(6), SC(2), UY(8 + (b == 0 ? 4 : 0)), dk);
   }
 }
 
