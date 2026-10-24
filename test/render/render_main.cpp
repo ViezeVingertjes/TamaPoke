@@ -48,6 +48,7 @@ static void adult(int dex) {
   pet.streak = 12; pet.bond = 60;
   pet.medals = MED_LV10 | MED_LV25 | MED_BERRY;
   memset(pet.dexReg, 0, sizeof(pet.dexReg));
+  memset(pet.dexSeen, 0, sizeof(pet.dexSeen));
   for (int d = 1; d <= 151; d++)  // all raised except #3 and #151: they show "???" and silhouettes
     if (d != 3 && d != 151) pet.dexReg[(d - 1) >> 3] |= 1 << ((d - 1) & 7);
 }
@@ -129,6 +130,8 @@ static const Scene SCENES[] = {
   { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false },
   { "card_steps", [] { closeAll(); adult(6); cardOpen = true; cardPage = 4; pet.stepsToday = 3240; pet.stepsTotal = 61250; }, false },
   { "gallery_page6", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 6; galleryDirty = true; }, false },
+  { "gallery_seen", [] { closeAll(); adult(6); pet.dexReg[0] &= ~0xC0; pet.dexSeen[0] |= 0xC0; galleryOpen = true; galleryPage = 0; galleryDirty = true; }, false },  // #7, #8: met, not raised
+  { "gallery_detail_seen", [] { closeAll(); adult(6); pet.dexReg[0] &= ~0x40; pet.dexSeen[0] |= 0x40; galleryOpen = true; galleryDetail = 7; galleryPmd.load(7, false); }, false },
   { "gallery_detail_unknown", [] { closeAll(); adult(6); galleryOpen = true; galleryDetail = 3; galleryPmd.load(3, false); }, false },
   { "game_over", [] { closeAll(); adult(25); gameOpen = true; gameScore = 12; gameMisses = 3; gameNewHi = true; gameOverUntil = millis() + 4000; gamePetX = CX; ballX = CX; ballY = 300; ballVX = ballVY = 0; }, false },
   { "sack_over", [] { closeAll(); adult(25); sackOpen = true; sackUntil = millis() - 1; sackOverUntil = millis() + 3000; sackHits = 31; sackGain = 2; sackNewHi = true; }, false },

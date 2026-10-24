@@ -66,6 +66,7 @@ public:
   uint8_t lastEnd = CER_NONE;   // how the previous one ended (affects the egg)
   uint8_t dexReg[19] = { 0 };       // pokedex of raised ones (151-bit bitmap)
   uint8_t dexShinyReg[19] = { 0 };  // raised in shiny version
+  uint8_t dexSeen[19] = { 0 };      // met nearby (someone else's creature): known, but not raised
   // daily care streak (the player's: persists across rearings)
   uint16_t streak = 0, bestStreak = 0;
   uint32_t lastCareDay = 0;
@@ -145,6 +146,11 @@ public:
   bool isRegistered(int16_t dex) const {
     return dex >= 1 && dex <= 151 && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
+  bool isSeen(int16_t dex) const {
+    return dex >= 1 && dex <= 151 && (dexSeen[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
+  }
+  bool isKnown(int16_t dex) const { return isRegistered(dex) || isSeen(dex); }  // shown in color, with its name
+  void markSeen(int16_t dex);  // a creature met nearby: the Pokedex shows it, the raised count does not
   bool isShinyRegistered(int16_t dex) const {
     return dex >= 1 && dex <= 151 && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
@@ -188,7 +194,7 @@ public:
 
   // Versioned snapshot of the game state for the browser installer (SAVEGET / SAVEPUT over
   // USB). Never includes SD data. Time away is not applied after a restore.
-  static constexpr size_t BACKUP_MAX_BYTES = 128;
+  static constexpr size_t BACKUP_MAX_BYTES = 192;
   size_t exportBackup(uint8_t *out, size_t capacity);
   bool importBackup(const uint8_t *data, size_t length);
 
