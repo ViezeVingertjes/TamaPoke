@@ -182,6 +182,9 @@ public:
   // last real time persisted; used to reseed an RTC that lost the time
   uint32_t savedEpoch() { return prefs.getUInt("seen", 0); }
   void flushSave();
+  // Writes now, whatever pendingSave says: flushSave() is `if (pendingSave) save()`, so a serial
+  // console command that changed a field the game had not marked dirty wrote nothing at all.
+  void saveNow() { save(); }
 
   // Versioned snapshot of the game state for the browser installer (SAVEGET / SAVEPUT over
   // USB). Never includes SD data. Time away is not applied after a restore.

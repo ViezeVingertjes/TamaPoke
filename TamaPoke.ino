@@ -559,11 +559,13 @@ void handleSerial() {
     if (n >= 1 && n <= DEX_COUNT) {
       pet.prevSpeciesId = pet.speciesId;
       pet.speciesId = n;
+      pet.saveNow();
       Serial.printf("especie #%d %s\n", n, DEX_TBL[n].name);
     }
     Serial.println("DONE");
   } else if (line.startsWith("LVL ")) {
     pet.ageMinutes = (uint32_t)line.substring(4).toInt() * MINUTES_PER_LEVEL;
+    pet.saveNow();
     Serial.println("DONE");
   } else if (line.startsWith("TIME ")) {
     uint32_t e = (uint32_t)line.substring(5).toInt();
@@ -594,6 +596,7 @@ void handleSerial() {
     Serial.println("DONE");
   } else if (line == "SHINY") {  // toggles shiny on the current one (tests)
     pet.shiny = !pet.shiny;
+    pet.saveNow();
     Serial.printf("shiny=%d\n", pet.shiny);
     Serial.println("DONE");
   } else if (line.startsWith("NICK ")) {

@@ -1116,3 +1116,20 @@ TEST(steps, los_pasos_de_antes_de_tener_reloj_cuentan_hoy) {
   CHECK_EQ((int)p.stepsToday, 400);
   CHECK_EQ((int)p.stepsTotal, 400);
 }
+
+// ---------------------------------------------------------------- console saves
+TEST(save, saveNow_escribe_aunque_nada_este_pendiente) {
+  Pet a;
+  makePet(a, 4);
+  a.flushSave();                       // nothing pending now
+  CHECK(!a.savePending());
+  a.shiny = true;                      // what the SHINY console command does
+  a.flushSave();                       // the old call: writes nothing
+  Pet lost;
+  lost.begin();
+  CHECK(!lost.shiny);
+  a.saveNow();
+  Pet kept;
+  kept.begin();
+  CHECK(kept.shiny);
+}
