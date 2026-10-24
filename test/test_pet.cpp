@@ -1105,3 +1105,14 @@ TEST(steps, se_guardan_y_van_en_la_copia) {
   CHECK_EQ((int)b.stepsToday, 1234);
   CHECK_EQ((int)b.stepsTotal, 1234);
 }
+
+TEST(steps, los_pasos_de_antes_de_tener_reloj_cuentan_hoy) {
+  Pet p;
+  makePet(p, 4);
+  p.applyWalk(400);                    // no clock yet: the day is unknown
+  CHECK_EQ((int)p.stepsToday, 400);
+  setDay(p, 20000);
+  advance(p, 1);                       // the first minute with a clock must not drop them
+  CHECK_EQ((int)p.stepsToday, 400);
+  CHECK_EQ((int)p.stepsTotal, 400);
+}

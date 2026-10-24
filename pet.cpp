@@ -661,7 +661,8 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   nick[sizeof(nick) - 1] = 0;
   bool sane = speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
               fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
-              bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE;
+              bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE &&
+              stepRewardMask < (1 << STEP_GOALS);
   if (!sane) {
     BackupReader back{ prev + sizeof(BACKUP_MAGIC) };
     backupFields(back);
@@ -679,7 +680,9 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
 void Pet::ensureStepDay() {
   uint32_t d = today();
   if (!d || d == stepDay) return;  // no clock yet, or still the same day
+  bool firstDay = stepDay == 0;    // steps counted before the clock was known belong to today
   stepDay = d;
+  if (firstDay) return;
   stepsToday = 0;
   stepRewardMask = 0;
 }

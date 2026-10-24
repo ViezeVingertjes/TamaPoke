@@ -9,6 +9,7 @@ static StepDetector detector;
 static bool ok = false;
 static uint32_t lastPoll = 0;
 static uint16_t stepBank = 0;
+static uint32_t motionUntil = 0;  // the sensor is only sampled fast while something moves
 
 bool imuBegin() {
   // 0x6B on this board; 0x6A is the alternative address (SA0)
@@ -33,9 +34,13 @@ void imuPoll(uint32_t nowMs) {
   lastPoll = nowMs ? nowMs : 1;
   float x, y, z;
   if (!qmi.getAccelerometer(x, y, z)) return;
-  uint32_t next = stepBank + detector.feed(nowMs, sqrtf(x * x + y * y + z * z));
+  float mag = sqrtf(x * x + y * y + z * z);
+  if (fabsf(mag - detector.gravity) > 0.06f) motionUntil = nowMs + 3000;
+  uint32_t next = stepBank + detector.feed(nowMs, mag);
   stepBank = next > 60000UL ? 60000 : (uint16_t)next;
 }
+
+bool imuMotionRecent(uint32_t nowMs) { return (int32_t)(motionUntil - nowMs) > 0; }
 
 uint16_t imuTakeSteps() {
   uint16_t n = stepBank;

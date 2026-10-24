@@ -38,6 +38,7 @@ bool pwrShortPressed() { return false; }
 bool imuBegin() { return false; }
 bool imuOk() { return false; }
 void imuPoll(uint32_t) {}
+bool imuMotionRecent(uint32_t) { return false; }
 uint16_t imuTakeSteps() { return 0; }
 
 // fake neighbors: scenes fill gHostNb (the id decides the slot, as in the real table)

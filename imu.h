@@ -8,4 +8,5 @@
 bool imuBegin();
 bool imuOk();
 void imuPoll(uint32_t nowMs);  // reads the sensor if IMU_POLL_MS passed since the last read
+bool imuMotionRecent(uint32_t nowMs);  // movement seen in the last 3 s: keep sampling fast
 uint16_t imuTakeSteps();       // steps confirmed since the last call

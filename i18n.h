@@ -55,5 +55,5 @@ enum StrId : uint8_t {
 
 const char *T(StrId id);       // interface text
 const char *medalName(int i);  // medal banner (MED_COUNT)
-const char *medalDesc(int i);
-const char *trailName(int rank);  // 0 .. Pet::TRAIL_RANKS  // long medal description
+const char *medalDesc(int i);  // long medal description
+const char *trailName(int rank);  // 0 .. Pet::TRAIL_RANKS

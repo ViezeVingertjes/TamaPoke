@@ -163,7 +163,7 @@ public:
   // streak / bond / medals / name
   void rename(const char *name);
   // walking: daily goals give a small reward, lifetime steps give a trail rank
-  static const uint8_t STEP_GOALS = 3, TRAIL_RANKS = 4;
+  static constexpr uint8_t STEP_GOALS = 3, TRAIL_RANKS = 4;
   static uint32_t stepGoal(uint8_t i);    // steps per day for goal i
   static uint32_t trailGoal(uint8_t i);   // lifetime steps for rank i + 1
   uint8_t trailRank() const;              // 0 = none yet .. TRAIL_RANKS

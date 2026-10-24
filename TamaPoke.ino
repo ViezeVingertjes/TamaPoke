@@ -482,7 +482,9 @@ void idleWait(PowerCtx c) {
     if (!lightSleepAllowed(c)) { delay(idleDelayMs(c)); return; }
     if (digitalRead(TP_INT) == LOW) { gTouchIrq = true; delay(1); return; }  // touch pending: do not sleep
     uint32_t ms = POWER_SLEEP_MS;
-    if (imuOk() && ms > IMU_POLL_MS) ms = IMU_POLL_MS;  // wake often enough to see steps
+    // while something moves, wake often enough to see steps; at rest the normal long sleep
+    // (the first step or two of a walk are lost while it ramps up)
+    if (imuMotionRecent(millis()) && ms > IMU_POLL_MS) ms = IMU_POLL_MS;
     uint32_t iv = frameIntervalMs(c);
     if (iv) {  // screen on: until the next frame
       uint32_t due = lastRender + iv - millis();
