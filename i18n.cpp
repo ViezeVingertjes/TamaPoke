@@ -1,8 +1,8 @@
 #include "i18n.h"
-#include "pet.h"        // MED_COUNT
+#include "pet.h"        // MED_COUNT, Pet::TRAIL_RANKS
 
-// Tabla de cadenas por id. Sin acentos ni enes: la fuente bitmap del firmware no los tiene.
-static const char *const STRINGS[STR_COUNT] = {
+// String table by id. No accents or n-tildes: the firmware's bitmap font does not have them.
+static const char *const STRINGS[] = {
   "Evolving!", "Yum yum!", "It likes it!", "It's hungry!", "Needs a bath!",
   "Worn out...", "Feeling sad...", "A bit chubby...", "It's SHINY!!", "It's happy",
   "THANKS! Farewell", "It ran away...", "Bye! Waving goodbye...",
@@ -29,14 +29,26 @@ static const char *const STRINGS[STR_COUNT] = {
   "Evolve?", "Keep form", "Say goodbye?", "Goodbye", "Stay together",
   "Choose your starter",
   "No sprites", "Load them onto the SD",
+  "STEPS", "Next goal: %lu", "All goals done!", "TOTAL %lu",
+  "500 steps! Snack!", "2000 steps! Energy!", "5000 steps! Workout!",
 };
 
-// Nombre de medalla (banner) y descripcion larga [medalla].
-static const char *const MED_NAME[MED_COUNT] = { "Lv.10", "Lv.25", "Lv.50", "BERRY", "7 STREAK", "BOND", "TOP FORM", "IN SHAPE" };
-static const char *const MED_DSC[MED_COUNT] = {
+// Medal name (banner) and long description [medal].
+static const char *const MED_NAME[] = { "Lv.10", "Lv.25", "Lv.50", "BERRY", "7 STREAK", "BOND", "TOP FORM", "IN SHAPE" };
+static const char *const MED_DSC[] = {
   "LEVEL 10", "LEVEL 25", "LEVEL 50", "BERRY FOUND", "7 DAY STREAK", "MAX BOND", "FINAL FORM", "IN SHAPE",
 };
+
+static const char *const TRAIL[] = { "ROOKIE", "WALKER", "HIKER", "TREKKER", "RANGER" };
+
+#define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
+// with the size left undeclared, a table that is too short or too long no longer slips by silently
+static_assert(COUNT_OF(STRINGS) == STR_COUNT, "STRINGS y StrId no coinciden");
+static_assert(COUNT_OF(MED_NAME) == MED_COUNT, "MED_NAME y MED_COUNT no coinciden");
+static_assert(COUNT_OF(TRAIL) == Pet::TRAIL_RANKS + 1, "TRAIL and Pet::TRAIL_RANKS do not match");
+static_assert(COUNT_OF(MED_DSC) == MED_COUNT, "MED_DSC y MED_COUNT no coinciden");
 
 const char *T(StrId id) { return STRINGS[id]; }
 const char *medalName(int i)  { return MED_NAME[i]; }
 const char *medalDesc(int i)  { return MED_DSC[i]; }
+const char *trailName(int rank) { return TRAIL[rank]; }

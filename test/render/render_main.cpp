@@ -1,14 +1,14 @@
-// Renderer del host: compila el sketch tal cual (TamaPoke.ino) contra un lienzo
-// por software, lleva el juego a cada pantalla y guarda la captura como PPM.
-//   render_main <carpeta_salida> [filtro]
+// Host renderer: builds the sketch as is (TamaPoke.ino) against a software
+// canvas, takes the game to every screen and saves the capture as PPM.
+//   render_main <output_dir> [filter]
 #include <string>
 #include <vector>
 #include <functional>
 #include <algorithm>
 #include "shim/Arduino.h"
 #include "shim/SD_MMC.h"
-// las escenas ponen directamente los temporizadores y contadores internos del bicho
-// (comer, evolucionar, medallas...): se abre pet.h solo aqui
+// scenes set the critter's internal timers and counters directly
+// (eating, evolving, medals...): pet.h is opened up only here
 #define private public
 #include "pet.h"
 #undef private
@@ -24,7 +24,7 @@ static void savePpm(const std::string &path) {
   if (!f) { perror(path.c_str()); exit(1); }
   fprintf(f, "P6\n%d %d\n255\n", (int)gfx->width(), (int)gfx->height());
   for (uint16_t c : gShot) {
-    int r = c >> 11, g = (c >> 5) & 0x3F, b = c & 0x1F;  // 5/6/5 bits -> 8, sin oscurecer
+    int r = c >> 11, g = (c >> 5) & 0x3F, b = c & 0x1F;  // 5/6/5 bits -> 8, without darkening
     uint8_t rgb[3] = { (uint8_t)(r << 3 | r >> 2), (uint8_t)(g << 2 | g >> 4), (uint8_t)(b << 3 | b >> 2) };
     fwrite(rgb, 1, 3, f);
   }
@@ -38,8 +38,8 @@ static void closeAll() {
   pet.ceremony = CER_NONE;
 }
 
-// Los datos son los de un bicho adulto bien cuidado; todo fijo para que la imagen
-// no cambie entre ejecuciones.
+// The data is that of a well-cared-for adult critter; everything fixed so the image
+// doesn't change between runs.
 static void adult(int dex) {
   pet.speciesId = dex;
   pet.ageMinutes = 60 * 40;
@@ -48,21 +48,22 @@ static void adult(int dex) {
   pet.streak = 12; pet.bond = 60;
   pet.medals = MED_LV10 | MED_LV25 | MED_BERRY;
   memset(pet.dexReg, 0, sizeof(pet.dexReg));
-  for (int d = 1; d <= 151; d++)  // todos criados menos el #3 y el #151: salen "???" y siluetas
+  memset(pet.dexSeen, 0, sizeof(pet.dexSeen));
+  for (int d = 1; d <= 151; d++)  // all raised except #3 and #151: they show "???" and silhouettes
     if (d != 3 && d != 151) pet.dexReg[(d - 1) >> 3] |= 1 << ((d - 1) & 7);
 }
 
-// primer Pokemon de cada bioma, para ver los paisajes
+// first Pokemon of each biome, to see the landscapes
 static int dexInBiome(int b) {
   for (int d = 1; d <= 151; d++)
     if (DEX_TBL[d].biome == b) return d;
   return 1;
 }
 
-// vecino de mentira para la escena (id distinto de 0)
+// fake neighbor for the scene (id other than 0)
 extern NbEntry gHostNb[NB_TABLE_SIZE];
 extern int gHostNbN;
-// una carga de sprite por segundo, como en el juego
+// one sprite load per second, as in the game
 static void settleNeighbors() {
   uint32_t t = millis();
   for (int i = 0; i < NB_MAX_SHOWN + 1; i++) { mockSetMillis(t + 1100 * (i + 1)); ensureNeighbors(); }
@@ -80,11 +81,11 @@ static void atHour(int h) { pet.lastSeenEpoch = 1767225600UL + h * 3600UL; }
 struct Scene {
   const char *name;
   void (*setup)();
-  bool noPmd;      // el sprite sale de flash (sin PMD de la SD)
+  bool noPmd;      // the sprite comes from flash (no PMD from the SD)
 };
 
 static const Scene SCENES[] = {
-  { "starter", [] { closeAll(); }, false },  // primera partida: aun no ha elegido inicial
+  { "starter", [] { closeAll(); }, false },  // first game: no starter chosen yet
   { "egg", [] { closeAll(); pet.speciesId = -1; }, false },
   { "main_day", [] { closeAll(); adult(6); }, false },
   { "main_night", [] { closeAll(); adult(6); pet.sleeping = true; }, false },
@@ -97,7 +98,7 @@ static const Scene SCENES[] = {
   { "game", [] { closeAll(); adult(25); gameOpen = true; ballX = CX; ballY = 150; ballVX = ballVY = 0; gamePetX = CX; gameScore = 7; gameMisses = 1; }, false },
   { "sack", [] { closeAll(); adult(25); sackOpen = true; sackUntil = millis() + 8000; sackHits = 14; }, false },
   { "farewell", [] { closeAll(); adult(6); pet.startFarewell(); }, false },
-  // dialogos, botones de final, efectos, paginas de la ficha, sprites de respaldo...
+  // dialogs, ending buttons, effects, card pages, fallback sprites...
   { "nearby_1", [] { closeAll(); adult(6); nb(1, 25); }, false },
   { "nearby_2", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); }, false },
   { "nearby_3", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); nb(3, 39); }, false },
@@ -127,7 +128,10 @@ static const Scene SCENES[] = {
   { "main_nosprites", [] { closeAll(); adult(25); }, true },
   { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, false },
   { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false },
+  { "card_steps", [] { closeAll(); adult(6); cardOpen = true; cardPage = 4; pet.stepsToday = 3240; pet.stepsTotal = 61250; }, false },
   { "gallery_page6", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 6; galleryDirty = true; }, false },
+  { "gallery_seen", [] { closeAll(); adult(6); pet.dexReg[0] &= ~0xC0; pet.dexSeen[0] |= 0xC0; galleryOpen = true; galleryPage = 0; galleryDirty = true; }, false },  // #7, #8: met, not raised
+  { "gallery_detail_seen", [] { closeAll(); adult(6); pet.dexReg[0] &= ~0x40; pet.dexSeen[0] |= 0x40; galleryOpen = true; galleryDetail = 7; galleryPmd.load(7, false); }, false },
   { "gallery_detail_unknown", [] { closeAll(); adult(6); galleryOpen = true; galleryDetail = 3; galleryPmd.load(3, false); }, false },
   { "game_over", [] { closeAll(); adult(25); gameOpen = true; gameScore = 12; gameMisses = 3; gameNewHi = true; gameOverUntil = millis() + 4000; gamePetX = CX; ballX = CX; ballY = 300; ballVX = ballVY = 0; }, false },
   { "sack_over", [] { closeAll(); adult(25); sackOpen = true; sackUntil = millis() - 1; sackOverUntil = millis() + 3000; sackHits = 31; sackGain = 2; sackNewHi = true; }, false },
@@ -141,16 +145,16 @@ static const Scene SCENES[] = {
   { "biome_beach_night", [] { closeAll(); adult(dexInBiome(1)); pet.sleeping = true; }, false },
 };
 
-static Pet gPristinePet;  // el bicho justo despues de setup()
+static Pet gPristinePet;  // the critter right after setup()
 
-// Lleva el juego a la escena. Cada pantalla parte del mismo estado: sin esto la
-// imagen dependeria de que escenas corrieron antes (animacion del bicho,
-// secuencia de random()).
+// Takes the game to the scene. Every screen starts from the same state: without this the
+// image would depend on which scenes ran before (critter animation,
+// random() sequence).
 static void prepare(const Scene &sc) {
   gBatPercent = 80; gBatCharging = false; pet.lastSeenEpoch = 0;
   feedMenuUntil = confirmUntil = bathUntil = 0; bathPending = false; choiceKind = 0;
-  pet = gPristinePet;  // el bicho entero (temporizadores, pokedex, medallas...) como tras el arranque
-  screenKeyValid = false;  // una pantalla estatica se pinta siempre la primera vez
+  pet = gPristinePet;  // the whole critter (timers, pokedex, medals...) as after boot
+  screenKeyValid = false;  // a static screen is always painted the first time
   gameOverUntil = sackOverUntil = 0; gameNewHi = sackNewHi = false; sackGain = 0;
   randomSeed(1);
   monFor = -2;
@@ -162,11 +166,11 @@ static void prepare(const Scene &sc) {
   sc.setup();
   ensureMon();
   settleNeighbors();
-  if (sc.noPmd) pmd.unload();  // fuerza el sprite de flash / el aviso de "faltan sprites"
+  if (sc.noPmd) pmd.unload();  // forces the flash sprite / the "missing sprites" notice
   mockSetMillis(100000);
 }
 
-// ---------- pruebas de toque: se toca el centro de cada elemento dibujado ----------
+// ---------- touch tests: the center of each drawn element is tapped ----------
 static int gTapFails = 0;
 static const Scene *findScene(const char *name) {
   for (const Scene &sc : SCENES) if (!strcmp(sc.name, name)) return &sc;
@@ -177,51 +181,51 @@ static const Scene *findScene(const char *name) {
 static const char *curScene = "";
 static void begin(const char *name) { curScene = name; prepare(*findScene(name)); }
 static void tapAt(int x, int y) {
-  // handleTouch() desvia el saco antes de onTap(): se usa su misma funcion
+  // handleTouch() diverts the bag before onTap(): its own function is used
   if (sackOpen) { sackTouch((int16_t)y); return; }
   onTap((int16_t)x, (int16_t)y);
 }
 
 static int runTapTests() {
-  // vecinos: cada hueco carga su sprite y lo suelta cuando el vecino se va
+  // neighbors: each slot loads its sprite and releases it when the neighbor leaves
   begin("nearby_4");
   for (int i = 0; i < NB_MAX_SHOWN; i++) EXPECT(nbPmd[i].loaded && nbSlot[i].id == (uint32_t)i + 1, "cada vecino tiene su sprite");
-  gHostNbN = 2;  // se van dos
+  gHostNbN = 2;  // two leave
   settleNeighbors();
   EXPECT(nbPmd[0].loaded && nbPmd[1].loaded && !nbPmd[2].loaded && !nbPmd[3].loaded && !nbSlot[3].id, "al irse un vecino se suelta su sprite");
   gHostNbN = 0;
   settleNeighbors();
   EXPECT(!nbPmd[0].loaded && !nbPmd[1].loaded, "sin vecinos no queda ningun sprite cargado");
-  // selector de comida: el centro de cada icono elige su casilla
+  // food selector: the center of each icon picks its slot
   for (int i = 0; i < 4; i++) {
     begin("feed_menu");
     uint8_t w0 = pet.weight;
     tapAt(buttons[i].cx, buttons[i].cy);
     EXPECT(feedMenuUntil == 0, "el selector se cierra");
     EXPECT(pet.eating(), "el bicho come");
-    // el #6 (Charizard) tiene por baya favorita la roja (casilla 0): solo esa da el corazon
+    // #6 (Charizard) has the red berry as its favorite (slot 0): only that one gives the heart
     if (i == 0) EXPECT(pet.berryKnown, "la casilla 1 es la baya roja (favorita)");
     else EXPECT(!pet.berryKnown, "las casillas 2 y 3 no son la baya favorita");
     if (i == 3) EXPECT(pet.weight > w0, "la casilla 4 es la chuche (engorda)");
     else EXPECT(pet.weight == w0, "una baya no engorda");
   }
-  // el borde del ultimo circulo sigue siendo la chuche
+  // the edge of the last circle is still the treat
   begin("feed_menu");
   uint8_t w1 = pet.weight;
   tapAt(buttons[3].cx + BTN_R - 2, buttons[3].cy);
   EXPECT(pet.weight > w1, "el borde del ultimo circulo es la chuche");
-  // fuera del recuadro: se cierra sin dar de comer
+  // outside the box: it closes without feeding
   begin("feed_menu");
   tapAt(CX, UY(250));
   EXPECT(feedMenuUntil == 0 && !pet.eating(), "tocar fuera cierra el selector sin comer");
-  // dialogo de soltar: SI suelta; cualquier otro toque lo cierra sin soltar
+  // release dialog: YES releases; any other tap closes it without releasing
   begin("release_dialog");
   tapAt(YES_X + YES_W / 2, YES_Y + YES_H / 2);
   EXPECT(pet.ceremony == CER_RELEASE, "SI suelta al bicho");
   begin("release_dialog");
   tapAt(NO_X + YES_W / 2, NO_Y + YES_H / 2);
   EXPECT(pet.ceremony == CER_NONE && !confirmUntil, "tocar NO cierra el dialogo sin soltar");
-  // dialogos de decision
+  // decision dialogs
   begin("evolve_dialog");
   tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B1_Y + CHOICE_BH / 2);
   EXPECT(pet.speciesId != 4, "evolucionar");
@@ -234,7 +238,7 @@ static int runTapTests() {
   begin("farewell_dialog");
   tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B2_Y + CHOICE_BH / 2);
   EXPECT(pet.ceremony == CER_NONE && !choiceKind && pet.farDeclinedAge > pet.ageMinutes, "quedaros juntos");
-  // botones de final
+  // ending buttons
   begin("cta_evolve");
   tapAt(EVO_BTN_X + EVO_BTN_W / 2, EVO_BTN_Y + EVO_BTN_H / 2);
   EXPECT(choiceKind == 1, "boton de evolucion abre el dialogo");
@@ -244,7 +248,7 @@ static int runTapTests() {
   begin("cta_runaway");
   tapAt(FAR_BTN_X + FAR_BTN_W / 2, FAR_BTN_Y + FAR_BTN_H / 2);
   EXPECT(pet.ceremony == CER_RUNAWAY, "boton de escapada");
-  // botones de accion
+  // action buttons
   for (int i = 0; i < 4; i++) {
     begin("main_day");
     bool slept = pet.sleeping;
@@ -254,25 +258,25 @@ static int runTapTests() {
     if (i == 2) EXPECT(pet.sleeping != slept, "luz cambia el sueno");
     if (i == 3) EXPECT(bathUntil != 0, "bano empieza");
   }
-  // caricia: el centro del sprite cae dentro de la zona del bicho
+  // petting: the center of the sprite falls inside the critter zone
   begin("main_day");
   tapAt(CX, PET_CY);
   EXPECT(pet.showHeart(), "caricia al bicho");
-  begin("main_day");  // y un toque sobre las barras de estado NO es una caricia
+  begin("main_day");  // and a tap on the status bars is NOT petting
   tapAt(CX, UY(332));
   EXPECT(!pet.showHeart(), "las barras no acarician");
-  // eleccion de inicial: el centro de cada fila elige su Pokemon
+  // starter choice: the center of each row picks its Pokemon
   for (int i = 0; i < 3; i++) {
     begin("starter");
     EXPECT(pet.awaitingStarter(), "la escena parte de la eleccion de inicial");
     tapAt(STARTER_ROW_X + STARTER_ROW_W / 2, STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP) + STARTER_ROW_H / 2);
     EXPECT(!pet.awaitingStarter() && pet.eggTarget == STARTER_DEX[i], "la fila elige su inicial");
   }
-  begin("starter");  // el hueco entre filas y fuera de ellas no elige nada
+  begin("starter");  // the gap between rows and outside them picks nothing
   tapAt(STARTER_ROW_X + STARTER_ROW_W / 2, STARTER_ROW_Y + STARTER_ROW_H + STARTER_ROW_GAP / 2);
   tapAt(STARTER_ROW_X - U(10), STARTER_ROW_Y + STARTER_ROW_H / 2);
   EXPECT(pet.awaitingStarter(), "tocar fuera de las filas no elige");
-  // galeria: cada celda abre su detalle; la cabecera sale; el detalle vuelve a la rejilla
+  // gallery: each cell opens its detail; the header exits; the detail returns to the grid
   for (int r = 0; r < 4; r++)
     for (int c = 0; c < 4; c++) {
       begin("gallery");
@@ -283,12 +287,12 @@ static int runTapTests() {
   tapAt(CX, HEADER_ZONE_H - 1);
   EXPECT(!galleryOpen, "tocar la cabecera cierra la galeria");
   begin("gallery");
-  tapAt(GAL_X + GAL_CELL / 2, HEADER_ZONE_H + (GAL_Y - HEADER_ZONE_H) / 2);  // entre la cabecera y la rejilla
+  tapAt(GAL_X + GAL_CELL / 2, HEADER_ZONE_H + (GAL_Y - HEADER_ZONE_H) / 2);  // between the header and the grid
   EXPECT(galleryOpen && !galleryDetail, "el hueco bajo la cabecera no hace nada");
   begin("gallery_detail");
   tapAt(CX, CY);
   EXPECT(galleryOpen && !galleryDetail, "tocar el detalle vuelve a la rejilla");
-  // ficha: el nombre abre el teclado, ENTRENAR FUERZA abre el saco
+  // card: the name opens the keyboard, ENTRENAR FUERZA opens the bag
   begin("card_profile");
   tapAt(CX, CARD_NAME_ZONE_H - 1);
   EXPECT(kbOpen, "tocar el nombre abre el teclado");
@@ -301,7 +305,7 @@ static int runTapTests() {
   begin("card_stats");
   tapAt(TRAIN_X + TRAIN_W / 2, TRAIN_Y - UY(12));
   EXPECT(!sackOpen && !cardOpen, "tocar fuera del boton cierra la ficha sin entrenar");
-  // teclado: cada tecla (su centro) escribe su letra; <- borra; OK guarda
+  // keyboard: each key (its center) types its letter; <- deletes; OK saves
   for (int i = 0; i < 28; i++) {
     begin("keyboard");
     nameLen = 0; nameBuf[0] = 0;
@@ -314,7 +318,7 @@ static int runTapTests() {
   begin("keyboard");
   tapAt(KB_X + (29 % KB_COLS) * KB_W + KB_W / 2, KB_Y + (29 / KB_COLS) * KB_H + KB_H / 2);
   EXPECT(!kbOpen && !strcmp(pet.nick, "ASH"), "OK guarda el apodo");
-  // reloj: botones +/-, sonido y OK
+  // clock: +/- buttons, sound and OK
   begin("clock");
   tapAt(CLK_X0 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
   EXPECT(clockH == 13, "hora -");
@@ -332,7 +336,7 @@ static int runTapTests() {
   audioSetEnabled(snd);
   tapAt(CLOCK_OK_X + CLOCK_OK_W / 2, CLOCK_OK_Y + CLOCK_OK_H / 2);
   EXPECT(!clockOpen, "OK cierra el reloj");
-  // minijuego de la bola: tocar la bola puntua, fuera no, la cabecera abandona
+  // ball minigame: tapping the ball scores, outside does not, the header quits
   begin("game");
   uint8_t sc0 = gameScore;
   tapAt((int)ballX, (int)ballY);
@@ -344,30 +348,30 @@ static int runTapTests() {
   tapAt(CX, UY(30));
   EXPECT(!gameOpen, "tocar la cabecera abandona el minijuego");
   begin("game");
-  for (int i = 0; i < 50; i++) {  // la bola reaparece siempre dentro de su zona y a su altura
+  for (int i = 0; i < 50; i++) {  // the ball always reappears inside its zone and at its height
     respawnBall();
     EXPECT(ballX >= U(150) && ballX < U(150) + U(166) && ballY == UY(96), "la bola reaparece en su zona");
     EXPECT(fabsf(ballVX) >= 1.6f * UI_F - 0.001f && fabsf(ballVX) <= 4.0f * UI_F + 0.001f, "velocidad inicial proporcional");
   }
-  // radio de toque: 0,9 de U(74) da, 1,1 no
+  // touch radius: 0.9 of U(74) hits, 1.1 does not
   begin("game");
   tapAt((int)ballX + (int)(0.9f * U(74)), (int)ballY);
   EXPECT(gameScore == sc0 + 1, "un toque a 0,9 del radio puntua");
   begin("game");
   tapAt((int)ballX + (int)(1.1f * U(74)), (int)ballY);
   EXPECT(gameScore == sc0, "un toque a 1,1 del radio no puntua");
-  // trayectoria proporcional: la altura del salto de una bola golpeada, dividida
-  // por UI_F, es la de diseno (simulada aqui con las constantes del juego a 466)
+  // proportional trajectory: the jump height of a hit ball, divided
+  // by UI_F, is the design one (simulated here with the game constants at 466)
   begin("game");
   gameScore = 7; gameMisses = 0; ballX = CX; ballY = UY(250); ballVX = ballVY = 0; lastGameStep = 0;
-  tapAt((int)ballX, (int)ballY);  // golpe: gameScore pasa a 8
+  tapAt((int)ballX, (int)ballY);  // hit: gameScore becomes 8
   float y0 = ballY, top = ballY;
   for (int i = 0; i < 40; i++) { mockAdvanceMillis(85); stepGame(); if (ballY < top) top = ballY; }
-  float v = -(6.6f + 8 * 0.22f), g = 0.40f + 8 * 0.013f, yy = 0, ref = 0;  // diseno a 466
+  float v = -(6.6f + 8 * 0.22f), g = 0.40f + 8 * 0.013f, yy = 0, ref = 0;  // design at 466
   for (int i = 0; i < 40; i++) { v += g; yy += v; if (yy < ref) ref = yy; }
   float rise = (y0 - top) / UI_F, refRise = -ref;
   EXPECT(fabsf(rise - refRise) <= 0.04f * refRise + 3, "el salto de la bola es proporcional al panel");
-  // la pared: una bola que sale disparada contra el borde rebota y no lo cruza
+  // the wall: a ball shot against the edge bounces and does not cross it
   begin("game");
   gameScore = 3; ballX = CX + BALL_R - U(2); ballY = CY; ballVX = 5 * UI_F; ballVY = 0; lastGameStep = 0;
   mockAdvanceMillis(85); stepGame();
@@ -375,8 +379,8 @@ static int runTapTests() {
   EXPECT(sqrtf(wdx * wdx + wdy * wdy) <= BALL_R + 0.5f, "la bola no cruza la pared");
   EXPECT(ballVX < 0, "la pared devuelve la bola");
 #if !LCD_ROUND
-  // panel cuadrado: techo y paredes. Una bola que sube pegada al techo rebota y baja; una que
-  // sale por un lado vuelve; una que ya esta fuera pero va hacia dentro no se invierte.
+  // square panel: ceiling and walls. A ball rising along the ceiling bounces and comes down; one that
+  // exits one side comes back; one that is already outside but heading in is not reversed.
   begin("game");
   gameScore = 3; ballX = CX; ballY = CY - BALL_R + U(1); ballVX = 0; ballVY = -4 * UI_F; lastGameStep = 0;
   mockAdvanceMillis(85); stepGame();
@@ -385,16 +389,16 @@ static int runTapTests() {
   gameScore = 3; ballX = CX + BALL_R - U(1); ballY = CY + UY(100); ballVX = 5 * UI_F; ballVY = 0; lastGameStep = 0;
   mockAdvanceMillis(85); stepGame();
   EXPECT(ballX <= CX + BALL_R + 0.5f && ballVX < 0, "la pared derecha devuelve la bola");
-  begin("game");  // una esquina arriba a la izquierda: las dos paredes a la vez
+  begin("game");  // a top-left corner: both walls at once
   gameScore = 3; ballX = CX - BALL_R + U(1); ballY = CY - BALL_R + U(1); ballVX = -5 * UI_F; ballVY = -5 * UI_F; lastGameStep = 0;
   mockAdvanceMillis(85); stepGame();
   EXPECT(ballVX > 0 && ballVY > 0 && ballX >= CX - BALL_R - 0.5f && ballY >= CY - BALL_R - 0.5f, "la esquina devuelve la bola");
-  begin("game");  // ya fuera pero yendo hacia dentro: se corrige la posicion y la velocidad se respeta
+  begin("game");  // already outside but heading in: the position is corrected and the velocity is kept
   gameScore = 3; ballX = CX - BALL_R - U(6); ballY = CY; ballVX = 2 * UI_F; ballVY = 0; lastGameStep = 0;
   mockAdvanceMillis(85); stepGame();
   EXPECT(ballX >= CX - BALL_R - 0.5f && ballVX > 0, "dentro-hacia-dentro no invierte la velocidad");
 #endif
-  // saco de entrenamiento: tocar golpea, la cabecera abandona
+  // training bag: tapping hits, the header quits
   begin("sack");
   uint16_t h0 = sackHits;
   tapAt(CX, UY(200));
@@ -406,9 +410,9 @@ static int runTapTests() {
   return gTapFails ? 1 : 0;
 }
 
-// ---------- ajuste de textos: cada cadena real cabe donde se dibuja ----------
+// ---------- text fitting: every real string fits where it is drawn ----------
 static int gFitFails = 0;
-// texto a escala `size` (TS ya aplicado) en la linea y: debe caber en maxW (px)
+// text at scale `size` (TS already applied) on line y: must fit in maxW (px)
 static void fitBox(const char *what, const char *text, int size, int maxW) {
   setSize(size);
   int w = textW(text, size);
@@ -417,13 +421,13 @@ static void fitBox(const char *what, const char *text, int size, int maxW) {
     gFitFails++;
   }
 }
-// ... o en la cuerda visible del circulo a la altura de esa linea (arriba y abajo)
+// ... or in the visible chord of the circle at the height of that line (top and bottom)
 static void fitChord(const char *what, const char *text, int size, int y) {
   setSize(size);
   int top = chordW(y), bot = chordW(y + textH());
   fitBox(what, text, size, (top < bot ? top : bot) - U(8));
 }
-// texto partido en <= maxLines lineas (como drawWrapped): cada linea cabe y no se pierde nada
+// text split into <= maxLines lines (like drawWrapped): each line fits and nothing is lost
 static void fitWrapped(const char *what, const char *text, int size, int maxW, int maxLines, int maxH = 1 << 20) {
   setSize(size);
   int st[4], ln[4];
@@ -431,7 +435,7 @@ static void fitWrapped(const char *what, const char *text, int size, int maxW, i
   int L = (int)strlen(text);
   while (L > 0 && text[L - 1] == ' ') L--;
   bool ok = n > 0 && st[n - 1] + ln[n - 1] == L;
-  if (n * textH() + (n - 1) * U(4) > maxH) ok = false;  // el bloque tambien tiene que caber en su caja
+  if (n * textH() + (n - 1) * U(4) > maxH) ok = false;  // the block must also fit in its box
   for (int i = 0; i < n; i++) {
     char line[128]; memcpy(line, text + st[i], ln[i]); line[ln[i]] = 0;
     if (textW(line, size) > maxW) ok = false;
@@ -441,7 +445,7 @@ static void fitWrapped(const char *what, const char *text, int size, int maxW, i
     gFitFails++;
   }
 }
-// el peor nombre de especie
+// the worst species name
 static const char *longestName() {
   const char *best = "";
   setSize(TS(2));
@@ -450,24 +454,24 @@ static const char *longestName() {
   return best;
 }
 
-// wrapText: cortes en el limite exacto (la palabra acaba justo en maxW)
+// wrapText: breaks at the exact limit (the word ends right at maxW)
 static int runWrapTests() {
   int fails = 0;
-  setSize(1);  // 6 px por caracter
+  setSize(1);  // 6 px per character
   struct Case { const char *text; int maxW; int lines; const char *l0; const char *l1; };
   static const Case cases[] = {
-    { "AA AA BBBBB", 30, 2, "AA AA", "BBBBB" },       // la primera linea llena justo; el espacio ya no cabe
+    { "AA AA BBBBB", 30, 2, "AA AA", "BBBBB" },       // the first line fills exactly; the space no longer fits
     { "AA BB", 100, 1, "AA BB", "" },
-    { "ABCDEFGHIJ", 30, 2, "ABCDE", "FGHIJ" },         // sin espacios: corta por caracteres
-    { "  HOLA   MUNDO  ", 60, 2, "HOLA", "MUNDO" },    // espacios sobrantes
+    { "ABCDEFGHIJ", 30, 2, "ABCDE", "FGHIJ" },         // no spaces: breaks by characters
+    { "  HOLA   MUNDO  ", 60, 2, "HOLA", "MUNDO" },    // extra spaces
     { "", 60, 0, "", "" },
   };
-  // casos que deben avanzar siempre y no pasarse del limite de lineas
+  // cases that must always advance and not exceed the line limit
   {
     int st[4], ln[4];
-    int n = wrapText("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 1, 30, 2, st, ln);  // 40 letras: no caben en 2 lineas de 5
+    int n = wrapText("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 1, 30, 2, st, ln);  // 40 letters: they don't fit in 2 lines of 5
     if (n != 2 || ln[0] != 5 || ln[1] != 5) { fprintf(stderr, "FALLA wrapText recorta en maxLines: %d lineas (%d, %d)\n", n, ln[0], ln[1]); fails++; }
-    n = wrapText("ABC", 1, 2, 4, st, ln);  // ni un caracter cabe: una por linea, sin colgarse
+    n = wrapText("ABC", 1, 2, 4, st, ln);  // not even one character fits: one per line, without hanging
     if (n != 3 || ln[0] != 1 || ln[1] != 1 || ln[2] != 1) { fprintf(stderr, "FALLA wrapText con maxW menor que un caracter: %d lineas\n", n); fails++; }
     n = wrapText("AB   ", 1, 100, 2, st, ln);
     if (n != 1 || ln[0] != 2) { fprintf(stderr, "FALLA wrapText espacios finales: %d lineas, %d\n", n, ln[0]); fails++; }
@@ -489,8 +493,8 @@ static int runWrapTests() {
 static int runFitTests() {
   char b[96];
   const char *ln = longestName();
-  // --- escena principal (todo el ancho) ---
-  const char *worst[] = { ln, "ABCDEFGHIJK" };  // el nombre mas largo y un apodo de 11 letras (nick[12])
+  // --- main scene (full width) ---
+  const char *worst[] = { ln, "ABCDEFGHIJK" };  // the longest name and an 11-letter nickname (nick[12])
   for (const char *nm : worst) {
     snprintf(b, sizeof(b), T(S_NAME_FMT), "*", nm, 999);
     int hs = fitSize(b, TS(3), TS(2), UY(52));
@@ -501,12 +505,12 @@ static int runFitTests() {
     fitBox("mensaje de estado", T(id), TS(2), UI_W - U(40));
   snprintf(b, sizeof(b), T(S_POKEDEX_FMT), 151);
   fitBox("pokedex del huevo", b, TS(2), UI_W - U(40));
-  // --- elegir inicial ---
+  // --- choose starter ---
   fitChord("titulo de inicial", T(S_CHOOSE_STARTER), TS(2), UY(68));
   for (int i = 0; i < 3; i++) fitBox("nombre de inicial en su fila", dexName(STARTER_DEX[i]), TS(3), STARTER_ROW_X + STARTER_ROW_W - U(178) - U(8));
-  // --- dialogos ---
+  // --- dialogs ---
   for (const char *nm : worst) {
-    char q[48];  // el mismo tamano que en el juego: snprintf lo corta
+    char q[48];  // same size as in the game: snprintf truncates it
     snprintf(q, sizeof(q), T(S_RELEASE_FMT), nm);
     fitWrapped("soltar?", q, TS(2), U(278) - U(16), 2, UY(60));
   }
@@ -522,7 +526,7 @@ static int runFitTests() {
   }
   setSize(TS(2));
   fitBox("cancelar del reloj", T(S_CLOCK_CANCEL), TS(3), CLOCK_OK_W - U(16));
-  // cadenas sueltas que no estaban cubiertas
+  // loose strings that were not covered
   { int hs = fitSize(T(S_EGG_HDR), TS(3), TS(2), UY(52));
     if (!fitsChord(T(S_EGG_HDR), hs, UY(52))) { fprintf(stderr, "FALLA cabecera del huevo no cabe en el circulo\n"); gFitFails++; } }
   fitChord("huevo legendario", T(S_EGG_LEGEND), TS(2), UY(316));
@@ -540,7 +544,7 @@ static int runFitTests() {
   snprintf(b, sizeof(b), T(S_STREAK_DAYS_FMT), 365);
   fitBox("racha (banner)", b, TS(2), U(320) - U(16));
   for (int i = 0; i < MED_COUNT; i++) fitBox("nombre de medalla (banner)", medalName(i), TS(2), U(320) - U(16));
-  // --- ficha ---
+  // --- card ---
   snprintf(b, sizeof(b), T(S_NAME_FMT), "*", ln, 99);
   { setSize(TS(2)); fitChord("cabecera de la ficha (tamano pequeno)", b, TS(2), UY(40)); }
   snprintf(b, sizeof(b), "(%s)", ln);
@@ -556,6 +560,14 @@ static int runFitTests() {
   snprintf(b, sizeof(b), T(S_MEDALS_FMT), 8, 8);
   fitChord("medallas", b, TS(3), UY(48));
   fitChord("progreso", T(S_PROGRESS), TS(3), UY(44));
+  fitChord("pasos", T(S_STEPS), TS(3), UY(44));
+  snprintf(b, sizeof(b), T(S_STEPS_NEXT_FMT), 5000UL);
+  fitChord("siguiente meta", b, TS(2), UY(190));
+  fitChord("metas hechas", T(S_STEPS_ALL_DONE), TS(2), UY(190));
+  snprintf(b, sizeof(b), T(S_STEPS_TOTAL_FMT), 4294967295UL);
+  fitChord("pasos totales", b, TS(2), UY(284));
+  for (int r = 0; r <= Pet::TRAIL_RANKS; r++) fitChord("rango", trailName(r), TS(2), UY(308));
+  for (StrId id : { S_STEP_REWARD_1, S_STEP_REWARD_2, S_STEP_REWARD_3 }) fitBox("mensaje de pasos", T(id), TS(2), UI_W - U(40));
   snprintf(b, sizeof(b), T(S_NEXT_LVL_FMT), 60, 999);
   fitChord("siguiente nivel", b, TS(2), UY(190));
   fitChord("etiqueta de evolucion", T(S_EVO_LABEL), TS(2), UY(230));
@@ -564,9 +576,9 @@ static int runFitTests() {
   fitChord("evolucion en", b, TS(2), UY(256));
   snprintf(b, sizeof(b), T(S_MISTAKES_FMT), 99);
   fitChord("descuidos", b, TS(2), UY(312));
-  // --- galeria, teclado, reloj ---
+  // --- gallery, keyboard, clock ---
   snprintf(b, sizeof(b), T(S_POKEDEX_FMT), 151);
-  fitChord("pokedex", b, TS(2), UY(48));  // el titulo cae a este tamano si no cabe al grande
+  fitChord("pokedex", b, TS(2), UY(48));  // the title drops to this size if it doesn't fit at the large one
   snprintf(b, sizeof(b), "N.%03d %s%s", 151, "*", ln);
   fitChord("detalle de galeria (tamano pequeno)", b, TS(2), UY(60));
   fitChord("volver del detalle", T(S_DETAIL_BACK), TS(2), UY(408));
@@ -576,7 +588,7 @@ static int runFitTests() {
   fitBox("MIN", T(S_MIN), TS(2), CLOCK_BTN_W * 2 + (CLK_X3 - CLK_X2 - CLOCK_BTN_W));
   fitBox("sonido activado", T(S_SND_ON), TS(2), SND_PILL_W - U(8));
   fitBox("sonido desactivado", T(S_SND_OFF), TS(2), SND_PILL_W - U(8));
-  // --- minijuegos ---
+  // --- minigames ---
   snprintf(b, sizeof(b), T(S_SCORE_FMT), 999);
   fitBox("puntuacion", b, TS(4), UI_W - U(40));
   snprintf(b, sizeof(b), T(S_RECORD_FMT), 999);
@@ -593,12 +605,12 @@ static int runFitTests() {
   return gFitFails ? 1 : 0;
 }
 
-// ---------- consumo: que se repinta y cuando ----------
+// ---------- power use: what repaints and when ----------
 static int runPowerTests() {
   int fails = 0;
 #define PCHECK(cond, what) do { if (!(cond)) { fprintf(stderr, "FALLA %-26s %s\n", curScene, what); fails++; } } while (0)
   curScene = "";
-  // pantallas estaticas: una vez dibujadas no se repintan hasta que cambia algo
+  // static screens: once drawn they are not repainted until something changes
   begin("clock");
   PCHECK(render(), "el reloj se dibuja la primera vez");
   PCHECK(!render(), "el reloj no se repinta sin cambios");
@@ -615,21 +627,25 @@ static int runPowerTests() {
   PCHECK(render(), "la ficha se repinta si cambia un dato");
   begin("card_medals");
   PCHECK(render() && !render(), "las medallas: una vez y quietas");
+  begin("card_steps");
+  PCHECK(render() && !render(), "los pasos: una vez y quietos");
+  pet.stepsToday += 10;
+  PCHECK(render(), "los pasos se repintan al caminar");
   begin("starter");
   PCHECK(render() && !render(), "la eleccion de inicial: una vez y quieta");
-  // pantallas animadas: se dibujan siempre
+  // animated screens: always drawn
   for (const char *n : { "main_day", "card_profile", "game", "sack", "farewell" }) {
     begin(n);
     PCHECK(render() && render(), "las pantallas animadas se dibujan en cada frame");
   }
-  // cambiar de pantalla invalida la clave: volver al reloj lo dibuja de nuevo
+  // switching screens invalidates the key: going back to the clock draws it again
   begin("clock");
   render();
   begin("main_day");
   render();
   begin("clock");
   PCHECK(render(), "al volver a una pantalla estatica se vuelve a dibujar");
-  // el paseo del bicho avanza lo mismo a 10 fps que a 5 fps (por tiempo, no por frame)
+  // the critter's walk advances the same at 10 fps as at 5 fps (by time, not per frame)
   float x10 = 0, x4 = 0;
   for (int fps : { 10, 5 }) {
     begin("main_day");
@@ -644,7 +660,7 @@ static int runPowerTests() {
   }
   PCHECK(x10 > U(60), "el bicho camina");
   PCHECK(fabsf(x10 - x4) <= 0.08f * x10 + 3, "el paseo no depende de los frames por segundo");
-  // tras un hueco largo sin dibujar al bicho (otra pantalla de por medio) no da un salto
+  // after a long gap without drawing the critter (another screen in between) it doesn't jump
   {
     float before = beh.x;
     mockSetMillis(100000 + 4000 + 5000);
@@ -679,11 +695,11 @@ int main(int argc, char **argv) {
     prepare(sc);
     gShot.clear();
     render();
-    if (gShot.empty()) {  // la pantalla no hizo flush: no se guarda lo que dejo la anterior
+    if (gShot.empty()) {  // the screen did not flush: what the previous one left is not saved
       fprintf(stderr, "la pantalla '%s' no dibujo nada\n", sc.name);
       return 1;
     }
-    // sin SD el juego cae a los sprites de flash y la captura engana: se exige la SD
+    // without an SD the game falls back to flash sprites and the capture misleads: the SD is required
     bool petScene = !pet.isEgg() && !pet.awaitingStarter() && !galleryOpen && !sc.noPmd;
     if ((petScene && !pmd.loaded) || (galleryDetail && !galleryPmd.loaded) || (galleryOpen && !thumbs.loaded) ||
         (pet.awaitingStarter() && !thumbs.loaded)) {

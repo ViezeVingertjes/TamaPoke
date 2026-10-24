@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Compara las capturas del renderer con las imagenes de referencia.
+"""Compares the renderer screenshots with the reference images.
 
-    compare.py <capturas> <referencia>            falla si alguna difiere
-    compare.py --update [--prune] <capturas> <referencia>
-                                                  las sobrescribe con las nuevas;
-                                                  --prune borra las de pantallas que ya no existen
+    compare.py <shots> <reference>               fails if any differs
+    compare.py --update [--prune] <shots> <reference>
+                                                  overwrites them with the new ones;
+                                                  --prune deletes those of screens that no longer exist
 
-Si una captura difiere, guarda <nombre>.diff.png (actual | referencia | diferencia)
-junto a las capturas, para verla en el artefacto de CI. Una pantalla nueva o de otro
-tamano deja <nombre>.actual.png."""
+If a screenshot differs, it saves <name>.diff.png (actual | reference | difference)
+next to the screenshots, to view it in the CI artifact. A new screen or one of another
+size leaves <name>.actual.png."""
 import os
 import sys
 
@@ -36,7 +36,7 @@ def main():
         sys.exit("no existe la carpeta de referencias " + golden)
 
     bad = []
-    if not update:  # una referencia sin captura: la pantalla dejo de renderizarse
+    if not update:  # a reference without a screenshot: the screen stopped rendering
         for f in sorted(os.listdir(golden)):
             if f.endswith(".png") and f[:-4] not in names:
                 bad.append((f[:-4], "hay referencia pero no captura"))
@@ -44,8 +44,8 @@ def main():
         cur = load(os.path.join(shots, n + ".ppm"))
         ref_path = os.path.join(golden, n + ".png")
         if update:
-            # no se reescribe una referencia que no cambia: los bytes del PNG
-            # dependen de la version de Pillow/zlib y ensuciarian el git diff
+            # a reference that hasn't changed is not rewritten: the PNG bytes
+            # depend on the Pillow/zlib version and would clutter the git diff
             if not os.path.exists(ref_path) or ImageChops.difference(cur, load(ref_path)).getbbox():
                 cur.save(ref_path, optimize=True)
             continue
@@ -61,7 +61,7 @@ def main():
         diff = ImageChops.difference(cur, ref)
         box = diff.getbbox()
         if box:
-            r, g, b = diff.split()  # cuenta el pixel si cualquier canal cambia
+            r, g, b = diff.split()  # count the pixel if any channel changes
             any_ch = ImageChops.lighter(ImageChops.lighter(r, g), b).point(lambda v: 255 if v else 0)
             changed = any_ch.histogram()[255]
             bad.append((n, "%d px distintos, zona %s" % (changed, box)))
@@ -72,7 +72,7 @@ def main():
             sheet.save(os.path.join(shots, n + ".diff.png"))
 
     if update:
-        for f in os.listdir(golden) if prune else []:  # pantallas que ya no existen
+        for f in os.listdir(golden) if prune else []:  # screens that no longer exist
             if f.endswith(".png") and f[:-4] not in names:
                 os.remove(os.path.join(golden, f))
         print("referencias actualizadas: %d" % len(names))

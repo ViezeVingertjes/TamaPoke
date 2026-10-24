@@ -1,7 +1,7 @@
-# artefactos de compilacion
+# build artifacts
 build/
 
-# cacheas y artefactos regenerables del taller
+# caches and regenerable workshop artifacts
 tools/downloads/
 tools/__pycache__/
 __pycache__/
@@ -15,6 +15,6 @@ tools/demo_compare.js
 tools/pmd_cache/
 test/build/
 
-# borrador local de la ficha de MakerWorld y modelado abandonado de la carcasa
+# local MakerWorld listing draft and abandoned case modeling
 MAKERWORLD.md
 case/

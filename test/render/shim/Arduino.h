@@ -1,5 +1,5 @@
-// Extras de Arduino/ESP32 que necesita TamaPoke.ino para compilar en el PC.
-// Se apoya en el shim comun de test/shim.
+// Arduino/ESP32 extras that TamaPoke.ino needs to compile on the PC.
+// It builds on the common shim in test/shim.
 #pragma once
 #include "../../shim/Arduino.h"
 #include <string>
@@ -29,7 +29,7 @@ struct MockEsp {
 };
 extern MockEsp ESP;
 
-// String minimo (solo lo que usa el sketch y sdmon.h)
+// Minimal String (only what the sketch and sdmon.h use)
 class String : public std::string {
 public:
   using std::string::operator=;
@@ -51,11 +51,14 @@ public:
   int toInt() const { return atoi(c_str()); }
 };
 
-// el Serial real es mas ancho que el del shim comun: se envuelve y se redirige
+// the real Serial is wider than the common shim one: it is wrapped and redirected
 struct HostSerial : MockSerial {
   void setTxTimeoutMs(int) {}
   void setRxBufferSize(int) {}
+  void flush() {}
   void setTimeout(int) {}
+  unsigned long getTimeout() { return 1000; }
+  int read() { return -1; }
   int available() { return 0; }
   String readStringUntil(char) { return String(); }
   size_t readBytes(uint8_t *, size_t) { return 0; }

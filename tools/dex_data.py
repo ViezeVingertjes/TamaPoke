@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Fuente unica de datos de la Pokedex gen 1 para TamaPoke.
+"""Single source of Gen 1 Pokedex data for TamaPoke.
 
-Cada entrada: (num, slug, nombre_pantalla, tipo, evoluciona_a, nivel)
-- slug: nombre en minusculas de la especie (identificador interno)
-- nombre_pantalla: mayusculas sin acentos. La fuente GFX si tiene glifos
-  acentuados (CP437), pero NO las mayusculas acentuadas salvo la E, y los
-  nombres se pintan en mayusculas, asi que aqui van sin tilde
-- tipo: clave de TYPE_ACCENTS (color del nombre en la UI)
-- evoluciona_a: numero de dex (0 = forma final); niveles gen 1 reales,
-  piedras ~30 y por intercambio ~40 convertidos a nivel. Eevee (133) se
-  ramifica en el codigo del juego (134/135/136 al azar).
+Each entry: (num, slug, display_name, type, evolves_to, level)
+- slug: lowercase species name (internal identifier)
+- display_name: uppercase without accents. The GFX font does have accented
+  glyphs (CP437), but NOT accented capitals except E, and names are
+  drawn in capitals, so they go here without accents
+- type: key of TYPE_ACCENTS (name color in the UI)
+- evolves_to: dex number (0 = final form); real Gen 1 levels,
+  stones ~30 and trade ~40 converted to a level. Eevee (133) branches
+  in the game code (134/135/136 at random).
 """
 
 TYPE_ACCENTS = {
@@ -29,7 +29,7 @@ TYPE_ACCENTS = {
     'dragon':    '#5a52c4',
 }
 
-# num, slug, display, tipo, evolucionaA, nivel
+# num, slug, display, type, evolvesTo, level
 DEX = [
     (1, 'bulbasaur', 'BULBASAUR', 'planta', 2, 16),
     (2, 'ivysaur', 'IVYSAUR', 'planta', 3, 32),
@@ -163,7 +163,7 @@ DEX = [
     (130, 'gyarados', 'GYARADOS', 'agua', 0, 0),
     (131, 'lapras', 'LAPRAS', 'agua', 0, 0),
     (132, 'ditto', 'DITTO', 'normal', 0, 0),
-    (133, 'eevee', 'EEVEE', 'normal', 134, 30),  # rama al azar en el juego
+    (133, 'eevee', 'EEVEE', 'normal', 134, 30),  # random branch in the game
     (134, 'vaporeon', 'VAPOREON', 'agua', 0, 0),
     (135, 'jolteon', 'JOLTEON', 'electrico', 0, 0),
     (136, 'flareon', 'FLAREON', 'fuego', 0, 0),
@@ -184,10 +184,10 @@ DEX = [
     (151, 'mew', 'MEW', 'psiquico', 0, 0),
 ]
 
-# el primer huevo de la partida siempre es un inicial clasico
+# the first egg of a game is always a classic starter
 CLASSIC = [1, 4, 7, 25, 133]
 
-# rarezas de las formas base (lo que no este aqui y sea base = comun)
+# rarities of the base forms (anything base and not listed here = common)
 RARE = {58, 77, 83, 88, 95, 106, 107, 108, 111, 113, 114, 115, 122, 123,
         124, 125, 126, 127, 128, 131, 132, 137, 138, 140, 142, 143, 147}
 LEGENDARY = {144, 145, 146, 150, 151}

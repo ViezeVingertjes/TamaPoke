@@ -1,16 +1,16 @@
-# Renderer del host: compila TamaPoke.ino contra un lienzo por software.
-#   make shots               -> build/shots/*.ppm (ingles, 466x466)
-#   make shots FILTER=main_day  -> solo esa pantalla
-#   make taps                -> toca el centro de cada boton y dialogo (admite SIZE=)
-#   make power               -> que pantallas se repintan y cuando (ahorro de bateria)
-#   make fit                 -> cada texto real cabe en su caja o en el circulo
-#   make check               -> compara con golden/en y golden/sq480 (falla si alguna pantalla cambia)
-#   make golden              -> regenera golden/ (solo si el cambio de interfaz es intencionado)
-#   make readme              -> docs/screens/*.png para el README (desde golden/)
-#   make shots SIZE=240      -> otro tamano de lienzo (cuadrado, en pixeles)
-#   make shots ROUND=0       -> panel cuadrado (menus a pantalla completa); por defecto, redondo
-# Compila el codigo grafico de la libreria GFX Library for Arduino
-# (GFX_FONT_FILE si no esta en ~/Arduino).
+# Host renderer: builds TamaPoke.ino against a software canvas.
+#   make shots               -> build/shots/*.ppm (English, 466x466)
+#   make shots FILTER=main_day  -> only that screen
+#   make taps                -> taps the center of every button and dialog (accepts SIZE=)
+#   make power               -> which screens repaint and when (battery saving)
+#   make fit                 -> every real text fits in its box or in the circle
+#   make check               -> compares with golden/en and golden/sq480 (fails if any screen changes)
+#   make golden              -> regenerates golden/ (only if the interface change is intentional)
+#   make readme              -> docs/screens/*.png for the README (from golden/)
+#   make shots SIZE=240      -> another canvas size (square, in pixels)
+#   make shots ROUND=0       -> square panel (full-screen menus); round by default
+# Builds the graphics code of the GFX Library for Arduino library
+# (GFX_FONT_FILE if it is not in ~/Arduino).
 CXX      ?= g++
 GFX_FONT_FILE ?= $(firstword $(wildcard $(HOME)/Arduino/libraries/GFX_Library_for_Arduino/src/font/glcdfont.h \
                   $(HOME)/Documents/Arduino/libraries/GFX_Library_for_Arduino/src/font/glcdfont.h))
@@ -23,7 +23,7 @@ $(error falta la libreria GFX Library for Arduino: instalala o pasa GFX_FONT_FIL
 endif
 endif
 ROOT     := ../..
-# cada variante (SIZE/ROUND) compila en su carpeta: asi check no recompila el mismo binario
+# each variant (SIZE/ROUND) builds in its own folder: so check does not rebuild the same binary
 BUILD    := build$(if $(SIZE)$(ROUND),/v$(SIZE)_$(ROUND))
 BIN      := $(BUILD)/render
 OPT      ?= -O1 -g
@@ -36,7 +36,7 @@ SOURCES  := render_main.cpp host.cpp ../shim/shim.cpp $(ROOT)/pet.cpp $(ROOT)/i1
 DEPS     := $(wildcard $(ROOT)/*.h) $(wildcard shim/*) $(wildcard ../shim/*) $(GFX_FONT_FILE) \
             $(wildcard $(GFX_SRC)/*.h) $(wildcard $(GFX_SRC)/*/*.h) $(BUILD)/flags
 
-# la receta depende de los flags y la fuente: si cambian, se recompila
+# the recipe depends on the flags and the font: if they change, it rebuilds
 $(BUILD)/flags: FORCE
 	@mkdir -p $(BUILD)
 	@echo '$(CXX) $(CXXFLAGS_ALL)' | cmp -s - $@ || echo '$(CXX) $(CXXFLAGS_ALL)' > $@
@@ -47,8 +47,8 @@ shots: $(BIN)
 	@mkdir -p $(SHOTS) && find $(SHOTS) -maxdepth 1 -type f -delete
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) $(abspath $(SHOTS)) $(FILTER)
 
-# las referencias dependen de estas versiones: con otras, "check" fallaria en todo
-# y "golden" las contaminaria (PIN_CHECK=0 salta la comprobacion)
+# the references depend on these versions: with others, "check" would fail on everything
+# and "golden" would contaminate them (PIN_CHECK=0 skips the check)
 GFX_VER := 1.6.9
 .PHONY: versions
 versions:
@@ -57,7 +57,7 @@ versions:
 	  [ "$$g" = "$(GFX_VER)" ] || { \
 	    echo "las referencias son de GFX Library $(GFX_VER); aqui hay $$g (PIN_CHECK=0 para ignorarlo)"; exit 1; }; }
 
-# renderiza las dos variantes en build/check/{en,sq480} (aparte de build/shots)
+# renders both variants into build/check/{en,sq480} (separate from build/shots)
 CHECKDIR := $(BUILD)/check
 .PHONY: renders nosize
 nosize:
@@ -71,12 +71,12 @@ check: renders
 	@fail=0; echo "== en"; python3 compare.py $(CHECKDIR)/en golden/en || fail=1; \
 	echo "== sq480 (panel cuadrado de 480 px)"; python3 compare.py $(CHECKDIR)/sq480 golden/sq480 || fail=1; exit $$fail
 
-# solo escribe si las dos variantes se han renderizado bien
+# only writes if both variants rendered correctly
 golden: renders
 	@python3 compare.py --update --prune $(CHECKDIR)/en golden/en || exit 1
 	@python3 compare.py --update --prune $(CHECKDIR)/sq480 golden/sq480
 
-# imagenes del README (docs/screens/), a partir de las referencias de golden/
+# README images (docs/screens/), from the golden/ references
 readme:
 	python3 readme_shots.py
 
@@ -95,8 +95,8 @@ $(BUILD)/TamaPoke.gen.cpp: $(ROOT)/TamaPoke.ino protos.py
 
 $(BIN): $(BUILD)/TamaPoke.gen.cpp $(SOURCES) $(DEPS)
 	@mkdir -p $(BUILD)
-	@# -fpermissive vuelve avisos errores que el compilador del firmware si da (p. ej. un "return;" en una
-	@# funcion bool); los de nuestros ficheros se tratan como errores
+	@# -fpermissive turns into warnings errors that the firmware compiler does raise (e.g. a "return;" in a
+	@# bool function); those in our own files are treated as errors
 	@$(CXX) $(CXXFLAGS_ALL) -o $@ $(SOURCES) 2> $(BUILD)/cc.log; st=$$?; cat $(BUILD)/cc.log; \
 	  if grep -E '^(\.\./\.\./[A-Za-z_]+\.(ino|cpp|h)|[A-Za-z_./]*TamaPoke\.gen\.cpp).*\[-fpermissive\]' $(BUILD)/cc.log; then \
 	    echo "error: construccion permisiva en nuestro codigo (el compilador del firmware lo rechaza)"; rm -f $@; exit 1; fi; exit $$st

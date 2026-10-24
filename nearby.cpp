@@ -6,17 +6,17 @@
 #include <esp_random.h>
 
 // ---------------------------------------------------------------------------
-// Radio ESP-NOW para ver a los TamaPokes de al lado. Diseno para gastar poco:
-//  - la radio solo esta encendida en ventanas de 0,8 s (cada 25 s en uso, 45 s con la
-//    pantalla atenuada, 5 min con la pantalla apagada) y en una busqueda activa de 60 s
-//    que empieza al activar la funcion;
-//  - potencia de transmision minima (2 dBm): "cerca" quiere decir cerca;
-//  - el callback de recepcion no hace nada mas que guardar el paquete en un anillo; la
-//    validacion y la tabla se atienden en el bucle principal;
-//  - todos usan el canal 1 y difusion (sin emparejar, sin punto de acceso, sin cifrar: el
-//    paquete solo lleva especie, nivel y un id aleatorio, nada personal).
-// Vive en el bucle principal y no en una tarea: el light sleep del firmware congela el reloj de
-// FreeRTOS y una tarea con vTaskDelay se retrasaria tanto como duerma la CPU.
+// ESP-NOW radio to see the TamaPokes next to you. Designed to use little power:
+//  - the radio is only on in 0.8 s windows (every 25 s in use, 45 s with the
+//    screen dimmed, 5 min with the screen off) and in a 60 s active search
+//    that starts when the feature is enabled;
+//  - minimum transmit power (2 dBm): "nearby" means nearby;
+//  - the receive callback does nothing but store the packet in a ring; validation
+//    and the table are handled in the main loop;
+//  - everyone uses channel 1 and broadcast (no pairing, no access point, unencrypted: the
+//    packet only carries species, level and a random id, nothing personal).
+// It lives in the main loop and not in a task: the firmware's light sleep freezes the FreeRTOS
+// clock and a task with vTaskDelay would be delayed as long as the CPU sleeps.
 // ---------------------------------------------------------------------------
 
 #define NB_CHANNEL 1
@@ -30,32 +30,32 @@ struct RxPacket {
   uint8_t data[NB_BEACON_LEN];
 };
 static RxPacket ring[NB_RING];
-static volatile uint8_t ringHead = 0, ringTail = 0;  // el callback escribe head, el bucle lee tail
+static volatile uint8_t ringHead = 0, ringTail = 0;  // the callback writes head, the loop reads tail
 static portMUX_TYPE ringMux = portMUX_INITIALIZER_UNLOCKED;
 
 static uint32_t gSelfId = 0;
 static uint8_t gMac[6];
 static NbTable gTable;
 static bool gRadioOn = false;
-static uint32_t gWindowEnd = 0;       // fin de la ventana actual
+static uint32_t gWindowEnd = 0;       // end of the current window
 static uint32_t gWindowStart = 0;
-static uint32_t gNextWindow = 0;      // inicio de la proxima ventana
-static uint32_t gSearchUntil = 0;     // fin de la busqueda activa (0 = no busca)
-static uint32_t gNextBeacon = 0;      // proxima senal dentro de la ventana
+static uint32_t gNextWindow = 0;      // start of the next window
+static uint32_t gSearchUntil = 0;     // end of the active search (0 = not searching)
+static uint32_t gNextBeacon = 0;      // next signal within the window
 static int gBeaconIdx = 0;
 static uint32_t gLastReply = 0;
 static uint32_t gLastPrune = 0;
-static uint32_t gFailUntil = 0;       // tras un fallo de la radio, sin intentarlo hasta aqui (si gFailed)
+static uint32_t gFailUntil = 0;       // after a radio failure, do not retry until this time (if gFailed)
 static bool gFailed = false;
 static NbMode gMode = NB_OFF;
 static uint32_t gEpoch = 0;
-static uint32_t gKnownMask = 0;       // huella de los vecinos mostrados (para saber si cambian)
+static uint32_t gKnownMask = 0;       // fingerprint of the neighbors shown (to tell whether they change)
 
 static void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-  if (len != NB_BEACON_LEN) return;  // nada que no mida exactamente un paquete se guarda
+  if (len != NB_BEACON_LEN) return;  // nothing that is not exactly one packet long is stored
   portENTER_CRITICAL(&ringMux);
   uint8_t next = (ringHead + 1) % NB_RING;
-  if (next != ringTail) {  // anillo lleno: se descarta
+  if (next != ringTail) {  // ring full: drop it
     ring[ringHead].len = (uint8_t)len;
     ring[ringHead].rssi = info && info->rx_ctrl ? (int8_t)info->rx_ctrl->rssi : -80;
     memcpy(ring[ringHead].data, data, len);
@@ -65,10 +65,10 @@ static void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len
 }
 
 static bool radioStart() {
-  WiFi.mode(WIFI_STA);  // arranca Wi-Fi sin conectar a nada
+  WiFi.mode(WIFI_STA);  // starts Wi-Fi without connecting to anything
   esp_wifi_set_mac(WIFI_IF_STA, gMac);
   esp_wifi_set_channel(NB_CHANNEL, WIFI_SECOND_CHAN_NONE);
-  esp_wifi_set_max_tx_power(8);  // 2 dBm, el minimo
+  esp_wifi_set_max_tx_power(8);  // 2 dBm, the minimum
   if (esp_now_init() != ESP_OK) { WiFi.mode(WIFI_OFF); return false; }
   esp_now_register_recv_cb(onRecv);
   esp_now_peer_info_t peer = {};
@@ -82,7 +82,7 @@ static bool radioStart() {
 
 static void radioStop() {
   esp_now_deinit();
-  WiFi.mode(WIFI_OFF);  // apaga la radio del todo (es lo que ahorra)
+  WiFi.mode(WIFI_OFF);  // turns the radio fully off (this is what saves power)
 }
 
 static void sendBeacon(const NbSelf &self) {
@@ -93,15 +93,15 @@ static void sendBeacon(const NbSelf &self) {
 }
 
 void nearbyBegin() {
-  // el id y la MAC cambian en cada arranque y no se guardan: un aparato no se puede seguir de un dia
-  // a otro (el id solo sirve para no contar dos veces al mismo vecino durante un rato)
+  // the id and MAC change on every boot and are not saved: a device cannot be tracked from one day
+  // to the next (the id only serves to avoid counting the same neighbor twice for a while)
   do gSelfId = esp_random() & 0xFFFFFF; while (!gSelfId);
   esp_fill_random(gMac, 6);
-  gMac[0] = (gMac[0] | 0x02) & 0xFE;  // administrada localmente, unicast
+  gMac[0] = (gMac[0] | 0x02) & 0xFE;  // locally administered, unicast
   gTable.clear();
   gTable.selfId = gSelfId;
   gNextWindow = millis() + 2000 + (esp_random() % 8000);
-  gSearchUntil = millis() + NB_SEARCH_MS;  // al arrancar se busca un minuto: con otro aparato al lado se ven en segundos
+  gSearchUntil = millis() + NB_SEARCH_MS;  // on boot it searches for a minute: with another device next to it they see each other in seconds
 }
 
 bool nearbySearching() { return gSearchUntil && (int32_t)(gSearchUntil - millis()) > 0; }
@@ -128,7 +128,7 @@ static uint32_t fingerprint() {
   return h ^ (uint32_t)n;
 }
 
-// atiende los paquetes recibidos desde el ultimo pase
+// handles the packets received since the last pass
 static void drainRing(uint32_t now, const NbSelf &self) {
   while (ringTail != ringHead) {
     RxPacket pk;
@@ -139,8 +139,8 @@ static void drainRing(uint32_t now, const NbSelf &self) {
     NbBeacon b;
     if (!nbDecode(pk.data, pk.len, &b)) continue;
     NbResult r = gTable.accept(b, pk.rssi, now);
-    // uno nuevo: se le contesta enseguida, para que el tambien nos vea aunque su ventana vaya a
-    // cerrarse (como mucho una respuesta por segundo)
+    // a new one: reply right away, so that it also sees us even if its window is about to
+    // close (at most one reply per second)
     if (r == NB_NEW && gRadioOn && now - gLastReply > 1000) {
       gLastReply = now;
       sendBeacon(self);
@@ -153,10 +153,10 @@ void nearbyPoll(uint32_t now, const PowerCtx &c, const NbSelf &self) {
   if (!searching) gSearchUntil = 0;
   NbMode mode = self.valid ? nbModeFor(c, true, searching) : NB_OFF;
   gMode = mode;
-  drainRing(now, self);  // tambien con la radio apagada: lo que llego en la ultima ventana
+  drainRing(now, self);  // also with the radio off: whatever arrived in the last window
 
   if (gRadioOn) {
-    // la busqueda dura hasta que se acaba; el resto de ventanas, NB_WINDOW_MS
+    // the search lasts until it ends; the other windows, NB_WINDOW_MS
     bool end = mode == NB_OFF || (mode != NB_SEARCH && (int32_t)(now - gWindowEnd) >= 0);
     if (!end && (int32_t)(now - gNextBeacon) >= 0) {
       sendBeacon(self);
@@ -171,7 +171,7 @@ void nearbyPoll(uint32_t now, const PowerCtx &c, const NbSelf &self) {
       gNextWindow = now + nbNextDelayMs(dm, esp_random());
     }
   } else if (mode != NB_OFF) {
-    // si la pantalla se enciende, la proxima ventana no puede estar a minutos
+    // if the screen turns on, the next window cannot be minutes away
     if (mode != NB_SEARCH) {
       uint32_t maxWait = nbPeriodMs(mode) * 5 / 4;
       if ((int32_t)(gNextWindow - now) > (int32_t)maxWait) gNextWindow = now + esp_random() % (maxWait + 1);
@@ -186,7 +186,7 @@ void nearbyPoll(uint32_t now, const PowerCtx &c, const NbSelf &self) {
         gNextBeacon = now;
       } else {
         gFailed = true;
-        gFailUntil = now + 600000;  // la radio no arranco: se reintenta en 10 min
+        gFailUntil = now + 600000;  // the radio did not start: retry in 10 min
       }
     }
   }

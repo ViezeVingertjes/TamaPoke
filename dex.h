@@ -4,23 +4,23 @@
 // GENERADO por tools/gen_dex.py desde tools/dex_data.py - no editar
 
 #define DEX_COUNT 151
-#define DEX_EEVEE 133  // rama al azar: 134/135/136
+#define DEX_EEVEE 133  // random branch: 134/135/136
 
-// rareza: 0 = solo por evolucion, 1 = comun, 2 = raro, 3 = legendario
+// rarity: 0 = evolution only, 1 = common, 2 = rare, 3 = legendary
 enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO };
 
 struct DexEntry {
   const char *name;
-  uint8_t evolvesTo;    // numero de dex, 0 = forma final
+  uint8_t evolvesTo;    // dex number, 0 = final form
   uint8_t evolveLevel;
-  uint8_t rarity;       // sale de huevo si > 0
-  uint16_t accent;      // color RGB565 del tipo para la UI
-  uint8_t bHp, bAtk, bDef, bSpe;  // base stats reales de gen 1
-  uint8_t biome;        // 0 pradera 1 playa 2 bosque 3 volcan 4 montana 5 nieve
+  uint8_t rarity;       // can come from an egg if > 0
+  uint16_t accent;      // RGB565 type color for the UI
+  uint8_t bHp, bAtk, bDef, bSpe;  // real Gen 1 base stats
+  uint8_t biome;        // 0 meadow 1 beach 2 forest 3 volcano 4 mountain 5 snow
 };
 
 static const DexEntry DEX_TBL[DEX_COUNT + 1] = {
-  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, 0 },  // 0: sin usar
+  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, 0 },  // 0: unused
   { "BULBASAUR", 2, 16, R_COMUN, 0x3C49, 45, 49, 49, 45, 2 },  // 1 planta
   { "IVYSAUR", 3, 32, R_EVO, 0x3C49, 60, 62, 63, 60, 2 },  // 2 planta
   { "VENUSAUR", 0, 0, R_EVO, 0x3C49, 80, 82, 83, 80, 2 },  // 3 planta
@@ -174,11 +174,11 @@ static const DexEntry DEX_TBL[DEX_COUNT + 1] = {
   { "MEW", 0, 0, R_LEGENDARIO, 0xD28F, 100, 100, 100, 100, 0 },  // 151 psiquico
 };
 
-// Nombre de la especie (DEX_TBL[0] fuera de rango).
+// Species name (DEX_TBL[0] when out of range).
 static inline const char *dexName(int16_t dex) {
   return DEX_TBL[dex < 1 || dex > DEX_COUNT ? 0 : dex].name;
 }
 
-// el primer huevo de la partida: iniciales clasicos
+// the first egg of a game: classic starters
 static const int16_t CLASSIC_DEX[] = { 1, 4, 7, 25, 133 };
 #define NUM_CLASSIC_DEX 5

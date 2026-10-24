@@ -1,4 +1,4 @@
-// Medidas de la interfaz (layout.h): identidad en 466 y escalado sensato en el resto.
+// Interface measurements (layout.h): identity at 466 and sensible scaling elsewhere.
 #include "framework.h"
 #include "../layout.h"
 
@@ -14,38 +14,38 @@ TEST(layout, los_enteros_nunca_bajan_de_uno) {
 }
 
 TEST(layout, la_escala_de_sprites_nunca_pasa_de_la_caja) {
-  // SC redondea hacia abajo: un sprite de n x 32 px nunca supera lo que mide su caja escalada
+  // SC rounds down: an n x 32 px sprite never exceeds the size of its scaled box
   for (int panel : { 240, 300, 360, 410, 466, 480, 700, 932 })
     for (int n = 1; n <= 8; n++) {
       int s = uiScaleFit(n, panel);
-      if (n * panel >= UI_DESIGN) CHECK(s * UI_DESIGN <= n * panel);  // sin el minimo de 1
+      if (n * panel >= UI_DESIGN) CHECK(s * UI_DESIGN <= n * panel);  // without the minimum of 1
       else CHECK_EQ(s, 1);
     }
-  CHECK_EQ(uiScaleFit(5, 240), 2);   // 2,57 -> 2 (no 3)
-  CHECK_EQ(uiScaleFit(5, 480), 5);   // 5,15 -> 5
-  CHECK_EQ(uiScaleFit(2, 240), 1);   // 1,03 -> 1
-  CHECK_EQ(uiScaleFit(1, 240), 1);   // 0,51 -> sube a 1
-  CHECK_EQ(uiScaleFit(3, 932), 6);   // 6,0 -> 6
+  CHECK_EQ(uiScaleFit(5, 240), 2);   // 2.57 -> 2 (not 3)
+  CHECK_EQ(uiScaleFit(5, 480), 5);   // 5.15 -> 5
+  CHECK_EQ(uiScaleFit(2, 240), 1);   // 1.03 -> 1
+  CHECK_EQ(uiScaleFit(1, 240), 1);   // 0.51 -> rises to 1
+  CHECK_EQ(uiScaleFit(3, 932), 6);   // 6.0 -> 6
 }
 
 TEST(layout, texto_y_sprites_en_los_tamanos_de_diseno_y_de_la_2_16) {
   for (int n = 1; n <= 8; n++) {
-    CHECK_EQ(uiScaleFit(n, UI_DESIGN), n);  // identidad en 466
-    CHECK_EQ(uiScaleFit(n, 480), n);        // y en 480 para todos los factores en uso
+    CHECK_EQ(uiScaleFit(n, UI_DESIGN), n);  // identity at 466
+    CHECK_EQ(uiScaleFit(n, 480), n);        // and at 480 for every factor in use
   }
-  CHECK_EQ(uiScaleFit(2, 410), 1);          // texto de tamano 2 en un panel de 410: baja a 1 (cabe en su caja)
+  CHECK_EQ(uiScaleFit(2, 410), 1);          // size 2 text on a 410 panel: drops to 1 (fits in its box)
   CHECK_EQ(uiScaleFit(3, 410), 2);
   CHECK_EQ(uiScaleFit(7, 360), 5);
 }
 TEST(layout, valores_calculados_a_mano) {
-  CHECK_EQ(uiScale(1, 240), 1);      // 0,52 -> 1
-  CHECK_EQ(uiScale(3, 240), 2);      // 1,55 -> 2
-  CHECK_EQ(uiScale(100, 240), 52);   // 51,50 -> 52 (mitad hacia arriba)
-  CHECK_EQ(uiScale(233, 480), 240);  // 240,05 -> 240
+  CHECK_EQ(uiScale(1, 240), 1);      // 0.52 -> 1
+  CHECK_EQ(uiScale(3, 240), 2);      // 1.55 -> 2
+  CHECK_EQ(uiScale(100, 240), 52);   // 51.50 -> 52 (half rounds up)
+  CHECK_EQ(uiScale(233, 480), 240);  // 240.05 -> 240
   CHECK_EQ(uiScale(-100, 240), -52);
-  CHECK_EQ(uiScaleFit(4, 240), 2);   // 2,06 -> 2
-  CHECK_EQ(uiScaleFit(1, 120), 1);   // 0,26 -> sube a 1
-  CHECK_EQ(uiScaleFit(10, 480), 10); // 10,3 -> 10
+  CHECK_EQ(uiScaleFit(4, 240), 2);   // 2.06 -> 2
+  CHECK_EQ(uiScaleFit(1, 120), 1);   // 0.26 -> rises to 1
+  CHECK_EQ(uiScaleFit(10, 480), 10); // 10.3 -> 10
 }
 
 TEST(layout, las_constantes_derivadas_valen_lo_de_siempre_en_466) {
@@ -66,9 +66,9 @@ TEST(layout, escala_proporcional_y_monotona) {
     int prev = uiScale(0, panel);
     for (int n = 1; n <= 600; n++) {
       int v = uiScale(n, panel);
-      CHECK(v >= prev);                                   // nunca retrocede
+      CHECK(v >= prev);                                   // never goes backwards
       double exact = (double)n * panel / UI_DESIGN;
-      CHECK(v >= exact - 0.5 && v <= exact + 0.5);        // redondeo al mas cercano
+      CHECK(v >= exact - 0.5 && v <= exact + 0.5);        // rounds to nearest
       prev = v;
     }
   }
@@ -85,7 +85,7 @@ TEST(layout, la_pantalla_completa_cabe_en_el_panel) {
 }
 
 TEST(layout, argumentos_grandes_no_desbordan) {
-  // millis() de varios dias dividido entre 14, escalado a un panel de 480
+  // millis() of several days divided by 14, scaled to a 480 panel
   for (long n : { 100000L, 3000000L, 90000000L, 300000000L })
     CHECK_EQ(uiScale((int)n, 480), (int)((int64_t)n * 480 / UI_DESIGN + ((int64_t)n * 480 % UI_DESIGN >= UI_DESIGN / 2)));
   CHECK_EQ(uiScale(300000000, UI_DESIGN), 300000000);

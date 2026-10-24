@@ -1,10 +1,10 @@
-// forRuns (blit.h): pintar por tramos deja exactamente los mismos pixeles que
-// pintar pixel a pixel.
+// forRuns (blit.h): painting by runs leaves exactly the same pixels as
+// painting pixel by pixel.
 #include "framework.h"
 #include "../blit.h"
 #include <vector>
 
-// lienzo de juguete: dibuja un fillRect s x s por pixel, o uno por tramo
+// toy canvas: draws one s x s fillRect per pixel, or one per run
 static std::vector<int> paint(const std::vector<uint8_t> &img, int w, int h, int s, bool runs) {
   int W = w * s, H = h * s;
   std::vector<int> out(W * H, -1);
@@ -33,7 +33,7 @@ TEST(blit, los_tramos_pintan_los_mismos_pixeles) {
     for (auto &p : img) {
       seed = seed * 1664525u + 1013904223u;
       uint32_t v = (seed >> 16) % 6;
-      p = v == 0 ? 0xFF : v == 1 ? 7 : (uint8_t)(v % 3);  // pocos colores: provoca tramos largos
+      p = v == 0 ? 0xFF : v == 1 ? 7 : (uint8_t)(v % 3);  // few colors: forces long runs
     }
     CHECK(paint(img, w, h, s, true) == paint(img, w, h, s, false));
   }
@@ -50,11 +50,11 @@ TEST(blit, clave_indexada_transparente_y_silueta) {
   CHECK_EQ(indexedKey(0xFF, false), -1);
   CHECK_EQ(indexedKey(0xFF, true), -1);
   CHECK_EQ(indexedKey(9, false), 9);
-  CHECK_EQ(indexedKey(9, true), 0);  // la silueta une colores distintos en un tramo
+  CHECK_EQ(indexedKey(9, true), 0);  // the silhouette merges different colors into one run
   CHECK_EQ(indexedKey(0, true), 0);
 }
 
-// la silueta junta colores distintos en un tramo y pinta todo en tinta
+// the silhouette merges different colors into one run and paints everything in ink
 TEST(blit, la_silueta_une_colores_distintos) {
   std::vector<uint8_t> img = { 1, 2, 3, 0xFF, 4, 4, 0xFF, 7 };
   auto naive = [&](bool sil) {
@@ -75,25 +75,25 @@ TEST(blit, la_silueta_une_colores_distintos) {
   int nSil, nCol;
   CHECK(runs(true, &nSil) == naive(true));
   CHECK(runs(false, &nCol) == naive(false));
-  CHECK_EQ(nSil, 3);   // [1,2,3] [4,4] [7]: la silueta junta 1,2,3 en un solo tramo
-  CHECK_EQ(nCol, 5);   // a color: [1] [2] [3] [4,4] [7]
+  CHECK_EQ(nSil, 3);   // [1,2,3] [4,4] [7]: the silhouette merges 1,2,3 into a single run
+  CHECK_EQ(nCol, 5);   // in color: [1] [2] [3] [4,4] [7]
 }
 
-// mapas de caracteres: '.' transparente, cualquier otro caracter (tambien >= 0x80) viaja como clave sin signo
+// character maps: '.' is transparent, any other character (also >= 0x80) travels as an unsigned key
 TEST(blit, claves_de_mapa_de_caracteres) {
   CHECK_EQ(charKey('.', false), -1);
   CHECK_EQ(charKey('.', true), -1);
   CHECK_EQ(charKey('k', false), (int)'k');
   CHECK_EQ(charKey('k', true), 0);
-  CHECK_EQ(charKey((char)0xE9, false), 0xE9);            // sin signo: no sale negativo
-  CHECK_EQ((char)charKey((char)0xE9, false), (char)0xE9);  // y vuelve igual con (char)k
+  CHECK_EQ(charKey((char)0xE9, false), 0xE9);            // unsigned: never comes out negative
+  CHECK_EQ((char)charKey((char)0xE9, false), (char)0xE9);  // and round-trips unchanged via (char)k
 }
 
 TEST(blit, filas_vacias_y_de_un_solo_color_o_todo_distinto) {
   int calls = 0;
   forRuns(0, [&](int) { return 1; }, [&](int, int, int) { calls++; });
-  CHECK_EQ(calls, 0);                                      // ancho 0
-  std::vector<uint8_t> alt = { 1, 2, 1, 2, 1, 2 };         // peor caso: todos los tramos de 1 pixel
+  CHECK_EQ(calls, 0);                                      // width 0
+  std::vector<uint8_t> alt = { 1, 2, 1, 2, 1, 2 };         // worst case: every run is 1 pixel
   forRuns(6, [&](int c) { return (int)alt[c]; }, [&](int c0, int len, int k) { CHECK_EQ(len, 1); CHECK_EQ(k, (int)alt[c0]); calls++; });
   CHECK_EQ(calls, 6);
 }

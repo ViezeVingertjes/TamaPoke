@@ -1,46 +1,46 @@
 # Tests
 
-Bateria de tests que corre **en el PC, sin placa**: compila la logica pura del
-firmware (`pet.cpp`, `i18n.cpp`, `dex.h`) contra unos shims de Arduino y la
-ejecuta con un reloj y un `random()` falsos, asi que los resultados son
-deterministas y tardan menos de un segundo.
+A test suite that runs **on the PC, without a board**: it compiles the pure logic of
+the firmware (`pet.cpp`, `i18n.cpp`, `dex.h`) against Arduino shims and runs it
+with a fake clock and a fake `random()`, so results are deterministic and take
+less than a second.
 
 ```bash
-./test/run_tests.sh           # todo
-./test/run_tests.sh --asan    # ademas con AddressSanitizer + UBSan
+./test/run_tests.sh           # everything
+./test/run_tests.sh --asan    # also with AddressSanitizer + UBSan
 ```
 
-O por partes:
+Or in parts:
 
 ```bash
-cd test && make               # solo la logica del firmware
-cd test && make FILTER=evolve # solo los tests con "evolve" en el nombre
-cd test && make asan          # con sanitizers
-python3 test/test_tools.py    # solo las herramientas de tools/
+cd test && make               # firmware logic only
+cd test && make FILTER=evolve # only the tests with "evolve" in the name
+cd test && make asan          # with sanitizers
+python3 test/test_tools.py    # only the tools/ scripts
 ```
 
-## Que se cubre
+## What is covered
 
-| Fichero | Que comprueba |
+| File | What it checks |
 |---|---|
-| `test_pet.cpp` | huevo y eleccion de inicial, comida, tick de estadisticas, sueno, descuidos, niveles, evolucion (incluida la rama de Eevee), stats de combate, entrenamiento y minijuego, racha y vinculo, medallas, ceremonias, progresion offline y guardado en NVS |
-| `test_dex.cpp` | integridad de la Pokedex: nombres ASCII, cadenas evolutivas sin bucles, toda especie alcanzable, ninguna linea imposible de completar, limites de los buffers de la UI |
-| `test_i18n.cpp` | todas las cadenas presentes y en ASCII (la fuente GFX lo es), y con los mismos `%u`/`%s` que le pasa el sketch en cada llamada |
-| `test_tools.py` | los scripts de `tools/` compilan, los datos de la Pokedex son coherentes y `dex.h` sigue coincidiendo con lo que genera `tools/gen_dex.py` |
+| `test_pet.cpp` | egg and starter choice, food, stats tick, sleep, neglect, levels, evolution (including the Eevee branch), combat stats, training and minigame, streak and bond, medals, ceremonies, offline progression and saving to NVS |
+| `test_dex.cpp` | Pokedex integrity: ASCII names, evolution chains without loops, every species reachable, no line impossible to complete, UI buffer limits |
+| `test_i18n.cpp` | all strings present and in ASCII (the GFX font is), and with the same `%u`/`%s` the sketch passes in each call |
+| `test_tools.py` | the `tools/` scripts compile, the Pokedex data is consistent and `dex.h` still matches what `tools/gen_dex.py` generates |
 
-## Como esta montado
+## How it is set up
 
-- `shim/Arduino.h` + `shim/Preferences.h` + `shim/shim.cpp`: lo minimo de Arduino
-  que usan `pet.cpp` e `i18n.cpp`. El reloj (`millis()`) y `random()` son falsos
-  y controlables; `Preferences` es un mapa en memoria que imita la NVS, asi que
-  se puede simular un reinicio creando otro `Pet` y llamando a `begin()`.
-- `framework.h` + `main.cpp`: micro framework propio, sin dependencias.
-- Los tests marcados con `TEST_KNOWN_ISSUE` describen el comportamiento
-  **correcto** de algo que hoy falla: no rompen la bateria, salen listados
-  aparte, y avisan si algun dia empiezan a pasar (para poder quitar la marca).
+- `shim/Arduino.h` + `shim/Preferences.h` + `shim/shim.cpp`: the bare minimum of Arduino
+  that `pet.cpp` and `i18n.cpp` use. The clock (`millis()`) and `random()` are fake
+  and controllable; `Preferences` is an in-memory map that mimics the NVS, so
+  a reboot can be simulated by creating another `Pet` and calling `begin()`.
+- `framework.h` + `main.cpp`: own micro framework, no dependencies.
+- Tests marked with `TEST_KNOWN_ISSUE` describe the **correct** behavior of
+  something that fails today: they do not break the suite, they are listed
+  separately, and they warn if they ever start passing (so the mark can be removed).
 
-## Que NO se cubre
+## What is NOT covered
 
-Todo lo que necesita la placa: pantalla y tactil (`TamaPoke.ino`), audio
-(`audio.cpp`), tarjeta SD (`sdmon.cpp`) y RTC/bateria (`rtcbat.cpp`). El
-`.ino` tampoco se compila aqui: hace falta `arduino-cli` con el core de ESP32.
+Everything that needs the board: display and touch (`TamaPoke.ino`), audio
+(`audio.cpp`), SD card (`sdmon.cpp`) and RTC/battery (`rtcbat.cpp`). The
+`.ino` is not compiled here either: that takes `arduino-cli` with the ESP32 core.

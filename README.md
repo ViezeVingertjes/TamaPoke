@@ -127,6 +127,8 @@ After any ending, a **new egg** appears.
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
 - **Pokédex:** raising a species registers it; **151 + shinies** to complete.
+  A species you only *meet* nearby (see below) shows up in the Pokédex in colour with its name, but
+  without the dot raised ones get, and it does not count towards the total.
 
 ### Battle stats
 ATK / DEF / SPD = real **Gen-1 base** × genes + level + training (STRENGTH ← bag,
@@ -216,10 +218,10 @@ If one bottoms out it counts as a *slip-up*.
 - 🫧 **Bath** → a foam scene that cleans up the poops.
 
 **Touch gestures:**
-- Tap the creature = pet it (+happiness, bond).
+- Tap the creature = pet it (+happiness, bond); it calls out with its own synthesized chirp.
 - Horizontal swipe = open the **Pokédex / gallery**.
-- Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Medals /
-  Progress; swipe between them; tap the name on Profile to rename; on Battle the
+- Vertical swipe up = open the **stat card** (5 pages: Profile / Battle / Medals /
+  Progress / Steps; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).
 - Swipe down = **set the clock** and toggle **sound** on/off.
 - Long press (3 s) on the creature = **release** dialog.
@@ -290,6 +292,19 @@ and burns off with training.
   a global counter. Medals page of the stat card.
 - **Name**: touch keyboard; the nickname rules the header and the card.
 
+## Walking
+
+The QMI8658 motion sensor counts steps with the screen on or off (and on USB). A step
+needs two rhythmic impacts in a row, so a single bump counts nothing. Steps appear on
+the Steps page of the stat card.
+
+- **Daily goals** 500 / 2000 / 5000 steps: a snack (+15 food), energy (+25), a workout
+  (+5 strength). Each is given once per day.
+- Walking cheers it up (+1 happiness per 100 steps) and bonds a little (+1 per 500),
+  for the first 2000 steps of the day.
+- **Trail rank** from lifetime steps: Walker 10,000 / Hiker 50,000 / Trekker 100,000 /
+  Ranger 250,000. Steps and rank belong to the player and survive a new egg.
+
 High streak and bond **improve the egg roll** (rarity and shiny): caring well
 always pays off.
 
@@ -324,7 +339,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `pin_config.h` — the board's official pins
 - `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `gen_dex.py`,
   `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`
-  (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload), `touch_log.py`
+  (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload)
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
 - `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)
 
@@ -357,6 +372,7 @@ What the firmware does to save power (the policy is in `power.h`, covered by `te
 Other TamaPokes within radio range show up on the main screen, up to four, standing next to your pet: two at
 the sides and two further back, smaller and a bit higher. A sleeping neighbour sleeps, a shiny one is shiny.
 It is always on, there is nothing to set up.
+Every species shown next to your pet is remembered in the Pokédex (met, not raised).
 
 - **What is sent:** species, level, shiny, sleeping and an id picked at random on every boot (the radio address too, so a device cannot be tracked across days), 11 bytes with a CRC, over ESP-NOW
   broadcast on channel 1. No name, no pairing, no access point. Received packets are validated before use and

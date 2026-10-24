@@ -39,13 +39,13 @@ struct Species {
   uint8_t scale;
   int8_t evolvesTo;
   uint8_t evolveLevel;
-  uint8_t eyeRow, eyeColL, eyeColR;  // anclas para expresiones (ojos 3x4)
+  uint8_t eyeRow, eyeColL, eyeColR;  // anchors for expressions (3x4 eyes)
   uint8_t mouthRow, mouthCol;
-  uint16_t bodyColor;  // para borrar ojos/boca al expresar
-  uint16_t accent;     // color UI del tipo
+  uint16_t bodyColor;  // to erase eyes/mouth when expressing
+  uint16_t accent;     // UI type color
 };
 
-// caracter de sprite -> RGB565
+// sprite character -> RGB565
 static inline uint16_t spriteColor(char ch) {
   switch (ch) {
     case 'k': return 0x18C4;  // #1b1b25

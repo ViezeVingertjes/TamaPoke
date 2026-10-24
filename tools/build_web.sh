@@ -1,6 +1,6 @@
 #!/bin/bash
-# Regenera web/firmware/tamapoke.bin (firmware combinado) para el instalador web.
-# Uso: bash tools/build_web.sh
+# Regenerates web/firmware/tamapoke.bin (combined firmware) for the web installer.
+# Usage: bash tools/build_web.sh
 set -e
 cd "$(dirname "$0")/.."
 FQBN="esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
@@ -20,3 +20,6 @@ echo "OK -> web/firmware/tamapoke.bin ($(du -h web/firmware/tamapoke.bin | cut -
 
 echo "Empaquetando sprites..."
 python3 tools/pack_bundle.py
+
+echo "Comprobando..."
+python3 tools/validate_web_build.py

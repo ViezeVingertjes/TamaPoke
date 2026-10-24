@@ -1,7 +1,7 @@
-// Arduino_GFX de verdad (Arduino_GFX.cpp, Arduino_Canvas.cpp de la libreria
-// GFX Library for Arduino, compilados en el PC): el dibujo y el texto salen
-// exactamente como en la placa. Aqui solo estan el bus y el panel de mentira;
-// el panel recibe cada flush() del lienzo y lo entrega a gOnFrame.
+// The real Arduino_GFX (Arduino_GFX.cpp, Arduino_Canvas.cpp from the library
+// GFX Library for Arduino, compiled on the PC): drawing and text come out
+// exactly as on the board. Only the fake bus and panel live here;
+// the panel receives each flush() of the canvas and hands it to gOnFrame.
 #pragma once
 #include "Arduino.h"
 #include <functional>

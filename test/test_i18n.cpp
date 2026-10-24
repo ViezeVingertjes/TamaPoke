@@ -1,4 +1,4 @@
-// Consistencia de las cadenas de la interfaz (i18n.cpp).
+// Consistency of the interface strings (i18n.cpp).
 #include "framework.h"
 #include "shim/Arduino.h"
 #include "../i18n.h"
@@ -7,19 +7,19 @@
 #include <string.h>
 #include <vector>
 
-// extrae la firma de los especificadores de printf de una cadena: "%lud" -> "lu"
+// extracts the printf specifier signature of a string: "%lud" -> "lu"
 static std::vector<std::string> specs(const char *s) {
   std::vector<std::string> out;
   const char *p = s;
   while (*p) {
     if (*p != '%') { p++; continue; }
     p++;
-    if (*p == '%') { p++; continue; }   // %% es un literal
+    if (*p == '%') { p++; continue; }   // %% is a literal
     std::string sig;
-    while (*p && strchr("-+ #0", *p)) p++;             // banderas
-    while (*p && isdigit((unsigned char)*p)) p++;      // ancho
+    while (*p && strchr("-+ #0", *p)) p++;             // flags
+    while (*p && isdigit((unsigned char)*p)) p++;      // width
     if (*p == '.') { p++; while (*p && isdigit((unsigned char)*p)) p++; }
-    while (*p && strchr("lhzjt", *p)) { sig += *p; p++; }  // modificador
+    while (*p && strchr("lhzjt", *p)) { sig += *p; p++; }  // modifier
     if (!*p) { out.push_back(sig + "<incompleto>"); break; }
     sig += *p++;
     out.push_back(sig);
@@ -33,7 +33,7 @@ static std::string joinSpecs(const std::vector<std::string> &v) {
   return s.empty() ? "(sin formato)" : s;
 }
 
-// firma esperada de cada cadena con formato, sacada de las llamadas del sketch
+// expected signature of each format string, taken from the sketch calls
 struct ExpectedFmt { StrId id; const char *sig; };
 static const ExpectedFmt EXPECTED[] = {
   { S_POKEDEX_FMT,     "%u" },
@@ -54,6 +54,8 @@ static const ExpectedFmt EXPECTED[] = {
   { S_MISTAKES_FMT,    "%u" },
   { S_FAREWELL_BTN,    "%s" },
   { S_RUNAWAY_BTN,     "%s" },
+  { S_STEPS_NEXT_FMT,  "%lu" },
+  { S_STEPS_TOTAL_FMT, "%lu" },
 };
 static const int NUM_EXPECTED = (int)(sizeof(EXPECTED) / sizeof(EXPECTED[0]));
 
@@ -73,16 +75,16 @@ TEST(i18n, ninguna_cadena_tiene_huecos) {
   }
 }
 
-// La fuente del firmware es la 5x7 de Arduino_GFX y la UI centra con strlen(t)*6: todo
-// tiene que ser ASCII, un caracter UTF-8 de varios bytes descuadraria la etiqueta.
+// The firmware font is the 5x7 one from Arduino_GFX and the UI centers with strlen(t)*6: everything
+// must be ASCII, a multi-byte UTF-8 character would throw the label off.
 TEST(i18n, las_cadenas_son_ascii) {
   for (int id = 0; id < STR_COUNT; id++)
     for (const char *c = T((StrId)id); *c; c++)
       CHECK_MSG((unsigned char)*c < 128, std::string("no ASCII en: ") + T((StrId)id));
 }
 
-// los formatos tienen que cuadrar con lo que pasa el sketch en cada llamada: un %u de
-// mas o de menos es una lectura de basura de la pila
+// the formats must match what the sketch passes in each call: an extra or
+// missing %u is a read of garbage from the stack
 TEST(i18n, los_formatos_cuadran_con_las_llamadas_del_sketch) {
   for (int id = 0; id < STR_COUNT; id++) {
     std::string got = joinSpecs(specs(T((StrId)id)));
