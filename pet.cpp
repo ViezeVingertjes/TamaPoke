@@ -275,10 +275,11 @@ int Pet::careBonus() const {
 }
 
 // first care of the day: advances the streak and strengthens the bond
-// A day number a little lower than the last one stored is a clock set back (RTC reseeded, a manual
-// change, DST), not a new day: it must not break the streak or give the daily rewards again.
-// A big jump back (a wrong far-future date that was then corrected) is treated as a real change.
-static bool clockSetBack(uint32_t d, uint32_t last) { return last && d < last && last - d <= 3; }
+// A day number one lower than the last one stored is a clock set back (RTC reseeded, a manual
+// change around midnight), not a new day: it must not break the streak, give the daily rewards
+// again or renew the bond cap. A bigger jump back (a wrong far-future date that was then
+// corrected) is treated as a real change.
+static bool clockSetBack(uint32_t d, uint32_t last) { return last && d < last && last - d <= 1; }
 
 void Pet::registerCare() {
   if (isEgg() || ceremony != CER_NONE) return;
@@ -305,7 +306,7 @@ void Pet::registerCare() {
 
 void Pet::addBond(uint8_t amt) {
   uint32_t d = today();
-  if (d && d != bondDay) {  // the cap renews with the real day, whatever the first act of it is
+  if (d && d != bondDay && !clockSetBack(d, bondDay)) {  // renews with the real day, whatever the first act of it is
     bondDay = d;
     bondToday = 0;
   }
@@ -641,7 +642,6 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(nick);
   io(stepDay); io(stepsToday); io(stepsTotal); io(stepRewardMask);
   io(dexSeen);
-  io(bondDay); io(bondToday);
 }
 
 namespace {
@@ -715,6 +715,8 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   ceremony = CER_NONE;
   evolveUntil = 0;
   neglectTicks = 0;
+  bondDay = 0;     // today's bond cap belongs to the pet that was here, not to the restored one
+  bondToday = 0;
   lastSeenEpoch = 0;
   prefs.putUInt("seen", 0);  // no offline catch-up for the time since the backup was taken
   save();

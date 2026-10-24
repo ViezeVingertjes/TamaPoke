@@ -1179,9 +1179,9 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(b.importBackup(blob, n));
   CHECK(b.isSeen(94));
 
-  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday at the end): cut those
-  // 24 bytes off and re-sign; the restore must work and leave the missing fields as they were
-  size_t m = n - 4 - 24;
+  // an older firmware wrote fewer fields (no dexSeen at the end): cut those 19 bytes off and
+  // re-sign; the restore must work and leave the missing field as it was
+  size_t m = n - 4 - 19;
   uint8_t old[Pet::BACKUP_MAX_BYTES];
   memcpy(old, blob, m);
   uint32_t sum = fnv(old, m);
@@ -1196,7 +1196,7 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(!c.isSeen(94));
 
   // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
-  size_t mid = n - 4 - 24 - 1 - 2;
+  size_t mid = n - 4 - 19 - 1 - 2;
   memcpy(old, blob, mid);
   uint32_t s3 = fnv(old, mid);
   memcpy(old + mid, &s3, 4);
@@ -1371,4 +1371,46 @@ TEST(hardening, una_copia_de_una_criatura_que_aun_elige_inicial_se_rechaza) {
   Pet b;
   makePet(b, 7);
   CHECK(!b.importBackup(blob, n));
+}
+
+TEST(hardening, poner_el_reloj_atras_no_renueva_el_tope_de_vinculo) {
+  Pet p;
+  makePet(p, 4);
+  p.bond = 0;
+  setDay(p, 20001);
+  for (int i = 0; i < 12; i++) p.playResult(10);
+  int capped = p.bond;
+  setDay(p, 20000);                    // the clock is set back a day
+  p.playResult(10);
+  CHECK_EQ((int)p.bond, capped);       // the cap does not renew
+}
+
+TEST(hardening, restaurar_una_copia_empieza_con_un_tope_de_vinculo_nuevo) {
+  Pet a;
+  makePet(a, 4);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  b.bond = 0;
+  setDay(b, 20000);
+  for (int i = 0; i < 12; i++) b.playResult(10);   // today's cap is used up
+  CHECK(b.importBackup(blob, n));
+  int bond = b.bond;
+  setDay(b, 20000);
+  b.playResult(10);
+  CHECK_EQ((int)b.bond, bond + 2 + 4);             // +2 (cap renewed, not inherited) and the daily care
+}
+
+TEST(hardening, un_reloj_atras_de_mas_de_un_dia_si_cuenta_como_cambio) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.caress();
+  setDay(p, 20001);
+  p.caress();
+  setDay(p, 19998);                    // two days back: not a set-back of the clock, a new reality
+  p.caress();
+  CHECK_EQ((int)p.streak, 1);
+  CHECK_EQ((int)p.lastCareDay, 19998);
 }

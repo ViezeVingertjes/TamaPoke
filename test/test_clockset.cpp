@@ -28,3 +28,9 @@ TEST(clockset, el_cambio_nunca_pasa_de_doce_horas) {
       CHECK_EQ((int)(e % 86400), h * 3600 + m * 60);   // and it lands on the asked hh:mm
     }
 }
+
+TEST(clockset, sin_reloj_valido_no_da_la_vuelta_al_ano_2106) {
+  // no valid time yet (now = 0): the asked hh:mm of day 0, never an underflow
+  CHECK_EQ((int)clockEpoch(0, 18, 0), 18 * 3600);
+  CHECK_EQ((int)clockEpoch(100, 0, 5), 5 * 60);
+}

@@ -464,6 +464,15 @@ static int runTapTests() {
   for (int i = 0; i < 80; i++) touchStep(true, CX, PET_CY, 40);  // 3.2 s held on the pet
   EXPECT(!confirmUntil, "mantener pulsado no abre soltar encima de un dialogo de decision");
   fingerUp();
+  begin("main_day");
+  {
+    uint32_t day = 1767225600UL + 5 * 86400;
+    pet.lastSeenEpoch = day + 9 * 3600 + 59 * 60 + 45;   // the cached time lags up to 30 s
+    rtcSetEpoch(day + 10 * 3600 + 0 * 60 + 10);
+    openClock();
+    EXPECT(clockH == 10 && clockM == 0, "el ajuste de hora muestra la hora del RTC, no la guardada hace unos segundos");
+    clockOpen = false;
+  }
   touchReset();
   begin("evolving");
   startGame();
