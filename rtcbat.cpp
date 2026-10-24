@@ -43,7 +43,8 @@ void rtcSetEpoch(uint32_t e) {
 
 // Explicit charger setup instead of the PMU's power-on defaults, which some boards
 // charge badly with (found by ShadowEnemyx's fork). 500 mA is about 0.45C on the
-// 1100 mAh LiPo; the 4.2 V target and 100 mA termination match a standard cell.
+// 1100 mAh LiPo; the 4.2 V target and 100 mA termination match a standard cell. The RTC
+// backup cell's charger is left alone: the board's cell type is not known.
 static void configureBatteryCharger() {
   pmu.setVbusCurrentLimit(XPOWERS_AXP2101_VBUS_CUR_LIM_900MA);
   pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_500MA);
@@ -51,10 +52,13 @@ static void configureBatteryCharger() {
   pmu.setChargerTerminationCurr(XPOWERS_AXP2101_CHG_ITERM_100MA);
   pmu.enableChargerTerminationLimit();
   pmu.setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V2);
-  pmu.enableCellbatteryCharge();
-  Serial.printf("AXP2101 charger: vbusLim=%u chgCur=%u target=%u\n",
+  // read back what the PMU really holds: a failed I2C write would leave the defaults
+  bool ok = pmu.getVbusCurrentLimit() == XPOWERS_AXP2101_VBUS_CUR_LIM_900MA &&
+            pmu.getChargerConstantCurr() == XPOWERS_AXP2101_CHG_CUR_500MA &&
+            pmu.getChargeTargetVoltage() == XPOWERS_AXP2101_CHG_VOL_4V2;
+  Serial.printf("AXP2101 charger: vbusLim=%u chgCur=%u target=%u%s\n",
                 pmu.getVbusCurrentLimit(), pmu.getChargerConstantCurr(),
-                pmu.getChargeTargetVoltage());
+                pmu.getChargeTargetVoltage(), ok ? "" : " (MISMATCH)");
 }
 
 bool batBegin() {
