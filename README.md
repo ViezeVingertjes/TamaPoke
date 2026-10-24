@@ -372,7 +372,7 @@ What the firmware does to save power (the policy is in `power.h`, covered by `te
 Other TamaPokes within radio range show up on the main screen, up to four, standing next to your pet: two at
 the sides and two further back, smaller and a bit higher. A sleeping neighbour sleeps, a shiny one is shiny.
 It is always on, there is nothing to set up.
-Every species you meet this way is remembered in the Pokédex (met, not raised).
+Every species shown next to your pet is remembered in the Pokédex (met, not raised).
 
 - **What is sent:** species, level, shiny, sleeping and an id picked at random on every boot (the radio address too, so a device cannot be tracked across days), 11 bytes with a CRC, over ESP-NOW
   broadcast on channel 1. No name, no pairing, no access point. Received packets are validated before use and

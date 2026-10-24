@@ -1195,6 +1195,13 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(c.isSeen(5));                    // untouched
   CHECK(!c.isSeen(94));
 
+  // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
+  size_t mid = n - 4 - 19 - 1 - 2;
+  memcpy(old, blob, mid);
+  uint32_t s3 = fnv(old, mid);
+  memcpy(old + mid, &s3, 4);
+  CHECK(!c.importBackup(old, mid + 4));
+  CHECK(c.isSeen(5));                    // and nothing was applied
   CHECK(!c.importBackup(old, 40));       // far too short
   uint8_t longer[Pet::BACKUP_MAX_BYTES + 8] = {};
   memcpy(longer, blob, n - 4);

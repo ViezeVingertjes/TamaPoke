@@ -116,6 +116,11 @@ def main():
         if b'\0' + version.encode() + b'\0' not in read(fw, 'rb'):
             fail(f'{part["path"]} was not built from version {version}: rebuild it with tools/build_web.sh')
 
+    # the page's size limit must follow the firmware's (a bigger backup would be refused by the page)
+    page_max = int(re.search(r'const BACKUP_MAX = (\d+);', read(path('web', 'index.html'))).group(1))
+    if page_max != int(define('pet.h', r'BACKUP_MAX_BYTES = (\d+);')):
+        fail('web/index.html BACKUP_MAX and Pet::BACKUP_MAX_BYTES in pet.h differ')
+
     dex_count = int(define('dex.h', r'^#define DEX_COUNT (\d+)\s*$'))
     pak = parse_pak(read(path('web', 'sprites.pak'), 'rb'))
     mons = path('tools', 'sdcard', 'mons')

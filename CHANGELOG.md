@@ -10,7 +10,7 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
-- **Creatures met nearby are in the Pokédex.** A species shown next to your pet is remembered:
+- **Creatures met nearby are in the Pokédex.** A species shown next to your pet is remembered (the radio only shows the four most recent, with the screen on):
   the gallery shows it in colour with its name (still picture), while raised ones keep an animated
   picture and get a dot, and only raised ones count towards the total. The save backup includes it, and
   a backup from an older firmware still restores.

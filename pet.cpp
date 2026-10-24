@@ -641,18 +641,23 @@ struct BackupWriter {
     memcpy(p, &v, sizeof(T)); p += sizeof(T);
   }
 };
+// Reads fields until the data runs out. A backup from an older firmware ends exactly at a field
+// boundary (the list is append-only); the fields after it keep their current values. One that
+// ends inside a field is not a layout any firmware wrote: `p != end` then, and it is refused.
 struct BackupReader {
   const uint8_t *p, *end;
+  bool stopped = false;
   template <class T> void operator()(T &v) {
-    if (end - p < (ptrdiff_t)sizeof(T)) return;  // older, shorter backup: keep the current value
+    if (stopped || end - p < (ptrdiff_t)sizeof(T)) { stopped = true; return; }
     memcpy(&v, p, sizeof(T));
     p += sizeof(T);
   }
   void operator()(bool &v) {  // any other byte in a bool would be undefined behaviour
-    if (p < end) v = *p++ != 0;
+    if (stopped || p >= end) { stopped = true; return; }
+    v = *p++ != 0;
   }
 };
-const size_t BACKUP_MIN_BYTES = 100;  // the first backup layout was a little over this
+const size_t BACKUP_MIN_BYTES = 25;  // magic + checksum + the core needs (fullness .. sleeping)
 }  // namespace
 
 size_t Pet::exportBackup(uint8_t *out, size_t capacity) {
@@ -677,7 +682,7 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   BackupReader r{ data + sizeof(BACKUP_MAGIC), data + length - 4 };
   backupFields(r);
   nick[sizeof(nick) - 1] = 0;
-  bool sane = speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
+  bool sane = r.p == r.end && speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
               fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
               bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE &&
               stepRewardMask < (1 << STEP_GOALS);
