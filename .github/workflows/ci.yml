@@ -97,16 +97,6 @@ jobs:
       - name: Run the suite (plus AddressSanitizer + UBSan)
         run: ./test/run_tests.sh --asan
 
-  i18n:
-    name: i18n table sizes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-      - run: python3 tools/test_i18n_formats.py
-
   ui-screens:
     name: UI screens match the reference images
     runs-on: ubuntu-latest

@@ -221,7 +221,6 @@ class TestBuffersDeTexto(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        import test_i18n_formats as fmt
         from dex_data import DEX
 
         def leer(nombre):
@@ -230,7 +229,8 @@ class TestBuffersDeTexto(unittest.TestCase):
 
         cuerpo = re.search(r'enum\s+StrId[^{]*\{(.*?)\}', leer('i18n.h'), re.S).group(1)
         ids = re.findall(r'\b(S_[A-Z0-9_]+)\b', cuerpo)
-        cls.LIT = dict(zip(ids, fmt.extract_table(leer('i18n.cpp'), 'STRINGS')))
+        tabla = re.search(r'STRINGS\[\]\s*=\s*\{(.*?)\n\};', leer('i18n.cpp'), re.S).group(1)
+        cls.LIT = dict(zip(ids, re.findall(r'"(?:[^"\\]|\\.)*"', tabla)))
         cls.ino = leer('TamaPoke.ino').splitlines()
         cls.APODO = int(re.search(r'char\s+nick\[(\d+)\]', leer('pet.h')).group(1)) - 1
         cls.NOMBRE = max(len(row[2].encode()) for row in DEX)

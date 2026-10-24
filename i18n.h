@@ -12,7 +12,7 @@ enum StrId : uint8_t {
   S_EGG_HDR, S_EGG_LEGEND, S_EGG_RARE, S_EGG_TOUCH, S_EGG_MOVES, S_EGG_ALMOST,
   // formatos compartidos
   S_POKEDEX_FMT,   // "POKEDEX %u/151"
-  S_NAME_FMT,      // "%s%s Nv.%u"
+  S_NAME_FMT,      // "%s%s Lv.%u"
   // dialogo soltar
   S_RELEASE_FMT, S_YES, S_NO,
   // minijuego y saco
