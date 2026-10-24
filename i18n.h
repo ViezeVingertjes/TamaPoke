@@ -47,9 +47,13 @@ enum StrId : uint8_t {
   S_EVO_Q, S_EVO_KEEP, S_FAR_Q, S_FAR_GO, S_FAR_STAY,
   S_CHOOSE_STARTER,  // title of the starter choice (first time)
   S_NO_SPRITES, S_LOAD_SPRITES,  // notice when the sprite is missing on the SD
+  // walking: card page and the goal announcements
+  S_STEPS, S_STEPS_NEXT_FMT, S_STEPS_ALL_DONE, S_STEPS_TOTAL_FMT,
+  S_STEP_REWARD_1, S_STEP_REWARD_2, S_STEP_REWARD_3,
   STR_COUNT
 };
 
 const char *T(StrId id);       // interface text
 const char *medalName(int i);  // medal banner (MED_COUNT)
 const char *medalDesc(int i);  // long medal description
+const char *trailName(int rank);  // 0 .. Pet::TRAIL_RANKS

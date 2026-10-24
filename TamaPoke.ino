@@ -21,6 +21,7 @@
 #include "pet.h"
 #include "sdmon.h"
 #include "rtcbat.h"
+#include "imu.h"
 #include "i18n.h"
 #include "audio.h"
 #include "power.h"
@@ -77,7 +78,8 @@ bool cardOpen = false;        // pet card (vertical swipe)
 bool kbOpen = false;          // keyboard to rename the pet
 char nameBuf[12] = "";
 uint8_t nameLen = 0;
-uint8_t cardPage = 0;         // 0 profile, 1 stats+medals
+#define CARD_PAGES 5
+uint8_t cardPage = 0;         // 0 profile, 1 battle, 2 medals, 3 progress, 4 steps
 bool clockOpen = false;       // clock-setting screen (swipe down)
 int clockH = 12, clockM = 0;  // hour being edited
 
@@ -282,6 +284,7 @@ void setup() {
   rtcBegin();
   batBegin();
   pwrSetup();
+  imuBegin();  // step counter (optional: without the sensor there are no steps)
   uint32_t e = rtcEpoch();
   if (e == 0) {
     // Without a backup battery, the PCF85063 loses the time when power
@@ -348,6 +351,8 @@ void loop() {
   wasRunReady = runReady;
 
   handleTouch();
+  imuPoll(now);
+  pet.applyWalk(imuTakeSteps());
   handleSerial();
   ensureMon();
 
@@ -357,7 +362,8 @@ void loop() {
     lastPwr = now;
     if (pwrShortPressed()) {
       screenOff = !screenOff;
-      if (!screenOff) wakeUI();
+      if (screenOff) wasPressed = false;  // the next sample of a finger already down starts the wake hold
+      else wakeUI();
     }
   }
 
@@ -476,6 +482,9 @@ void idleWait(PowerCtx c) {
     if (!lightSleepAllowed(c)) { delay(idleDelayMs(c)); return; }
     if (digitalRead(TP_INT) == LOW) { gTouchIrq = true; delay(1); return; }  // touch pending: do not sleep
     uint32_t ms = POWER_SLEEP_MS;
+    // while something moves, wake often enough to see steps; at rest the normal long sleep
+    // (the first step or two of a walk are lost while it ramps up)
+    if (imuMotionRecent(millis()) && ms > IMU_POLL_MS) ms = IMU_POLL_MS;
     uint32_t iv = frameIntervalMs(c);
     if (iv) {  // screen on: until the next frame
       uint32_t due = lastRender + iv - millis();
@@ -505,6 +514,42 @@ void handleSerial() {
   line.trim();
   if (line.length() == 0) return;
   if (sdSerialCommand(line)) return;
+
+  // Browser save backup: SAVEGET -> "SAVE <n>", "SAVEHEX <hex>", DONE.
+  // SAVEPUT <n> -> OK, then n raw bytes -> DONE and a reboot. The checksum in the
+  // snapshot rejects altered or cut-off data before the save changes.
+  if (line == "SAVEGET") {
+    uint8_t backup[Pet::BACKUP_MAX_BYTES];
+    size_t size = pet.exportBackup(backup, sizeof(backup));
+    if (!size) { Serial.println("ERR"); return; }
+    // setup() sets a zero TX timeout so logs never block without a terminal open; the
+    // browser is reading now, so wait for the whole answer instead of dropping it
+    Serial.setTxTimeoutMs(1500);
+    char hex[2 * Pet::BACKUP_MAX_BYTES + 1];
+    for (size_t i = 0; i < size; i++) snprintf(hex + 2 * i, 3, "%02X", backup[i]);
+    Serial.printf("SAVE %u\nSAVEHEX %s\nDONE\n", (unsigned)size, hex);
+    Serial.flush();
+    Serial.setTxTimeoutMs(0);
+    return;
+  }
+  if (line.startsWith("SAVEPUT ")) {
+    uint32_t size = (uint32_t)line.substring(8).toInt();
+    if (size == 0 || size > Pet::BACKUP_MAX_BYTES) { Serial.println("ERR"); return; }
+    uint8_t backup[Pet::BACKUP_MAX_BYTES];
+    Serial.println("OK");
+    uint32_t oldTimeout = Serial.getTimeout();
+    Serial.setTimeout(6000);
+    size_t got = Serial.readBytes(backup, size);
+    Serial.setTimeout(oldTimeout);
+    if (got != size || !pet.importBackup(backup, size)) {
+      while (Serial.available()) Serial.read();  // leftovers of a bad file must not run as commands
+      Serial.println("ERR");
+      return;
+    }
+    Serial.println("DONE");
+    delay(150);
+    ESP.restart();
+  }
 
   if (line == "HATCH") {
     pet.eggTap(); pet.eggTap(); pet.eggTap();
@@ -646,6 +691,30 @@ void handleTouch() {
   bool pressed = touch.getPoint(&x, &y, 1) > 0;
   expireDialogs();  // long press and gestures see the same state as the drawing
 
+  // screen off with PWR: a touch only wakes it if it is held in place (see touchWakes)
+  if (screenOff) {
+    if (pressed && !wasPressed) {
+      tX0 = tXl = x;
+      tY0 = tYl = y;
+      tStart = millis();
+      holdFired = false;
+    } else if (pressed) {
+      tXl = x;
+      tYl = y;
+      if (!holdFired && touchWakes(millis() - tStart, tXl - tX0, tYl - tY0, U(30), UY(30))) {
+        screenOff = false;
+        holdFired = true;
+        swallowGesture = true;  // the finger is still down: its release does nothing
+        wakeUI();
+        sfxPlay(SFX_TAP);
+      }
+    } else {
+      holdFired = false;
+    }
+    wasPressed = pressed;
+    return;
+  }
+
   // training sack: every touch counts instantly (rapid mashing)
   if (sackOpen) {
     if (pressed && !wasPressed) {
@@ -661,9 +730,14 @@ void handleTouch() {
     tY0 = tYl = y;
     tStart = millis();
     holdFired = false;
-    swallowGesture = (dimStage > 0) || screenOff;  // if it was dark, it only wakes up
-    screenOff = false;
+    swallowGesture = dimStage > 0;  // if it was dark, it only wakes up (screenOff is handled above)
     wakeUI();
+    // like the sack: a hit counts on touch, not when the finger lifts. The header (quit) still
+    // waits for the lift so a swipe that starts there cannot end the game; no overlay is on top
+    if (!swallowGesture && gameOpen && y >= HEADER_ZONE_H && !kbOpen && !clockOpen && !cardOpen && !galleryOpen) {
+      gameTap(x, y);
+      swallowGesture = true;            // no second tap on lift
+    }
   } else if (pressed) {  // still pressed
     tXl = x;
     tYl = y;
@@ -714,7 +788,7 @@ void onSwipe(int dir) {
   if (gameOpen || kbOpen || clockOpen) return;
   if (cardOpen) {  // inside the card: switch between the 4 pages
     int p = (int)cardPage + (dir > 0 ? -1 : 1);  // left advances
-    cardPage = p < 0 ? 0 : (p > 3 ? 3 : p);
+    cardPage = p < 0 ? 0 : (p > CARD_PAGES - 1 ? CARD_PAGES - 1 : p);
     return;
   }
   if (!galleryOpen) {
@@ -1161,7 +1235,8 @@ static uint32_t screenKey() {
                         (uint32_t)pet.trAtk, (uint32_t)pet.trDef, (uint32_t)pet.trSpe, (uint32_t)pet.geneAtk,
                         (uint32_t)pet.geneDef, (uint32_t)pet.geneSpe, (uint32_t)pet.careMistakes,
                         (uint32_t)pet.fullness, (uint32_t)pet.joy, (uint32_t)pet.energy, (uint32_t)pet.hygiene,
-                        (uint32_t)pet.berryKnown, (uint32_t)pet.strHi })
+                        (uint32_t)pet.berryKnown, (uint32_t)pet.strHi, pet.stepsToday, pet.stepsTotal,
+                        (uint32_t)pet.stepRewardMask })
       h = mixKey(h, v);
     for (const char *c = pet.nick; *c; c++) h = mixKey(h, (uint8_t)*c);
   }
@@ -1765,8 +1840,8 @@ void drawCelebration() {
 
 // ---------- pet card: 4 pages with page dot and Back button ----------
 static void drawCardNav() {
-  int ds = U(12), gap = U(14), x0 = CX - (3 * (ds + gap)) / 2 - ds / 2;
-  for (int i = 0; i < 4; i++)
+  int ds = U(12), gap = U(14), x0 = CX - ((CARD_PAGES - 1) * (ds + gap)) / 2 - ds / 2;
+  for (int i = 0; i < CARD_PAGES; i++)
     gfx->fillCircle(x0 + i * (ds + gap) + ds / 2, UY(348), ds / 2, i == cardPage ? inkColor() : uiSurf());
   uiPill(CX - U(75), UY(372), U(150), UY(68), T(S_BACK), false);
 }
@@ -1962,12 +2037,62 @@ void renderCardProgress() {
   gfx->print(ms);
 }
 
+// steps page: today's count, progress to the next daily goal, the three goals and the trail rank
+void renderCardSteps() {
+  gfx->setTextColor(inkColor());
+  setSize(TS(3));
+  gfx->setCursor(centerX(T(S_STEPS), TS(3)), UY(44));
+  gfx->print(T(S_STEPS));
+
+  char n[12];
+  snprintf(n, sizeof(n), "%lu", (unsigned long)pet.stepsToday);
+  setSize(TS(5));
+  gfx->setCursor(centerX(n, TS(5)), UY(84));
+  gfx->print(n);
+
+  // the bar fills toward the next goal; when all are done it stays full
+  uint8_t next = 0;
+  while (next < Pet::STEP_GOALS && pet.stepsToday >= Pet::stepGoal(next)) next++;
+  bool allDone = next == Pet::STEP_GOALS;
+  uint32_t goal = Pet::stepGoal(allDone ? Pet::STEP_GOALS - 1 : next);
+  uiBar(U(103), UY(158), U(260), UY(18), allDone ? goal : pet.stepsToday, goal, inkColor());
+  char nx[24];
+  if (allDone) snprintf(nx, sizeof(nx), "%s", T(S_STEPS_ALL_DONE));
+  else snprintf(nx, sizeof(nx), T(S_STEPS_NEXT_FMT), (unsigned long)goal);
+  gfx->setTextColor(uiDim());
+  setSize(TS(2));
+  gfx->setCursor(centerX(nx, TS(2)), UY(190));
+  gfx->print(nx);
+
+  // one dot per daily goal: filled once reached
+  for (uint8_t i = 0; i < Pet::STEP_GOALS; i++) {
+    int cx = CX + (i - 1) * U(80);
+    bool got = pet.stepsToday >= Pet::stepGoal(i);
+    gfx->fillCircle(cx, UY(228), U(14), got ? inkColor() : uiSurf());
+    snprintf(n, sizeof(n), "%lu", (unsigned long)Pet::stepGoal(i));
+    gfx->setTextColor(got ? inkColor() : uiDim());
+    gfx->setCursor(cx - textW(n, TS(2)) / 2, UY(252));
+    gfx->print(n);
+  }
+
+  char tot[24];
+  snprintf(tot, sizeof(tot), T(S_STEPS_TOTAL_FMT), (unsigned long)pet.stepsTotal);
+  gfx->setTextColor(uiDim());
+  gfx->setCursor(centerX(tot, TS(2)), UY(284));
+  gfx->print(tot);
+  const char *rank = trailName(pet.trailRank());
+  gfx->setTextColor(inkColor());
+  gfx->setCursor(centerX(rank, TS(2)), UY(308));
+  gfx->print(rank);
+}
+
 void renderCard() {
   drawScreenBg();
   if (cardPage == 0) renderCardProfile();
   else if (cardPage == 1) renderCardStats();
   else if (cardPage == 2) renderCardMedals();
-  else renderCardProgress();
+  else if (cardPage == 3) renderCardProgress();
+  else renderCardSteps();
   drawCardNav();
   gfx->flush();
 }
@@ -2770,6 +2895,7 @@ const char *eggMsg() {
 
 const char *statusMsg() {
   if (pet.evolving()) return T(S_EVOLVING);
+  if (pet.stepRewardShown() >= 0) return T((StrId)(S_STEP_REWARD_1 + pet.stepRewardShown()));
   if (bathUntil) return "Splish splash!";  // universal onomatopoeia
   if (pet.sleeping) return "Zzz...";
   if (pet.eating()) return T(S_EATING);

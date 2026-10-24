@@ -1,5 +1,5 @@
 #include "i18n.h"
-#include "pet.h"        // MED_COUNT
+#include "pet.h"        // MED_COUNT, Pet::TRAIL_RANKS
 
 // String table by id. No accents or n-tildes: the firmware's bitmap font does not have them.
 static const char *const STRINGS[] = {
@@ -29,6 +29,8 @@ static const char *const STRINGS[] = {
   "Evolve?", "Keep form", "Say goodbye?", "Goodbye", "Stay together",
   "Choose your starter",
   "No sprites", "Load them onto the SD",
+  "STEPS", "Next goal: %lu", "All goals done!", "TOTAL %lu",
+  "500 steps! Snack!", "2000 steps! Energy!", "5000 steps! Workout!",
 };
 
 // Medal name (banner) and long description [medal].
@@ -37,12 +39,16 @@ static const char *const MED_DSC[] = {
   "LEVEL 10", "LEVEL 25", "LEVEL 50", "BERRY FOUND", "7 DAY STREAK", "MAX BOND", "FINAL FORM", "IN SHAPE",
 };
 
+static const char *const TRAIL[] = { "ROOKIE", "WALKER", "HIKER", "TREKKER", "RANGER" };
+
 #define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
 // with the size left undeclared, a table that is too short or too long no longer slips by silently
 static_assert(COUNT_OF(STRINGS) == STR_COUNT, "STRINGS y StrId no coinciden");
 static_assert(COUNT_OF(MED_NAME) == MED_COUNT, "MED_NAME y MED_COUNT no coinciden");
+static_assert(COUNT_OF(TRAIL) == Pet::TRAIL_RANKS + 1, "TRAIL and Pet::TRAIL_RANKS do not match");
 static_assert(COUNT_OF(MED_DSC) == MED_COUNT, "MED_DSC y MED_COUNT no coinciden");
 
 const char *T(StrId id) { return STRINGS[id]; }
 const char *medalName(int i)  { return MED_NAME[i]; }
 const char *medalDesc(int i)  { return MED_DSC[i]; }
+const char *trailName(int rank) { return TRAIL[rank]; }

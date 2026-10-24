@@ -8,6 +8,13 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Added
+
+- **Step counter.** The QMI8658 motion sensor counts steps (screen on or off). A new Steps
+  page on the stat card shows today's count, the three daily goals (500 / 2000 / 5000:
+  a snack, energy, a workout) and the lifetime trail rank. Walking also raises happiness
+  and bond a little. Steps are part of the web installer's save backup.
+
 ### Changed
 
 - **New look for every screen.** One yellow accent for what you can press or have picked,

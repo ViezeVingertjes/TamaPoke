@@ -72,6 +72,10 @@ public:
   // bond (the pet's: rises slowly with care, resets when another is born)
   uint8_t bond = 0;
   char nick[12] = "";    // nickname (empty = species name)
+  // walking (the player's: persists across rearings). Counted by the IMU, see imu.cpp
+  uint32_t stepsToday = 0, stepsTotal = 0;
+  uint32_t stepDay = 0;         // day (epoch / 86400) that stepsToday belongs to
+  uint8_t stepRewardMask = 0;   // bit i: daily goal i already rewarded today
   // medals: the individual's + running count across all rearings
   uint16_t medals = 0, totalMedals = 0;
   uint16_t newMedal = 0;   // just earned, to celebrate
@@ -158,6 +162,14 @@ public:
 
   // streak / bond / medals / name
   void rename(const char *name);
+  // walking: daily goals give a small reward, lifetime steps give a trail rank
+  static constexpr uint8_t STEP_GOALS = 3, TRAIL_RANKS = 4;
+  static uint32_t stepGoal(uint8_t i);    // steps per day for goal i
+  static uint32_t trailGoal(uint8_t i);   // lifetime steps for rank i + 1
+  uint8_t trailRank() const;              // 0 = none yet .. TRAIL_RANKS
+  void applyWalk(uint16_t steps);
+  // goal just reached (-1 = none), to announce it for a few seconds
+  int8_t stepRewardShown() const { return timeLeft(stepRewardUntil) > 0 ? stepRewardIdx : -1; }
   bool hasMedal(uint16_t m) const { return medals & m; }
   bool showMedal() const { return timeLeft(medalUntil) > 0; }
   bool showMilestone() const { return timeLeft(milestoneUntil) > 0; }
@@ -171,7 +183,14 @@ public:
   uint32_t savedEpoch() { return prefs.getUInt("seen", 0); }
   void flushSave();
 
+  // Versioned snapshot of the game state for the browser installer (SAVEGET / SAVEPUT over
+  // USB). Never includes SD data. Time away is not applied after a restore.
+  static constexpr size_t BACKUP_MAX_BYTES = 128;
+  size_t exportBackup(uint8_t *out, size_t capacity);
+  bool importBackup(const uint8_t *data, size_t length);
+
 private:
+  template <class IO> void backupFields(IO &io);
   Preferences prefs;
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;
@@ -192,6 +211,9 @@ private:
   uint8_t bondToday = 0;       // daily cap on bond gain
   uint32_t medalUntil = 0;     // medal celebration on screen
   uint32_t milestoneUntil = 0; // streak milestone celebration
+  uint32_t stepRewardUntil = 0;
+  int8_t stepRewardIdx = -1;
+  void ensureStepDay();
 
   uint32_t today() const { return lastSeenEpoch ? lastSeenEpoch / 86400 : 0; }
   void registerCare();   // first care of the day: streak + bond

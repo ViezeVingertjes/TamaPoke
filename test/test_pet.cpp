@@ -936,3 +936,183 @@ TEST(save, el_autoguardado_se_marca_y_se_vuelca) {
   p.flushSave();
   CHECK(!p.savePending());
 }
+
+// ---------------------------------------------------------------- save backup
+TEST(backup, ida_y_vuelta_conserva_el_estado) {
+  Pet a;
+  makePet(a, 4);
+  a.fullness = 47; a.joy = 33; a.bond = 12; a.streak = 5; a.gameHi = 321;
+  a.rename("BACKUP");
+  a.dexReg[3] = 0xA5;
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  CHECK(n > 16 && n <= sizeof(blob));
+
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.speciesId, (int)a.speciesId);
+  CHECK_EQ((int)b.fullness, 47);
+  CHECK_EQ((int)b.joy, 33);
+  CHECK_EQ((int)b.bond, 12);
+  CHECK_EQ((int)b.streak, 5);
+  CHECK_EQ((int)b.gameHi, 321);
+  CHECK_EQ((int)b.dexReg[3], 0xA5);
+  CHECK(strcmp(b.nick, "BACKUP") == 0);
+}
+
+TEST(backup, rechaza_datos_cortados_o_alterados_y_no_toca_el_estado) {
+  Pet a;
+  makePet(a, 4);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+
+  Pet b;
+  makePet(b, 7);
+  b.fullness = 61;
+  CHECK(!b.importBackup(blob, n - 1));        // cut off
+  uint8_t bad[Pet::BACKUP_MAX_BYTES];
+  memcpy(bad, blob, n);
+  bad[10] ^= 0x01;                            // flipped bit
+  CHECK(!b.importBackup(bad, n));
+  memcpy(bad, blob, n);
+  bad[0] = 'X';                               // not a backup
+  CHECK(!b.importBackup(bad, n));
+  CHECK_EQ((int)b.fullness, 61);
+  CHECK_EQ((int)b.speciesId, 7);
+}
+
+TEST(backup, un_valor_fuera_de_rango_con_checksum_valido_se_deshace) {
+  Pet a;
+  makePet(a, 4);
+  a.fullness = 250;                           // impossible; export does not clamp
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+
+  Pet b;
+  makePet(b, 7);
+  b.fullness = 61;
+  CHECK(!b.importBackup(blob, n));
+  CHECK_EQ((int)b.fullness, 61);              // rolled back
+  CHECK_EQ((int)b.speciesId, 7);
+}
+
+TEST(backup, un_valor_absurdo_con_checksum_valido_se_rechaza_y_se_deshace) {
+  Pet a;
+  makePet(a, 4);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  b.bond = 33;
+  a.bond = 150;                                // impossible value; the export does not clamp
+  size_t n2 = a.exportBackup(blob, sizeof(blob));
+  CHECK(n2 == n);
+  CHECK(!b.importBackup(blob, n2));
+  CHECK_EQ((int)b.bond, 33);                   // rolled back
+}
+
+// ---------------------------------------------------------------- walking
+// midday of a given day, to anchor the pet's clock
+static void setDay(Pet &p, uint32_t day) { p.setClock(day * 86400UL + 43200); }
+
+TEST(steps, los_pasos_se_acumulan_y_cambian_de_dia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.applyWalk(300);
+  p.applyWalk(250);
+  CHECK_EQ((int)p.stepsToday, 550);
+  CHECK_EQ((int)p.stepsTotal, 550);
+  setDay(p, 20001);
+  advance(p, 1);                       // the next minute notices the new day
+  CHECK_EQ((int)p.stepsToday, 0);
+  CHECK_EQ((int)p.stepsTotal, 550);
+  CHECK_EQ((int)p.stepRewardMask, 0);
+}
+
+TEST(steps, cada_meta_diaria_da_su_premio_una_sola_vez) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  setStats(p, 50, 50, 50, 50);
+  p.trAtk = 0;
+  p.applyWalk(500);
+  CHECK_EQ((int)p.fullness, 65);       // snack
+  CHECK_EQ((int)p.stepRewardShown(), 0);
+  p.applyWalk(100);
+  CHECK_EQ((int)p.fullness, 65);       // not again
+  p.energy = 50;
+  p.applyWalk(1400);                   // 2000 total
+  CHECK_EQ((int)p.energy, 75);
+  p.applyWalk(3000);                   // 5000 total
+  CHECK_EQ((int)p.trAtk, 5);
+  CHECK_EQ((int)p.stepRewardMask, 7);
+}
+
+TEST(steps, caminar_anima_y_une_pero_con_tope_diario) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  setStats(p, 50, 10, 50, 50);
+  p.bond = 0;
+  p.applyWalk(1000);
+  CHECK_EQ((int)p.joy, 20);            // +1 per 100 steps
+  CHECK_EQ((int)p.bond, 2);            // +1 per 500 steps
+  p.applyWalk(4000);
+  CHECK_EQ((int)p.joy, 30);            // beyond 2000 steps only the 5000 goal's workout counts
+  CHECK_EQ((int)p.bond, 4);
+}
+
+TEST(steps, el_rango_del_sendero_sale_de_los_pasos_totales) {
+  Pet p;
+  makePet(p, 4);
+  CHECK_EQ((int)p.trailRank(), 0);
+  p.stepsTotal = 9999;
+  CHECK_EQ((int)p.trailRank(), 0);
+  p.stepsTotal = 10000;
+  CHECK_EQ((int)p.trailRank(), 1);
+  p.stepsTotal = 250000;
+  CHECK_EQ((int)p.trailRank(), Pet::TRAIL_RANKS);
+}
+
+TEST(steps, un_huevo_cuenta_pasos_pero_no_recibe_premios) {
+  Pet p;
+  mockNvsReset();
+  mockSetMillis(0);
+  p.begin();
+  p.chooseStarter(4);
+  setDay(p, 20000);
+  p.fullness = 40;
+  p.applyWalk(600);
+  CHECK_EQ((int)p.stepsToday, 600);
+  CHECK_EQ((int)p.fullness, 40);
+  CHECK_EQ((int)p.stepRewardMask, 0);  // still owed: given once it hatches
+}
+
+TEST(steps, se_guardan_y_van_en_la_copia) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.applyWalk(1234);
+  a.flushSave();
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  CHECK(n > 0);
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.stepsToday, 1234);
+  CHECK_EQ((int)b.stepsTotal, 1234);
+}
+
+TEST(steps, los_pasos_de_antes_de_tener_reloj_cuentan_hoy) {
+  Pet p;
+  makePet(p, 4);
+  p.applyWalk(400);                    // no clock yet: the day is unknown
+  CHECK_EQ((int)p.stepsToday, 400);
+  setDay(p, 20000);
+  advance(p, 1);                       // the first minute with a clock must not drop them
+  CHECK_EQ((int)p.stepsToday, 400);
+  CHECK_EQ((int)p.stepsTotal, 400);
+}

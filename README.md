@@ -218,8 +218,8 @@ If one bottoms out it counts as a *slip-up*.
 **Touch gestures:**
 - Tap the creature = pet it (+happiness, bond).
 - Horizontal swipe = open the **Pokédex / gallery**.
-- Vertical swipe up = open the **stat card** (4 pages: Profile / Battle / Medals /
-  Progress; swipe between them; tap the name on Profile to rename; on Battle the
+- Vertical swipe up = open the **stat card** (5 pages: Profile / Battle / Medals /
+  Progress / Steps; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag).
 - Swipe down = **set the clock** and toggle **sound** on/off.
 - Long press (3 s) on the creature = **release** dialog.
@@ -289,6 +289,19 @@ and burns off with training.
 - **Medals** for the individual (level, berry, streak, bond, final form, fit) +
   a global counter. Medals page of the stat card.
 - **Name**: touch keyboard; the nickname rules the header and the card.
+
+## Walking
+
+The QMI8658 motion sensor counts steps with the screen on or off (and on USB). A step
+needs two rhythmic impacts in a row, so a single bump counts nothing. Steps appear on
+the Steps page of the stat card.
+
+- **Daily goals** 500 / 2000 / 5000 steps: a snack (+15 food), energy (+25), a workout
+  (+5 strength). Each is given once per day.
+- Walking cheers it up (+1 happiness per 100 steps) and bonds a little (+1 per 500),
+  for the first 2000 steps of the day.
+- **Trail rank** from lifetime steps: Walker 10,000 / Hiker 50,000 / Trekker 100,000 /
+  Ranger 250,000. Steps and rank belong to the player and survive a new egg.
 
 High streak and bond **improve the egg roll** (rarity and shiny): caring well
 always pays off.
