@@ -724,7 +724,9 @@ void handleTouch() {
     holdFired = false;
     swallowGesture = dimStage > 0;  // if it was dark, it only wakes up (screenOff is handled above)
     wakeUI();
-    if (!swallowGesture && gameOpen) {  // like the sack: counts on touch, not when the finger lifts
+    // like the sack: a hit counts on touch, not when the finger lifts. The header (quit) still
+    // waits for the lift so a swipe that starts there cannot end the game; no overlay is on top
+    if (!swallowGesture && gameOpen && y >= HEADER_ZONE_H && !kbOpen && !clockOpen && !cardOpen && !galleryOpen) {
       gameTap(x, y);
       swallowGesture = true;            // no second tap on lift
     }
