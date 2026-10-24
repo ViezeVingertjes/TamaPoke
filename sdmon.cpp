@@ -1,5 +1,6 @@
 #include "sdmon.h"
 #include "pin_config.h"
+#include "thumb_format.h"
 #include <FS.h>
 #include <SD_MMC.h>
 
@@ -122,6 +123,16 @@ bool SdThumbs::load() {
     unload();
     return false;
   }
+  // every entry fits and only uses palette colors: draw time then needs no checks
+  for (uint16_t i = 0; i < count; i++) {
+    uint32_t off;
+    memcpy(&off, data + 6 + 4 * i, 4);
+    if (!thumbEntryBytes(data, sz, off) || !thumbIndicesValid(data + off)) {
+      Serial.printf("thumbs.bin invalido (miniatura %u)\n", i + 1);
+      unload();
+      return false;
+    }
+  }
   size = sz;
   loaded = true;
   Serial.printf("miniaturas cargadas: %u (%u KB)\n", count, sz / 1024);
@@ -134,10 +145,7 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   memcpy(&off, data + 6 + 4 * (dex - 1), 4);
   // the offset comes from the file unchecked: without this, a truncated or corrupt
   // thumbs.bin made us read outside the PSRAM allocation
-  if (off > size - 3) return nullptr;  // the w,h,palCount header must fit (size >= 10 always)
-  uint32_t need = 3 + (uint32_t)data[off + 2] * 2 + (uint32_t)data[off] * data[off + 1];
-  if (need > size || off > size - need) return nullptr;  // and so must the whole blob
-  return data + off;
+  return thumbEntryBytes(data, size, off) ? data + off : nullptr;
 }
 
 bool sdBegin() {
