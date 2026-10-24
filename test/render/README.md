@@ -18,3 +18,6 @@ comparar la interfaz sin placa.
   (`GFX_FONT_FILE=... U8G2_FONTS=... make shots` si no estan en `~/Arduino/libraries`).
 - El panel real es redondo: lo que la captura pinta fuera del circulo de 466 px no se
   ve en la placa.
+- Las referencias de `golden/<idioma>` (en, es, de, ja, ko) salen de g++ en Linux con
+  GFX Library for Arduino 1.6.9 y U8g2 2.36.19; `make check` las compara y
+  `make golden` las regenera (solo si el cambio de interfaz es intencionado).

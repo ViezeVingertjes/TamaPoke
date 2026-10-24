@@ -89,3 +89,28 @@ jobs:
         with:
           python-version: "3.x"
       - run: python3 tools/test_i18n_formats.py
+
+  ui-screens:
+    name: UI screens match the reference images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: pip install pillow
+      - uses: arduino/setup-arduino-cli@v2
+      # el renderer compila el codigo grafico de GFX Library for Arduino y saca las
+      # fuentes CJK de U8g2; versiones fijadas porque las imagenes de referencia
+      # dependen de ellas
+      - run: arduino-cli lib install "GFX Library for Arduino@1.6.9" "U8g2@2.36.19"
+      # compila el sketch contra un lienzo por software y compara cada pantalla
+      # (test/render). Si el cambio de interfaz es intencionado: make golden.
+      - run: make -C test/render check
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-screen-diffs
+          path: |
+            test/render/build/shots/*/*.diff.png
+            test/render/build/shots/*/*.actual.png
