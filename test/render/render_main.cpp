@@ -133,6 +133,7 @@ static void prepare(const Scene &sc) {
   gBatPercent = 80; gBatCharging = false; pet.lastSeenEpoch = 0;
   feedMenuUntil = confirmUntil = bathUntil = 0; bathPending = false; choiceKind = 0;
   pet = gPristinePet;  // el bicho entero (temporizadores, pokedex, medallas...) como tras el arranque
+  screenKeyValid = false;  // una pantalla estatica se pinta siempre la primera vez
   gameOverUntil = sackOverUntil = 0; gameNewHi = sackNewHi = false; sackGain = 0;
   randomSeed(1);
   monFor = -2;
@@ -652,6 +653,68 @@ static int runFitTests() {
   return gFitFails ? 1 : 0;
 }
 
+// ---------- consumo: que se repinta y cuando ----------
+static int runPowerTests() {
+  int fails = 0;
+#define PCHECK(cond, what) do { if (!(cond)) { fprintf(stderr, "FALLA %-26s %s\n", curScene, what); fails++; } } while (0)
+  curScene = "";
+  // pantallas estaticas: una vez dibujadas no se repintan hasta que cambia algo
+  begin("clock");
+  PCHECK(render(), "el reloj se dibuja la primera vez");
+  PCHECK(!render(), "el reloj no se repinta sin cambios");
+  clockH = (clockH + 1) % 24;
+  PCHECK(render(), "el reloj se repinta al cambiar la hora");
+  PCHECK(!render(), "y vuelve a quedarse quieto");
+  begin("keyboard");
+  PCHECK(render() && !render(), "el teclado: una vez y quieto");
+  nameBuf[nameLen++] = 'Z'; nameBuf[nameLen] = 0;
+  PCHECK(render(), "el teclado se repinta al escribir");
+  begin("card_stats");
+  PCHECK(render() && !render(), "la ficha de combate: una vez y quieta");
+  pet.weight += 3;
+  PCHECK(render(), "la ficha se repinta si cambia un dato");
+  begin("card_medals");
+  PCHECK(render() && !render(), "las medallas: una vez y quietas");
+  begin("starter");
+  PCHECK(render() && !render(), "la eleccion de inicial: una vez y quieta");
+  // pantallas animadas: se dibujan siempre
+  for (const char *n : { "main_day", "card_profile", "game", "sack", "farewell" }) {
+    begin(n);
+    PCHECK(render() && render(), "las pantallas animadas se dibujan en cada frame");
+  }
+  // cambiar de pantalla invalida la clave: volver al reloj lo dibuja de nuevo
+  begin("clock");
+  render();
+  begin("main_day");
+  render();
+  begin("clock");
+  PCHECK(render(), "al volver a una pantalla estatica se vuelve a dibujar");
+  // el paseo del bicho avanza lo mismo a 10 fps que a 5 fps (por tiempo, no por frame)
+  float x10 = 0, x4 = 0;
+  for (int fps : { 10, 5 }) {
+    begin("main_day");
+    beh.mode = 1; beh.act = PMD_WALKR; beh.x = CX; beh.targetX = CX + U(400); beh.until = millis() + 60000; beh.t0 = millis();
+    walkLast = 0;
+    uint32_t t0 = 100000;
+    for (uint32_t t = 0; t <= 4000; t += 1000 / fps) {
+      mockSetMillis(t0 + t);
+      render();
+    }
+    (fps == 10 ? x10 : x4) = beh.x - CX;
+  }
+  PCHECK(x10 > U(60), "el bicho camina");
+  PCHECK(fabsf(x10 - x4) <= 0.08f * x10 + 3, "el paseo no depende de los frames por segundo");
+  // tras un hueco largo sin dibujar al bicho (otra pantalla de por medio) no da un salto
+  {
+    float before = beh.x;
+    mockSetMillis(100000 + 4000 + 5000);
+    render();
+    PCHECK(beh.x - before <= 40.0f * UI_F * 0.3f, "un hueco largo sin dibujar no da un paso largo");
+  }
+  fprintf(stderr, "%d fallos de consumo\n", fails);
+  return fails ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "uso: %s carpeta [idioma] [filtro]\n", argv[0]); return 2; }
   std::string out = argv[1];
@@ -666,7 +729,8 @@ int main(int argc, char **argv) {
   bool tapsMode = filter == "--taps";
   bool measureMode = filter == "--measure";
   bool fitMode = filter == "--fit";
-  if (tapsMode || measureMode || fitMode) filter = "";
+  bool powerMode = filter == "--power";
+  if (tapsMode || measureMode || fitMode || powerMode) filter = "";
   int drawn = 0;
   if (lang < 0 || lang >= LANG_COUNT) { fprintf(stderr, "idioma fuera de rango: %d\n", lang); return 2; }
 
@@ -681,6 +745,7 @@ int main(int argc, char **argv) {
   if (tapsMode) return runTapTests();
   if (measureMode) return runMeasureTests();
   if (fitMode) return runFitTests();
+  if (powerMode) return runPowerTests();
   std::vector<const Scene *> all;
   for (const Scene &sc : SCENES) all.push_back(&sc);
   for (const Scene &sc : EXTRA)

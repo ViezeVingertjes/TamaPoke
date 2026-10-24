@@ -27,7 +27,11 @@ int batPercent() { return gBatPercent; }
 bool batCharging() { return gBatCharging; }
 int batMillivolts() { return 3900; }
 bool usbPresent() { return false; }
+bool usbPresentNow() { return false; }
+void batSetPollMs(uint32_t) {}
 void pwrSetup() {}
 bool pwrShortPressed() { return false; }
 
 void audioSetSleeping(bool) {}
+void audioSetIdle(bool) {}
+bool audioBusy() { return false; }

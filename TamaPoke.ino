@@ -14,6 +14,8 @@
 #include "Arduino_GFX_Library.h"
 #include "TouchDrvCSTXXX.hpp"
 #include <U8g2lib.h>  // fuentes CJK (japones); ver applyLangFont()
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 #include "pin_config.h"
 #include "species.h"
 #include "dex.h"
@@ -22,6 +24,7 @@
 #include "rtcbat.h"
 #include "i18n.h"
 #include "audio.h"
+#include "power.h"
 #include "blit.h"
 #include "layout.h"
 
@@ -58,6 +61,7 @@ struct {
   uint32_t until = 0;   // fin del estado actual
   float x = CX, targetX = CX;
 } beh;
+uint32_t walkLast = 0;  // instante del ultimo paso del paseo (0 = ninguno aun)
 #define PET_GROUND UY(304)  // linea de suelo de la mascota
 PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2, legal)
 
@@ -203,6 +207,7 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 volatile bool gTouchIrq = false;
 void IRAM_ATTR touchIsr() { gTouchIrq = true; }
 uint32_t lastRender = 0;
+uint32_t sdEpoch = 0;  // +1 cada vez que se recarga la SD (las miniaturas cambian)
 // proteccion del AMOLED: atenuado por inactividad
 uint32_t lastInteract = 0;
 uint8_t dimStage = 0;        // 0 despierto, 1 atenuado (90s), 2 casi apagado (5min)
@@ -294,7 +299,7 @@ void ensureMon() {
   if (pet.speciesId == monFor && monShinyFor == pet.shiny && !sdDirty) return;
   // los ficheros recien recibidos pueden incluir un thumbs.bin nuevo, que se
   // cargaba solo en setup(): sin esto no se veia en la galeria hasta reiniciar
-  if (sdDirty) { thumbs.unload(); thumbs.load(); }
+  if (sdDirty) { thumbs.unload(); thumbs.load(); sdEpoch++; }
   sdDirty = false;
   monFor = pet.speciesId;
   monShinyFor = pet.shiny;
@@ -340,7 +345,7 @@ void loop() {
     lastPwr = now;
     if (pwrShortPressed()) {
       screenOff = !screenOff;
-      if (!screenOff) lastInteract = now;
+      if (!screenOff) wakeUI();
     }
   }
 
@@ -373,44 +378,98 @@ void loop() {
                   usbPresent() ? 1 : 0, dimStage, screenOff ? 1 : 0);
   }
 
-  // 85 ms en juego/saco: margen seguro para que el redibujado no pise el envio
-  // DMA del frame anterior (a 40-65 ms solapaba y causaba flashes negros; con
-  // sprites grandes el dibujo tarda mas, asi que se deja colchon)
-  // Con la pantalla apagada no se dibuja: a brillo 0 no se ve nada, pero el
-  // redibujado y el flush DMA del framebuffer del lienzo seguian corriendo a
-  // 10 fps, y medido son 70 ms de trabajo por cada 100 (46 de ellos solo el
-  // volcado). Es la mayor carga evitable de la placa. Cada render repinta la
-  // escena entera, asi que no queda nada a medias; y al quedarse lastRender
-  // congelado, el primer frame tras despertar sale en el acto.
+  // Ritmo de dibujo (power.h): 10 fps con el bicho en uso, menos cuanto mas rato sin tocar,
+  // 85 ms en juego/saco (margen seguro para que el redibujado no pise el envio DMA del frame
+  // anterior: a 40-65 ms solapaba y causaba flashes negros).
+  // Con la pantalla apagada no se dibuja: a brillo 0 no se ve nada, pero el redibujado y el
+  // flush DMA del framebuffer del lienzo seguian corriendo a 10 fps, y medido son 70 ms de
+  // trabajo por cada 100 (46 de ellos solo el volcado). Cada render repinta la escena
+  // entera, asi que no queda nada a medias; y al quedarse lastRender congelado, el primer
+  // frame tras despertar sale en el acto.
+  PowerCtx pc = powerCtx(millis());
+  audioSetIdle(!amplifierWanted(pc));  // el amplificador consume en reposo
+  batSetPollMs(powerCacheMs(pc));
+  uint32_t interval = frameIntervalMs(pc);
   bool drewFrame = false;
-  if (!screenOff && now - lastRender >= (uint32_t)((gameOpen || sackOpen) ? 85 : 100)) {
+  if (interval && now - lastRender >= interval) {
     lastRender = now;
-    render();
-    drewFrame = true;
+    drewFrame = render();
   }
   // cede la CPU en los pases que no dibujan: sin esto el loop gira a pleno rendimiento
-  // entre frames (render son ~70 de cada 100 ms); 1 ms no se nota en el tactil (se lee
-  // cada 20 ms) y el frame no se retrasa
-  if (!drewFrame) delay(1);
+  // entre frames; 1 ms no se nota en el tactil (se lee cada 20 ms) y el frame no se retrasa
+  if (!drewFrame) idleWait(pc);
 }
 
-// brillo segun sueno + inactividad (proteccion del AMOLED)
+// estado de consumo actual (ver power.h)
+PowerCtx powerCtx(uint32_t now) {
+  PowerCtx c;
+  c.idleMs = idleSince(now, lastInteract);
+  c.screenOff = screenOff;
+  c.sleeping = pet.sleeping;
+  c.gameOpen = gameOpen || sackOpen;
+  c.usb = usbPresent();
+  c.charging = batCharging();
+  c.batPct = batPercent();
+  return c;
+}
+
+// el usuario ha interactuado: vuelve el ritmo normal de dibujo (sin esperar al proximo
+// frame de un ritmo lento) y el amplificador se enciende antes de que suene nada
+void wakeUI() {
+  uint32_t now = millis();
+  uint32_t iv = frameIntervalMs(powerCtx(now));
+  bool slow = !iv || iv > 100;  // pantalla apagada o ritmo lento: se dibuja ya, sin esperar al frame
+  lastInteract = now;
+  // el frame forzado respeta los 85 ms entre redibujados (si no, solapa el DMA del anterior)
+  if (slow) lastRender = (now - lastRender >= 85) ? 0 : lastRender - 15;
+  audioSetIdle(false);
+}
+
+// brillo segun sueno + inactividad (proteccion del AMOLED) y bateria
 void updateBrightness(uint32_t now) {
   // los eventos visibles despiertan la pantalla solos
-  if (pet.evolving() || pet.ceremony || pet.eating() || pet.showHeart()) {
-    lastInteract = now;
+  if (!screenOff && (pet.evolving() || pet.ceremony || pet.eating() || pet.showHeart())) {
+    if (dimStageFor(idleSince(now, lastInteract)) != DIM_AWAKE) wakeUI();
+    else lastInteract = now;
   }
-  uint32_t idle = now - lastInteract;
-  dimStage = (idle > 300000) ? 2 : (idle > 90000) ? 1 : 0;
-  uint8_t target = pet.sleeping ? 25 : (usbPresent() ? 180 : 145);
-  if (dimStage == 1) target = pet.sleeping ? 10 : 60;
-  else if (dimStage == 2) target = 8;
-  if (screenOff) target = 0;
+  PowerCtx c = powerCtx(now);
+  dimStage = dimStageFor(c.idleMs);
+  uint8_t target = brightnessFor(c);
   static uint8_t current = 255;
   if (target != current) {
     current = target;
     panel->setBrightness(target);
   }
+}
+
+// Pausa de un pase del bucle que no ha dibujado. Con la pantalla apagada, o encendida pero casi
+// apagada (5 min sin tocar), y sin USB se duerme la CPU (light sleep) hasta el proximo frame o
+// 200 ms: despierta por el temporizador o por un toque (el INT del tactil baja). Con USB no, para
+// no perder el puerto serie de la tarjeta SD: se mira sin cache, por si se acaba de enchufar.
+void idleWait(PowerCtx c) {
+  // no se duerme justo tras dibujar (el volcado DMA del frame sigue en marcha) ni con un aviso sonando
+  if (lightSleepAllowed(c) && millis() - lastRender >= 100 && !audioBusy()) {
+    c.usb = usbPresentNow();
+    if (!lightSleepAllowed(c)) { delay(idleDelayMs(c)); return; }
+    if (digitalRead(TP_INT) == LOW) { gTouchIrq = true; delay(1); return; }  // toque pendiente: no se duerme
+    uint32_t ms = POWER_SLEEP_MS;
+    uint32_t iv = frameIntervalMs(c);
+    if (iv) {  // pantalla encendida: hasta el proximo frame
+      uint32_t due = lastRender + iv - millis();
+      if ((int32_t)due < (int32_t)ms) ms = (int32_t)due > 1 ? due : 1;
+    }
+    esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000);
+    gpio_wakeup_enable((gpio_num_t)TP_INT, GPIO_INTR_LOW_LEVEL);
+    esp_sleep_enable_gpio_wakeup();
+    esp_light_sleep_start();
+    // la interrupcion del tactil vuelve a ser por flanco (como la dejo attachInterrupt); un toque
+    // que ya haya bajado la linea se registra a mano
+    gpio_wakeup_disable((gpio_num_t)TP_INT);
+    gpio_set_intr_type((gpio_num_t)TP_INT, GPIO_INTR_NEGEDGE);
+    if (digitalRead(TP_INT) == LOW) gTouchIrq = true;
+    return;
+  }
+  delay(idleDelayMs(c));
 }
 
 // ---------- consola serie (provision de SD + depuracion) ----------
@@ -565,7 +624,7 @@ void handleTouch() {
   // saco de entrenamiento: cada toque cuenta al instante (aporrear rapido)
   if (sackOpen) {
     if (pressed && !wasPressed) {
-      lastInteract = millis();
+      wakeUI();
       sackTouch(y);
     }
     wasPressed = pressed;
@@ -579,7 +638,7 @@ void handleTouch() {
     holdFired = false;
     swallowGesture = (dimStage > 0) || screenOff;  // si estaba a oscuras, solo despierta
     screenOff = false;
-    lastInteract = millis();
+    wakeUI();
   } else if (pressed) {  // sigue apoyado
     tXl = x;
     tYl = y;
@@ -591,7 +650,7 @@ void handleTouch() {
       holdFired = true;
     }
   } else if (wasPressed) {  // levanta el dedo: resolver gesto
-    lastInteract = millis();
+    wakeUI();
     int dx = tXl - tX0, dy = tYl - tY0;
     uint32_t dt = millis() - tStart;
     if (!holdFired && !swallowGesture) {
@@ -1190,34 +1249,78 @@ void printT(const char *s) {
   gfx->print(s);
 }
 
-void render() {
+// Pantallas que solo cambian con un toque (o con un dato que cambia muy de vez en cuando):
+// mientras su "clave" no cambie no se repintan ni se vuelcan por QSPI.
+static bool staticScreen() {
+  if (pet.awaitingStarter()) return true;
+  if (galleryOpen || gameOpen || sackOpen) return false;  // la galeria gestiona su propio repintado
+  if (kbOpen || clockOpen) return true;
+  return cardOpen && cardPage != 0;  // la pagina 0 tiene el retrato animado
+}
+static uint32_t mixKey(uint32_t h, uint32_t v) { return (h ^ v) * 16777619u; }
+static uint32_t screenKey() {
+  uint32_t h = 2166136261u;
+  h = mixKey(h, pet.awaitingStarter() ? 1 : kbOpen ? 2 : clockOpen ? 3 : 4 + cardPage);
+  h = mixKey(h, sdEpoch);
+  if (kbOpen) {
+    h = mixKey(h, nameLen);
+    for (int i = 0; i < nameLen; i++) h = mixKey(h, (uint8_t)nameBuf[i]);
+  } else if (clockOpen) {
+    h = mixKey(h, clockH * 60 + clockM);
+    h = mixKey(h, audioEnabled());
+    h = mixKey(h, gLang);
+  } else if (cardOpen) {
+    for (uint32_t v : { (uint32_t)pet.speciesId, (uint32_t)pet.shiny, (uint32_t)pet.ageMinutes, (uint32_t)pet.streak,
+                        (uint32_t)pet.bestStreak, (uint32_t)pet.bond, (uint32_t)pet.medals, (uint32_t)pet.weight,
+                        (uint32_t)pet.trAtk, (uint32_t)pet.trDef, (uint32_t)pet.trSpe, (uint32_t)pet.geneAtk,
+                        (uint32_t)pet.geneDef, (uint32_t)pet.geneSpe, (uint32_t)pet.careMistakes,
+                        (uint32_t)pet.fullness, (uint32_t)pet.joy, (uint32_t)pet.energy, (uint32_t)pet.hygiene,
+                        (uint32_t)pet.berryKnown, (uint32_t)pet.strHi, (uint32_t)gLang })
+      h = mixKey(h, v);
+    for (const char *c = pet.nick; *c; c++) h = mixKey(h, (uint8_t)*c);
+  }
+  return h;
+}
+bool screenKeyValid = false;  // (el renderer del host lo invalida entre escenas)
+uint32_t lastScreenKey = 0;
+
+// Dibuja un frame y devuelve true si lo ha volcado al panel.
+bool render() {
+  if (staticScreen()) {
+    uint32_t k = screenKey();
+    if (screenKeyValid && k == lastScreenKey) return false;
+    lastScreenKey = k;
+    screenKeyValid = true;
+  } else {
+    screenKeyValid = false;
+  }
   if (pet.awaitingStarter()) {  // primera partida: elegir inicial (prioridad total)
     renderStarterSelect();
-    return;
+    return true;
   }
   if (galleryOpen) {
     renderGallery();
-    return;
+    return true;
   }
   if (gameOpen) {
     renderGame();
-    return;
+    return true;
   }
   if (sackOpen) {
     renderSack();
-    return;
+    return true;
   }
   if (kbOpen) {
     renderKeyboard();
-    return;
+    return true;
   }
   if (clockOpen) {
     renderClock();
-    return;
+    return true;
   }
   if (cardOpen) {
     renderCard();
-    return;
+    return true;
   }
   int h = sceneHour();
   gNight = pet.sleeping || h < 6 || h >= 20;
@@ -1233,7 +1336,7 @@ void render() {
     drawHeader(dexName(pet.speciesId), d.accent, msg);
     drawCeremony();
     gfx->flush();
-    return;
+    return true;
   }
 
   if (pet.isEgg()) {
@@ -1334,6 +1437,7 @@ void render() {
   }
 
   gfx->flush();
+  return true;
 }
 
 // ---------- minijuego: toques con la pokeball ----------
@@ -2697,13 +2801,22 @@ void drawPetPMD() {
   } else {
     // contento: el planificador decide (idle / paseo / gesto)
     if (now > beh.until) behNext();
+    if (beh.mode != 1) walkLast = 0;  // al volver a caminar no se cuenta el tiempo parado
     if (beh.mode == 1) {
       float d = beh.targetX - beh.x;
       if (fabsf(d) < 4.0f * UI_F) {
         behNext();
         act = PMD_IDLE;
       } else {
-        beh.x += (d > 0 ? 3.0f : -3.0f) * UI_F;  // px por frame, proporcional al panel
+        // 30 px/s de diseno (3 px por frame a 10 fps), midiendo el tiempo real: con menos frames
+        // por segundo camina igual de rapido
+        uint32_t dt = walkLast ? now - walkLast : 100;
+        uint32_t cap = frameIntervalMs(powerCtx(now)) + 100;  // un hueco mayor (otra pantalla de por medio) no es un paso largo
+        if (dt > cap) dt = cap;
+        walkLast = now;
+        float step = 30.0f * UI_F * dt / 1000.0f;
+        if (step > fabsf(d)) step = fabsf(d);  // un frame lento no sobrepasa el destino
+        beh.x += d > 0 ? step : -step;
         act = (d > 0) ? PMD_WALKR : PMD_WALKL;
       }
     } else {

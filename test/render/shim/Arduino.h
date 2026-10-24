@@ -15,6 +15,9 @@ class __FlashStringHelper;
 #define FALLING 2
 #define digitalPinToInterrupt(p) (p)
 static inline void pinMode(int, int) {}
+#define LOW 0
+#define HIGH 1
+static inline int digitalRead(int) { return HIGH; }
 static inline void attachInterrupt(int, void (*)(), int) {}
 static inline void delay(uint32_t) {}
 static inline void *ps_malloc(size_t n) { return malloc(n); }
@@ -34,6 +37,7 @@ public:
   String(const std::string &s) : std::string(s) {}
   operator const char *() const { return c_str(); }
   int indexOf(char c, size_t from = 0) const { size_t p = find(c, from); return p == npos ? -1 : (int)p; }
+  int indexOf(const char *t, size_t from = 0) const { size_t p = find(t, from); return p == npos ? -1 : (int)p; }
   int lastIndexOf(char c) const { size_t p = rfind(c); return p == npos ? -1 : (int)p; }
   String(const char *s) : std::string(s) {}
   void trim() {

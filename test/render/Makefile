@@ -2,6 +2,7 @@
 #   make shots               -> build/shots/*.ppm (ingles, 466x466)
 #   make shots FILTER=main_day  -> solo esa pantalla
 #   make taps                -> toca el centro de cada boton y dialogo (admite SIZE=)
+#   make power               -> que pantallas se repintan y cuando (ahorro de bateria)
 #   make fit                 -> cada texto real de cada idioma cabe en su caja o en el circulo
 #   make measure             -> textW() contra lo que avanza el cursor, en japones y coreano
 #   make shots LANG_ID=6     -> otro idioma (0 ES, 1 EN, 2 FR, 3 DE, 4 IT, 5 PT, 6 JA, 7 KO)
@@ -50,7 +51,7 @@ $(BUILD)/flags: FORCE
 	@echo '$(CXX) $(CXXFLAGS_ALL)' | cmp -s - $@ || echo '$(CXX) $(CXXFLAGS_ALL)' > $@
 FORCE:
 
-.PHONY: shots taps measure fit check golden clean
+.PHONY: shots taps measure fit power check golden clean
 shots: $(BIN)
 	@mkdir -p $(SHOTS) && find $(SHOTS) -maxdepth 1 -type f -delete
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) $(abspath $(SHOTS)) $(LANG_ID) $(FILTER)
@@ -91,6 +92,9 @@ golden: renders
 taps: $(BIN)
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null 1 --taps
 
+power: $(BIN)
+	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null 1 --power
+
 fit: $(BIN)
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null 1 --fit
 
@@ -107,7 +111,11 @@ $(BUILD)/cjk_fonts.cpp: fonts.py $(U8G2_FONTS)
 
 $(BIN): $(BUILD)/TamaPoke.gen.cpp $(SOURCES) $(DEPS)
 	@mkdir -p $(BUILD)
-	$(CXX) $(CXXFLAGS_ALL) -o $@ $(SOURCES)
+	@# -fpermissive vuelve avisos errores que el compilador del firmware si da (p. ej. un "return;" en una
+	@# funcion bool); los de nuestros ficheros se tratan como errores
+	@$(CXX) $(CXXFLAGS_ALL) -o $@ $(SOURCES) 2> $(BUILD)/cc.log; st=$$?; cat $(BUILD)/cc.log; \
+	  if grep -E '^(\.\./\.\./[A-Za-z_]+\.(ino|cpp|h)|[A-Za-z_./]*TamaPoke\.gen\.cpp).*\[-fpermissive\]' $(BUILD)/cc.log; then \
+	    echo "error: construccion permisiva en nuestro codigo (el compilador del firmware lo rechaza)"; rm -f $@; exit 1; fi; exit $$st
 
 clean:
 	rm -rf $(BUILD)

@@ -330,6 +330,26 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
 - `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)
 
+## Battery
+
+What the firmware does to save power (the policy is in `power.h`, covered by `test/test_power.cpp`):
+
+- **Frame rate follows activity.** 10 fps while you interact; 6.7 fps after 1 min without touching;
+  4 fps when the screen dims (90 s); 1 fps when it is almost off (5 min); 2 fps while the pet sleeps and
+  nobody touches it. The ball minigame keeps its 85 ms step. Over 10 idle minutes this sends about 68 % fewer
+  frames to the panel (each one is a full redraw plus a 434 KB QSPI transfer).
+- **Static screens are not redrawn.** Keyboard, clock, card pages 2-4 and the starter choice are painted once
+  and again only when something on them changes.
+- **Light sleep when nobody is looking.** With the screen off, or almost off (5 min), and on battery, the CPU
+  sleeps until the next frame or 200 ms; a touch wakes it at once. With USB connected it never sleeps (the
+  serial port for the SD card stays available), and USB is checked right before each sleep.
+- **Speaker amplifier only when it can be used.** It is off while the pet sleeps and while the screen is dimmed
+  or off; a sound requested meanwhile (e.g. "ready to evolve") switches it on for 4 s, and sounds wait 50 ms
+  after a power-up so the start is not cut.
+- **Low battery (< 20 %, not charging):** brightness capped (100, then 60 under 10 %) and frames twice as slow.
+- **Battery reads over I2C** every 10 s instead of 2 s when the screen is off or almost off.
+- The pet walks by real time, so lower frame rates do not slow it down.
+
 ## Serial console (115200, debug)
 
 `STATS` (full state) · `SPEC <dex>` (change species) · `LVL <n>` · `HATCH` ·
