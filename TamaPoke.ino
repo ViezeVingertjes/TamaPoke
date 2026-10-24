@@ -724,6 +724,10 @@ void handleTouch() {
     holdFired = false;
     swallowGesture = dimStage > 0;  // if it was dark, it only wakes up (screenOff is handled above)
     wakeUI();
+    if (!swallowGesture && gameOpen) {  // like the sack: counts on touch, not when the finger lifts
+      gameTap(x, y);
+      swallowGesture = true;            // no second tap on lift
+    }
   } else if (pressed) {  // still pressed
     tXl = x;
     tYl = y;
