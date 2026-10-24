@@ -8,7 +8,36 @@ TEST(layout, en_466_las_medidas_no_cambian) {
 
 TEST(layout, los_enteros_nunca_bajan_de_uno) {
   for (int panel : { 120, 240, 360, 466, 480 })
-    for (int n = -3; n <= 20; n++) CHECK(uiScaleInt(n, panel) >= 1);
+    for (int n = -3; n <= 20; n++) {
+      CHECK(uiScaleInt(n, panel) >= 1);
+      CHECK(uiScaleFit(n, panel) >= 1);
+    }
+}
+
+TEST(layout, la_escala_de_sprites_nunca_pasa_de_la_caja) {
+  // SC redondea hacia abajo: un sprite de n x 32 px nunca supera lo que mide su caja escalada
+  for (int panel : { 240, 300, 360, 410, 466, 480, 700, 932 })
+    for (int n = 1; n <= 8; n++) {
+      int s = uiScaleFit(n, panel);
+      if (n * panel >= UI_DESIGN) CHECK(s * UI_DESIGN <= n * panel);  // sin el minimo de 1
+      else CHECK_EQ(s, 1);
+    }
+  CHECK_EQ(uiScaleFit(5, 240), 2);   // 2,57 -> 2 (no 3)
+  CHECK_EQ(uiScaleFit(5, 480), 5);   // 5,15 -> 5
+  CHECK_EQ(uiScaleFit(2, 240), 1);   // 1,03 -> 1
+  CHECK_EQ(uiScaleFit(1, 240), 1);   // 0,51 -> sube a 1
+  CHECK_EQ(uiScaleFit(3, 932), 6);   // 6,0 -> 6
+}
+
+TEST(layout, texto_y_sprites_redondean_distinto) {
+  // 5 * 240/466 = 2,57: el texto sube a 3, el sprite baja a 2
+  CHECK_EQ(uiScaleInt(5, 240), 3);
+  CHECK_EQ(uiScaleFit(5, 240), 2);
+  // en el tamano de diseno son la identidad para cualquier factor usado
+  for (int n = 1; n <= 8; n++) {
+    CHECK_EQ(uiScaleInt(n, UI_DESIGN), n);
+    CHECK_EQ(uiScaleFit(n, UI_DESIGN), n);
+  }
 }
 
 TEST(layout, valores_calculados_a_mano) {
@@ -32,6 +61,7 @@ TEST(layout, las_constantes_derivadas_valen_lo_de_siempre_en_466) {
   CHECK_EQ(PANEL_Y, 312);
   CHECK_EQ(U(560), 560);
   CHECK_EQ(SC(5), 5);
+  CHECK_EQ(TS(3), 3);
 }
 
 TEST(layout, escala_proporcional_y_monotona) {

@@ -16,6 +16,27 @@ TOOLS = os.path.join(ROOT, 'tools')
 sys.path.insert(0, TOOLS)
 
 
+class TestLayoutConventions(unittest.TestCase):
+    """TS() es para tamanos de texto y SC() para escalas de sprite: a 466 son
+    iguales y no se nota si se cruzan, asi que se vigila aqui."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, 'TamaPoke.ino'), encoding='utf-8') as fh:
+            cls.src = fh.read()
+
+    def test_el_texto_usa_ts(self):
+        for m in re.finditer(r'\b(setSize|textW|centerX)\(([^;]*)', self.src):
+            if m.group(1) == 'setSize' and m.group(0).startswith('setSize(int'):
+                continue
+            self.assertNotIn('SC(', m.group(2).split(';')[0].split(' printT')[0][:60],
+                             f'{m.group(0)[:60]!r}: el texto usa TS(), no SC()')
+
+    def test_los_sprites_usan_sc(self):
+        for m in re.finditer(r'\b(drawMap|drawThumb|drawPmdAct|drawPmdActM)\(([^;]*);', self.src):
+            self.assertNotIn('TS(', m.group(2), f'{m.group(0)[:70]!r}: los sprites usan SC(), no TS()')
+
+
 class TestToolsCompile(unittest.TestCase):
     def test_todos_los_scripts_compilan(self):
         scripts = sorted(f for f in os.listdir(TOOLS) if f.endswith('.py'))

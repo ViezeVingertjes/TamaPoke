@@ -5,7 +5,7 @@
 // Geometria de la interfaz. Todo el dibujo esta maquetado para un lienzo de
 // 466x466 (UI_DESIGN); en otro tamano de panel las medidas se escalan con U()/UY(),
 // que en 466 devuelven exactamente su argumento. Los sprites y el texto no se
-// escalan por pixel: sus factores enteros salen de SC() (ver mas abajo).
+// escalan por pixel: sus factores enteros salen de TS() (texto) y SC() (sprites), mas abajo.
 #define UI_DESIGN 466
 
 #define UI_W LCD_WIDTH
@@ -13,7 +13,7 @@
 
 static_assert(LCD_WIDTH == LCD_HEIGHT, "la interfaz solo soporta paneles cuadrados o redondos");
 
-// Los nombres cortos (U, UY, SC, CX, CY) son macros: incluir layout.h despues de
+// Los nombres cortos (U, UY, TS, SC, CX, CY) son macros: incluir layout.h despues de
 // las librerias, nunca antes.
 // longitud de diseno (px en 466) -> px del panel, redondeando al mas cercano
 // (en 64 bits: long mide 32 en el ESP32 y los argumentos derivados de millis()
@@ -24,11 +24,17 @@ constexpr int uiScale(int n, int panel) {
 #define U(n) uiScale((n), UI_W)   // medidas y posiciones horizontales
 #define UY(n) uiScale((n), UI_H)  // medidas y posiciones verticales
 
-// factor entero (escala de pixel-art o tamano de texto): nunca baja de 1
-constexpr int uiScaleInt(int n, int panel) {
-  return uiScale(n, panel) < 1 ? 1 : uiScale(n, panel);
-}
-#define SC(n) uiScaleInt((n), UI_W)
+// factores enteros (nunca bajan de 1):
+//  - TS: tamano de texto, al entero mas cercano (un texto algo mas grande o
+//    pequeno se lee igual; uno que no cabe, no)
+//  - SC: escala de sprite o pixel-art, hacia abajo, para que el dibujo no se
+//    salga de la caja que se ha escalado con U()/UY() (salvo el minimo de 1,
+//    que en paneles de menos de ~350 px hace que el sprite sea mas grande que su caja)
+constexpr int uiAtLeast1(int v) { return v < 1 ? 1 : v; }
+constexpr int uiScaleInt(int n, int panel) { return uiAtLeast1(uiScale(n, panel)); }
+constexpr int uiScaleFit(int n, int panel) { return uiAtLeast1((int)((int64_t)n * panel / UI_DESIGN)); }
+#define TS(n) uiScaleInt((n), UI_W)
+#define SC(n) uiScaleFit((n), UI_W)
 
 // factor lineal respecto al diseno, para magnitudes que no son longitudes enteras
 // (velocidades y aceleraciones, en px por paso)
