@@ -253,6 +253,12 @@ int16_t Pet::pickEggSpecies() {
   return CLASSIC_DEX[random(NUM_CLASSIC_DEX)];  // unreachable, just in case
 }
 
+void Pet::markSeen(int16_t dex) {
+  if (dex < 1 || dex > 151 || isSeen(dex)) return;
+  dexSeen[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+  pendingSave = true;  // flushed when the screen dims
+}
+
 void Pet::registerSpecies(int16_t dex) {
   if (dex < 1 || dex > 151) return;
   dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
@@ -587,6 +593,7 @@ void Pet::save() {
   prefs.putUChar("lend", lastEnd);
   if (lastSeenEpoch) prefs.putUInt("seen", lastSeenEpoch);
   prefs.putBytes("dexreg", dexReg, sizeof(dexReg));
+  prefs.putBytes("dexsn", dexSeen, sizeof(dexSeen));
   prefs.putUShort("strk", streak);
   prefs.putUShort("bstrk", bestStreak);
   prefs.putUInt("cday", lastCareDay);
@@ -604,7 +611,9 @@ void Pet::save() {
 }
 
 // The saved fields in one place: the same list writes and reads the backup, so the two
-// directions cannot drift apart. Add new persisted state here AND in save()/load().
+// directions cannot drift apart. Add new persisted state here AND in save()/load(), and only
+// at the END: a backup from an older firmware is shorter, and a restore leaves the fields it
+// does not reach as they are.
 template <class IO> void Pet::backupFields(IO &io) {
   io(fullness); io(joy); io(energy); io(hygiene); io(poops); io(weight);
   io(geneAtk); io(geneDef); io(geneSpe); io(trAtk); io(trDef); io(trSpe);
@@ -615,6 +624,7 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(medals); io(totalMedals); io(lastMilestone); io(gameHi); io(strHi);
   io(nick);
   io(stepDay); io(stepsToday); io(stepsTotal); io(stepRewardMask);
+  io(dexSeen);
 }
 
 namespace {
@@ -631,11 +641,23 @@ struct BackupWriter {
     memcpy(p, &v, sizeof(T)); p += sizeof(T);
   }
 };
+// Reads fields until the data runs out. A backup from an older firmware ends exactly at a field
+// boundary (the list is append-only); the fields after it keep their current values. One that
+// ends inside a field is not a layout any firmware wrote: `p != end` then, and it is refused.
 struct BackupReader {
-  const uint8_t *p;
-  template <class T> void operator()(T &v) { memcpy(&v, p, sizeof(T)); p += sizeof(T); }
-  void operator()(bool &v) { v = *p++ != 0; }  // any other byte in a bool would be undefined behaviour
+  const uint8_t *p, *end;
+  bool stopped = false;
+  template <class T> void operator()(T &v) {
+    if (stopped || end - p < (ptrdiff_t)sizeof(T)) { stopped = true; return; }
+    memcpy(&v, p, sizeof(T));
+    p += sizeof(T);
+  }
+  void operator()(bool &v) {  // any other byte in a bool would be undefined behaviour
+    if (stopped || p >= end) { stopped = true; return; }
+    v = *p++ != 0;
+  }
 };
+const size_t BACKUP_MIN_BYTES = 25;  // magic + checksum + the core needs (fullness .. sleeping)
 }  // namespace
 
 size_t Pet::exportBackup(uint8_t *out, size_t capacity) {
@@ -652,19 +674,20 @@ size_t Pet::exportBackup(uint8_t *out, size_t capacity) {
 bool Pet::importBackup(const uint8_t *data, size_t length) {
   uint8_t prev[BACKUP_MAX_BYTES];
   size_t want = exportBackup(prev, sizeof(prev));  // also the rollback copy
-  if (!data || !want || length != want || memcmp(data, BACKUP_MAGIC, sizeof(BACKUP_MAGIC)) != 0) return false;
+  if (!data || !want || length < BACKUP_MIN_BYTES || length > want ||
+      memcmp(data, BACKUP_MAGIC, sizeof(BACKUP_MAGIC)) != 0) return false;
   uint32_t sum;
   memcpy(&sum, data + length - 4, 4);
   if (sum != backupChecksum(data, length - 4)) return false;
-  BackupReader r{ data + sizeof(BACKUP_MAGIC) };
+  BackupReader r{ data + sizeof(BACKUP_MAGIC), data + length - 4 };
   backupFields(r);
   nick[sizeof(nick) - 1] = 0;
-  bool sane = speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
+  bool sane = r.p == r.end && speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
               fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
               bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE &&
               stepRewardMask < (1 << STEP_GOALS);
   if (!sane) {
-    BackupReader back{ prev + sizeof(BACKUP_MAGIC) };
+    BackupReader back{ prev + sizeof(BACKUP_MAGIC), prev + want - 4 };
     backupFields(back);
     return false;
   }
@@ -774,6 +797,7 @@ void Pet::load() {
   sleeping = prefs.getBool("sleep", false);
   lastEnd = prefs.getUChar("lend", CER_NONE);
   prefs.getBytes("dexreg", dexReg, sizeof(dexReg));
+  prefs.getBytes("dexsn", dexSeen, sizeof(dexSeen));
   streak = prefs.getUShort("strk", 0);
   bestStreak = prefs.getUShort("bstrk", 0);
   lastCareDay = prefs.getUInt("cday", 0);

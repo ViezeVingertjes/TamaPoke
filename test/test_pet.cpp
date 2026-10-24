@@ -1116,3 +1116,96 @@ TEST(steps, los_pasos_de_antes_de_tener_reloj_cuentan_hoy) {
   CHECK_EQ((int)p.stepsToday, 400);
   CHECK_EQ((int)p.stepsTotal, 400);
 }
+
+// ---------------------------------------------------------------- console saves
+TEST(save, saveNow_escribe_aunque_nada_este_pendiente) {
+  Pet a;
+  makePet(a, 4);
+  a.flushSave();                       // nothing pending now
+  CHECK(!a.savePending());
+  a.shiny = true;                      // what the SHINY console command does
+  a.flushSave();                       // the old call: writes nothing
+  Pet lost;
+  lost.begin();
+  CHECK(!lost.shiny);
+  a.saveNow();
+  Pet kept;
+  kept.begin();
+  CHECK(kept.shiny);
+}
+
+// ---------------------------------------------------------------- creatures met nearby
+TEST(dexSeen, un_vecino_se_ve_pero_no_cuenta_como_criado) {
+  Pet p;
+  makePet(p, 4);
+  int raised = p.registeredCount();
+  CHECK(!p.isKnown(25));
+  p.markSeen(25);
+  CHECK(p.isSeen(25));
+  CHECK(p.isKnown(25));
+  CHECK(!p.isRegistered(25));
+  CHECK_EQ(p.registeredCount(), raised);
+  p.markSeen(0); p.markSeen(152); p.markSeen(-1);   // out of range: ignored
+  CHECK(!p.isSeen(0) && !p.isSeen(152));
+}
+
+TEST(dexSeen, se_guarda_y_sobrevive_a_un_huevo_nuevo) {
+  Pet p;
+  makePet(p, 4);
+  p.markSeen(150);
+  CHECK(p.savePending());               // flushed when the screen dims
+  p.flushSave();
+  Pet q;
+  q.begin();
+  CHECK(q.isSeen(150));
+}
+
+// FNV-1a as exportBackup() computes it, to build backups the way an older firmware would
+static uint32_t fnv(const uint8_t *d, size_t n) {
+  uint32_t h = 2166136261UL;
+  for (size_t i = 0; i < n; i++) h = (h ^ d[i]) * 16777619UL;
+  return h;
+}
+
+TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
+  Pet a;
+  makePet(a, 4);
+  a.markSeen(94);
+  a.stepsToday = 77;
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK(b.isSeen(94));
+
+  // an older firmware wrote fewer fields (no dexSeen at the end): cut those 19 bytes off and
+  // re-sign; the restore must work and leave the missing field as it was
+  size_t m = n - 4 - 19;
+  uint8_t old[Pet::BACKUP_MAX_BYTES];
+  memcpy(old, blob, m);
+  uint32_t sum = fnv(old, m);
+  memcpy(old + m, &sum, 4);
+  Pet c;
+  makePet(c, 7);
+  c.markSeen(5);
+  CHECK(c.importBackup(old, m + 4));
+  CHECK_EQ((int)c.speciesId, (int)a.speciesId);
+  CHECK_EQ((int)c.stepsToday, 77);
+  CHECK(c.isSeen(5));                    // untouched
+  CHECK(!c.isSeen(94));
+
+  // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
+  size_t mid = n - 4 - 19 - 1 - 2;
+  memcpy(old, blob, mid);
+  uint32_t s3 = fnv(old, mid);
+  memcpy(old + mid, &s3, 4);
+  CHECK(!c.importBackup(old, mid + 4));
+  CHECK(c.isSeen(5));                    // and nothing was applied
+  CHECK(!c.importBackup(old, 40));       // far too short
+  uint8_t longer[Pet::BACKUP_MAX_BYTES + 8] = {};
+  memcpy(longer, blob, n - 4);
+  uint32_t s2 = fnv(longer, n + 4 - 4);
+  memcpy(longer + n + 4 - 4, &s2, 4);
+  CHECK(!c.importBackup(longer, n + 4));  // a newer firmware's longer backup is refused
+}

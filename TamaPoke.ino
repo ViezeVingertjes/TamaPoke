@@ -559,11 +559,20 @@ void handleSerial() {
     if (n >= 1 && n <= DEX_COUNT) {
       pet.prevSpeciesId = pet.speciesId;
       pet.speciesId = n;
+      pet.saveNow();
       Serial.printf("especie #%d %s\n", n, DEX_TBL[n].name);
     }
     Serial.println("DONE");
   } else if (line.startsWith("LVL ")) {
-    pet.ageMinutes = (uint32_t)line.substring(4).toInt() * MINUTES_PER_LEVEL;
+    String arg = line.substring(4);
+    arg.trim();
+    long lv = arg.toInt();
+    if (arg.length() && isdigit((unsigned char)arg[0]) && lv <= 998) {  // written at once now: a typo must not reach the flash
+      pet.ageMinutes = (uint32_t)lv * MINUTES_PER_LEVEL;
+      pet.saveNow();
+    } else {
+      Serial.println("LVL 0..998");
+    }
     Serial.println("DONE");
   } else if (line.startsWith("TIME ")) {
     uint32_t e = (uint32_t)line.substring(5).toInt();
@@ -594,6 +603,7 @@ void handleSerial() {
     Serial.println("DONE");
   } else if (line == "SHINY") {  // toggles shiny on the current one (tests)
     pet.shiny = !pet.shiny;
+    pet.saveNow();
     Serial.printf("shiny=%d\n", pet.shiny);
     Serial.println("DONE");
   } else if (line.startsWith("NICK ")) {
@@ -603,6 +613,7 @@ void handleSerial() {
   } else if (line == "CAREDAY") {  // simulates a new cared-for day (tests)
     pet.setClock(pet.lastSeenEpoch + 86400);
     pet.caress();
+    pet.saveNow();
     Serial.printf("streak=%u bond=%u medals=0x%X\n", pet.streak, pet.bond, pet.medals);
     Serial.println("DONE");
   } else if (line == "BYE") {
@@ -2194,10 +2205,11 @@ void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
 void renderGallery() {
   if (galleryDetail) {  // detail view: always redrawn (animated)
     drawScreenBg();
-    bool reg = pet.isRegistered(galleryDetail);
+    bool reg = pet.isRegistered(galleryDetail);   // raised: animated
+    bool known = pet.isKnown(galleryDetail);      // raised or met nearby: colour and name
     char head[32];
     snprintf(head, sizeof(head), "N.%03d %s%s", galleryDetail,
-             pet.isShinyRegistered(galleryDetail) ? "*" : "", reg ? dexName(galleryDetail) : "???");
+             pet.isShinyRegistered(galleryDetail) ? "*" : "", known ? dexName(galleryDetail) : "???");
     gfx->setTextColor(inkColor());
     // auto-shrinks long names (they do not fit at t3), measuring instead of counting
     // bytes; 13 characters at size 3 are the 234 px from before.
@@ -2208,11 +2220,11 @@ void renderGallery() {
     gfx->setCursor(centerX(head, gts), UY(big ? 56 : 60));
     gfx->print(head);
     if (galleryPmd.loaded) {
-      // animated and in color if registered; static silhouette if not ("?" style)
-      drawPmdActM(galleryPmd, PMD_IDLE, CX, UY(300), reg ? millis() : 0, true, !reg, SC(6));
+      // animated and in color if raised; a still picture if only met nearby; a silhouette if unknown
+      drawPmdActM(galleryPmd, PMD_IDLE, CX, UY(300), reg ? millis() : 0, true, !known, SC(6));
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL / 2, UY(135), SC(4), !reg);  // drawThumb centers in its cell
+      if (t) drawThumb(t, CX - GAL_CELL / 2, UY(135), SC(4), !known);  // drawThumb centers in its cell
     }
     uiPill(CX - U(75), UY(372), U(150), UY(68), T(S_DETAIL_BACK), false);
     gfx->flush();
@@ -2237,7 +2249,8 @@ void renderGallery() {
       int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL_Y;
       const uint8_t *t = thumbs.get(dex);
       if (t) {
-        drawThumb(t, x, y, SC(2), !pet.isRegistered(dex));
+        drawThumb(t, x, y, SC(2), !pet.isKnown(dex));
+        if (pet.isRegistered(dex)) gfx->fillCircle(x + U(8), y + UY(10), U(4), inkColor());  // raised, not just met
         if (pet.isShinyRegistered(dex)) {
           gfx->setTextColor(UI_ACC);
           setSize(TS(2));
@@ -2284,7 +2297,7 @@ void galleryTap(int16_t x, int16_t y) {
   if (dex > 151) return;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
-  if (pet.isRegistered(dex)) chirpPlay(dex);  // a known species calls out
+  if (pet.isKnown(dex)) chirpPlay(dex);  // a known species calls out
 }
 
 void drawBattery() {
@@ -2551,6 +2564,7 @@ void drawEvolveFX(uint32_t now) {
 void ensureNeighbors() {
   const NbEntry *sh[NB_MAX_SHOWN];
   int n = nearbyShown(sh);
+  for (int i = 0; i < n; i++) pet.markSeen(sh[i]->species);  // the species was validated when the packet was decoded
   for (int i = 0; i < NB_MAX_SHOWN; i++) {
     NbSlot want = i < n ? NbSlot{ sh[i]->id, sh[i]->species, sh[i]->shiny } : NbSlot{ 0, 0, false };
     NbSlot &have = nbSlot[i];

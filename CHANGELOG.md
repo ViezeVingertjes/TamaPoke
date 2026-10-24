@@ -10,6 +10,11 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **Creatures met nearby are in the Pokédex.** A species shown next to your pet is remembered (the radio only shows the four most recent, with the screen on):
+  the gallery shows it in colour with its name (still picture), while raised ones keep an animated
+  picture and get a dot, and only raised ones count towards the total. The save backup includes it, and
+  a backup from an older firmware still restores.
+- Serial console `SPEC`, `LVL` and `SHINY` now save immediately.
 - **Step counter.** The QMI8658 motion sensor counts steps (screen on or off). A new Steps
   page on the stat card shows today's count, the three daily goals (500 / 2000 / 5000:
   a snack, energy, a workout) and the lifetime trail rank. Walking also raises happiness

@@ -244,7 +244,7 @@ document.getElementById('files').onchange = async (ev) => {
 };
 
 // ---- save backup (SAVEGET / SAVEPUT, see handleSerial in TamaPoke.ino) ----
-const BACKUP_MAX = 128;
+const BACKUP_MAX = 192;
 
 async function readBackup() {
   lineBuf = '';  // a DONE/ERR left over from an earlier command must not end this one early
