@@ -9,6 +9,9 @@
   (same names and sizes: it was repacked after the last sprite change)
 - its thumbs.bin has one valid entry per Pokedex number (DEX_COUNT in dex.h)
 
+The thumbnail check is stricter than the firmware loader on purpose: a pack made by
+make_thumbs.py has exactly one back-to-back entry per Pokedex number.
+
 Idea and thumbnail rules from ShadowEnemyx's fork (tools/validate_web_build.py).
 Exits with the first problem found.
 """
@@ -71,7 +74,10 @@ def parse_pak(blob):
         if pos >= len(blob) or pos + 1 + blob[pos] + 4 > len(blob):
             fail('sprites.pak: truncated index')
         n = blob[pos]
-        name = blob[pos + 1:pos + 1 + n].decode('utf-8')
+        try:
+            name = blob[pos + 1:pos + 1 + n].decode('utf-8')
+        except UnicodeDecodeError:
+            fail('sprites.pak: a file name in the index is not UTF-8')
         entries.append((name, struct.unpack_from('<I', blob, pos + 1 + n)[0]))
         pos += 1 + n + 4
     if pos + sum(size for _, size in entries) != len(blob):
@@ -85,20 +91,32 @@ def parse_pak(blob):
     return data
 
 
+def define(file, pattern):
+    m = re.search(pattern, read(path(file)), re.M)
+    if not m:
+        fail(f'{file}: no match for {pattern}')
+    return m.group(1)
+
+
 def main():
-    version = re.search(r'#define FW_VERSION "([^"]+)"', read(path('TamaPoke.ino'))).group(1)
+    version = define('TamaPoke.ino', r'#define FW_VERSION "([^"]+)"')
     manifest = json.loads(read(path('web', 'manifest.json')))
     if manifest.get('version') != version:
         fail(f'manifest.json says {manifest.get("version")}, TamaPoke.ino says {version}')
-    for build in manifest.get('builds', []):
-        for part in build.get('parts', []):
-            fw = path('web', part['path'])
-            if not os.path.isfile(fw):
-                fail(f'manifest.json points at a missing file: {part["path"]}')
-            if version.encode() not in read(fw, 'rb'):
-                fail(f'{part["path"]} does not contain version {version}: rebuild it with tools/build_web.sh')
+    parts = [p for b in manifest.get('builds', []) for p in b.get('parts', [])]
+    if not parts:
+        fail('manifest.json lists no firmware parts')
+    for part in parts:
+        if 'path' not in part:
+            fail('manifest.json has a part without a path')
+        fw = path('web', part['path'])
+        if not os.path.isfile(fw):
+            fail(f'manifest.json points at a missing file: {part["path"]}')
+        # the version is passed to printf as its own string literal: look for exactly that
+        if b'\0' + version.encode() + b'\0' not in read(fw, 'rb'):
+            fail(f'{part["path"]} was not built from version {version}: rebuild it with tools/build_web.sh')
 
-    dex_count = int(re.search(r'^#define DEX_COUNT (\d+)$', read(path('dex.h')), re.M).group(1))
+    dex_count = int(define('dex.h', r'^#define DEX_COUNT (\d+)\s*$'))
     pak = parse_pak(read(path('web', 'sprites.pak'), 'rb'))
     mons = path('tools', 'sdcard', 'mons')
     expected = {f'mons/{f}': os.path.getsize(os.path.join(mons, f))
