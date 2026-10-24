@@ -12,6 +12,8 @@ void pmuEnablePanel();           // enciende BLDO1 (OLED VDD 3.3V); llamar antes
 int batPercent();                // 0-100, -1 si no hay bateria conectada
 bool batCharging();
 int batMillivolts();               // tension de la bateria en mV, 0 si no hay lectura
+bool batShouldShutdown();          // descargada hasta el limite seguro (batcurve.h): guardar y apagar
+void batPowerOff();                // apagado fisico del PMU
 bool usbPresent();
 
 // boton PWR del AXP2101: pulsacion larga 4s = apagado fisico (RTC sigue vivo);

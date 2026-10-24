@@ -295,6 +295,14 @@ void loop() {
 
   updateBrightness(now);
 
+  // bateria al limite seguro (sin USB): se guarda la partida y se apaga el PMU antes de que la
+  // celda baje mas; el RTC conserva la hora
+  if (batShouldShutdown() && !usbPresent()) {
+    pet.flushSave();
+    panel->setBrightness(0);
+    batPowerOff();
+  }
+
   // vuelca el autoguardado periodico SOLO con la pantalla atenuada/apagada o
   // durmiendo: la escritura a NVS congela ~1s ambos cores (caché de flash off),
   // y aqui no hay animacion que se corte ni dedo esperando respuesta. Con 90s

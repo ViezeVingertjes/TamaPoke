@@ -330,6 +330,13 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
 - `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)
 
+## Battery
+
+The percentage on screen comes from a typical single-cell LiPo discharge curve (`batcurve.h`) over a smoothed
+voltage, and only goes down while discharging; on USB or while charging the PMU's own gauge is used. When the
+smoothed voltage stays under 3.30 V for 30 s the pet is saved and the PMU powers off (not in the first 30 s
+after boot); the PMU itself is set to cut at 3.1 V as a backstop.
+
 ## Serial console (115200, debug)
 
 `STATS` (full state) · `SPEC <dex>` (change species) · `LVL <n>` · `HATCH` ·
