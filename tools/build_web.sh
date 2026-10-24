@@ -20,3 +20,6 @@ echo "OK -> web/firmware/tamapoke.bin ($(du -h web/firmware/tamapoke.bin | cut -
 
 echo "Empaquetando sprites..."
 python3 tools/pack_bundle.py
+
+echo "Comprobando..."
+python3 tools/validate_web_build.py
