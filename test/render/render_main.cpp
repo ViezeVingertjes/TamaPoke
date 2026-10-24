@@ -450,7 +450,7 @@ static void fitWrapped(const char *what, const char *text, int size, int maxW, i
   bool ok = n > 0 && st[n - 1] + ln[n - 1] == L;
   if (n * textH() + (n - 1) * U(4) > maxH) ok = false;  // el bloque tambien tiene que caber en su caja
   for (int i = 0; i < n; i++) {
-    char line[96]; memcpy(line, text + st[i], ln[i]); line[ln[i]] = 0;
+    char line[128]; memcpy(line, text + st[i], ln[i]); line[ln[i]] = 0;
     if (textW(line, size) > maxW) ok = false;
   }
   if (!ok) {
@@ -481,6 +481,25 @@ static int runWrapTests() {
     { "  HOLA   MUNDO  ", 60, 2, "HOLA", "MUNDO" },    // espacios sobrantes
     { "", 60, 0, "", "" },
   };
+  // casos que deben avanzar siempre y no pasarse del limite de lineas
+  {
+    int st[4], ln[4];
+    int n = wrapText("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 1, 30, 2, st, ln);  // 40 letras: no caben en 2 lineas de 5
+    if (n != 2 || ln[0] != 5 || ln[1] != 5) { fprintf(stderr, "FALLA wrapText recorta en maxLines: %d lineas (%d, %d)\n", n, ln[0], ln[1]); fails++; }
+    n = wrapText("ABC", 1, 2, 4, st, ln);  // ni un caracter cabe: una por linea, sin colgarse
+    if (n != 3 || ln[0] != 1 || ln[1] != 1 || ln[2] != 1) { fprintf(stderr, "FALLA wrapText con maxW menor que un caracter: %d lineas\n", n); fails++; }
+    n = wrapText("AB   ", 1, 100, 2, st, ln);
+    if (n != 1 || ln[0] != 2) { fprintf(stderr, "FALLA wrapText espacios finales: %d lineas, %d\n", n, ln[0]); fails++; }
+    setLang(LANG_JA);
+    applyLangFont();
+    setSize(2);  // CJK: escala aplicada 1, 16 px por kana
+    const char *kana = "\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86\xE3\x81\x88\xE3\x81\x8A";  // あいうえお
+    n = wrapText(kana, 2, 40, 3, st, ln);  // 2 kana por linea (32 px)
+    if (n != 3 || ln[0] != 6 || ln[1] != 6 || ln[2] != 3) { fprintf(stderr, "FALLA wrapText japones: %d lineas (%d, %d, %d)\n", n, ln[0], ln[1], ln[2]); fails++; }
+    setLang(LANG_EN);
+    applyLangFont();
+    setSize(1);
+  }
   for (const Case &c : cases) {
     int st[4], ln[4];
     int n = wrapText(c.text, 1, c.maxW, 2, st, ln);
@@ -521,8 +540,9 @@ static int runFitTests() {
     for (int i = 0; i < 3; i++) fitBox("nombre de inicial en su fila", dexName(STARTER_DEX[i]), TS(3), STARTER_ROW_X + STARTER_ROW_W - U(178) - U(8));
     // --- dialogos ---
     for (const char *nm : worst) {
-      snprintf(b, sizeof(b), T(S_RELEASE_FMT), nm);
-      fitWrapped("soltar?", b, TS(2), U(278) - U(16), 2, UY(60));
+      char q[48];  // el mismo tamano que en el juego: snprintf lo corta
+      snprintf(q, sizeof(q), T(S_RELEASE_FMT), nm);
+      fitWrapped("soltar?", q, TS(2), U(278) - U(16), 2, UY(60));
     }
     fitBox("SI", T(S_YES), TS(2), YES_W - U(8));
     fitBox("NO", T(S_NO), TS(2), YES_W - U(8));
@@ -539,7 +559,7 @@ static int runFitTests() {
       fitBox("etiqueta de medalla", medalLabel(i), TS(2), U(100));
     }
     setSize(TS(2));
-    fitWrapped("cancelar del reloj", T(S_CLOCK_CANCEL), TS(2), chordAvail(UY(424)), 2);
+    fitWrapped("cancelar del reloj", T(S_CLOCK_CANCEL), TS(2), clockCancelW(), 2, UY(40));
     // cadenas sueltas que no estaban cubiertas
     { int hs = fitSize(T(S_EGG_HDR), TS(3), TS(2), UY(52));
       if (!fitsChord(T(S_EGG_HDR), hs, UY(52))) { fprintf(stderr, "FALLA %-3s cabecera del huevo no cabe en el circulo\n", gFitLang); gFitFails++; } }

@@ -553,6 +553,7 @@ void handleTouch() {
   if (Wire.endTransmission() != 0) return;  // no responde: se reintenta en 20 ms
   int16_t x, y;
   bool pressed = touch.getPoint(&x, &y, 1) > 0;
+  expireDialogs();  // la pulsacion larga y los gestos ven el mismo estado que el dibujo
 
   // saco de entrenamiento: cada toque cuenta al instante (aporrear rapido)
   if (sackOpen) {
@@ -1109,8 +1110,9 @@ int wrapText(const char *s, int size, int maxW, int maxLines, int *start, int *l
     int i = pos, end = pos, lastSpace = -1;
     while (i < L) {
       int cl = charBytes(s + i);
-      // un espacio vale como corte si lo que hay antes cabe (aunque el espacio ya no quepa)
-      if (s[i] == ' ' && textWn(s + pos, i - pos, size) <= maxW) lastSpace = i;
+      // llegar a i implica que s[pos..i) cabe: un espacio aqui es un corte valido aunque
+      // el propio espacio ya no quepa (una palabra que acaba justo en maxW)
+      if (s[i] == ' ') lastSpace = i;
       if (textWn(s + pos, i + cl - pos, size) > maxW) break;
       i += cl;
       end = i;
@@ -1138,8 +1140,9 @@ void drawWrapped(const char *s, int size, int x, int yMid, int maxW, int maxLine
   int total = n * textH() + (n - 1) * gap;
   int y = yMid - total / 2;
   for (int i = 0; i < n; i++) {
-    char line[128];  // las cadenas del juego miden < 64 bytes; las lineas parten en limites de caracter
+    char line[128];  // las cadenas del juego miden < 64 bytes
     int l = ln[i] < (int)sizeof(line) - 1 ? ln[i] : (int)sizeof(line) - 1;
+    while (l > 0 && l < ln[i] && ((uint8_t)s[st[i] + l] & 0xC0) == 0x80) l--;  // no cortar a mitad de un caracter UTF-8
     memcpy(line, s + st[i], l);
     line[l] = 0;
     setCur(leftAlign ? x : x - textW(line, size) / 2, y + i * (textH() + gap));
@@ -1701,6 +1704,13 @@ void drawClockBtn(int x, int y, const char *l) {
 #define LANG_PILL_W U(96)
 static const char *const LANG_CODES[LANG_COUNT] = { "ES", "EN", "FR", "DE", "IT", "PT", "JA", "KO" };
 
+// ancho para el aviso de cancelar: el de la cuerda donde cae la 2a linea de un bloque de
+// dos centrado en y=410 (su borde superior queda 2 px de diseno bajo el centro)
+int clockCancelW() {
+  setSize(TS(2));
+  return chordAvail(UY(410) + U(2));
+}
+
 void renderClock() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
@@ -1740,8 +1750,7 @@ void renderClock() {
   printT(lp);
 
   gfx->setTextColor(UI_TRACK);
-  setSize(TS(2));  // cabe en una linea o pasa a dos; el ancho es el de la cuerda donde cae la 2a linea
-  drawWrapped(T(S_CLOCK_CANCEL), TS(2), CX, UY(410), chordAvail(UY(410) + (textH() + U(4)) / 2), 2, false);
+  drawWrapped(T(S_CLOCK_CANCEL), TS(2), CX, UY(410), clockCancelW(), 2, false);
 
   // --- hora, botones, OK y version: siempre en la fuente latina, aunque el idioma sea CJK ---
   useLatinFont();
