@@ -357,8 +357,8 @@ void loop() {
     lastPwr = now;
     if (pwrShortPressed()) {
       screenOff = !screenOff;
-      wasPressed = false;  // a finger already down when the screen goes off starts a fresh wake hold
-      if (!screenOff) wakeUI();
+      if (screenOff) wasPressed = false;  // the next sample of a finger already down starts the wake hold
+      else wakeUI();
     }
   }
 
@@ -657,7 +657,7 @@ void handleTouch() {
     } else if (pressed) {
       tXl = x;
       tYl = y;
-      if (!holdFired && touchWakes(millis() - tStart, tXl - tX0, tYl - tY0, U(30))) {
+      if (!holdFired && touchWakes(millis() - tStart, tXl - tX0, tYl - tY0, U(30), UY(30))) {
         screenOff = false;
         holdFired = true;
         swallowGesture = true;  // the finger is still down: its release does nothing
@@ -686,8 +686,7 @@ void handleTouch() {
     tY0 = tYl = y;
     tStart = millis();
     holdFired = false;
-    swallowGesture = (dimStage > 0) || screenOff;  // if it was dark, it only wakes up
-    screenOff = false;
+    swallowGesture = dimStage > 0;  // if it was dark, it only wakes up (screenOff is handled above)
     wakeUI();
   } else if (pressed) {  // still pressed
     tXl = x;

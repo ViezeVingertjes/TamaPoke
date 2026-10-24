@@ -93,6 +93,6 @@ inline uint32_t powerCacheMs(const PowerCtx &c) {
 // Touch wake-up from the PWR screen-off: a stray brush must not light the panel (pocket,
 // bag), so the finger has to stay put for this long. The PWR button still wakes at once.
 #define POWER_WAKE_HOLD_MS 700
-inline bool touchWakes(uint32_t heldMs, int dx, int dy, int slop) {
-  return heldMs >= POWER_WAKE_HOLD_MS && abs(dx) < slop && abs(dy) < slop;
+inline bool touchWakes(uint32_t heldMs, int dx, int dy, int slopX, int slopY) {
+  return heldMs >= POWER_WAKE_HOLD_MS && abs(dx) < slopX && abs(dy) < slopY;
 }
