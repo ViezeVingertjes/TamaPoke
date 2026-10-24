@@ -91,6 +91,7 @@ void SdThumbs::unload() {
   loaded = false;
   count = 0;
   size = 0;
+  memset(bad, 0, sizeof(bad));
 }
 
 bool SdThumbs::load() {
@@ -123,19 +124,22 @@ bool SdThumbs::load() {
     unload();
     return false;
   }
-  // every entry fits and only uses palette colors: draw time then needs no checks
-  for (uint16_t i = 0; i < count; i++) {
+  // each entry must fit and only use palette colors; a broken one is skipped (no thumbnail
+  // for that species) instead of costing the whole gallery its thumbnails
+  memset(bad, 0, sizeof(bad));
+  uint16_t nBad = 0;
+  for (uint16_t i = 0; i < count && i < 8 * sizeof(bad); i++) {
     uint32_t off;
     memcpy(&off, data + 6 + 4 * i, 4);
-    if (!thumbEntryBytes(data, sz, off) || !thumbIndicesValid(data + off)) {
-      Serial.printf("thumbs.bin invalido (miniatura %u)\n", i + 1);
-      unload();
-      return false;
+    if (!thumbEntryBytes(data, sz, off, 6 + 4 * count) || !thumbIndicesValid(data + off)) {
+      bad[i >> 3] |= 1 << (i & 7);
+      Serial.printf("thumbs.bin: miniatura %u invalida\n", i + 1);
+      nBad++;
     }
   }
   size = sz;
   loaded = true;
-  Serial.printf("miniaturas cargadas: %u (%u KB)\n", count, sz / 1024);
+  Serial.printf("miniaturas cargadas: %u (%u KB), %u invalidas\n", count, sz / 1024, nBad);
   return true;
 }
 
@@ -145,7 +149,8 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   memcpy(&off, data + 6 + 4 * (dex - 1), 4);
   // the offset comes from the file unchecked: without this, a truncated or corrupt
   // thumbs.bin made us read outside the PSRAM allocation
-  return thumbEntryBytes(data, size, off) ? data + off : nullptr;
+  if (bad[(dex - 1) >> 3] & (1 << ((dex - 1) & 7))) return nullptr;
+  return thumbEntryBytes(data, size, off, 6 + 4 * count) ? data + off : nullptr;
 }
 
 bool sdBegin() {

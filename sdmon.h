@@ -49,6 +49,7 @@ struct SdThumbs {
   uint8_t *data = nullptr;
   uint16_t count = 0;
   uint32_t size = 0;  // bytes read: bounds the file's offsets
+  uint8_t bad[19] = { 0 };  // bitmap: entries that failed validation (get() returns nullptr)
   bool load();
   void unload();  // frees the blob: reload after receiving a new thumbs.bin
   const uint8_t *get(int16_t dex) const;  // blob: w,h,palCount,pal[],idx[]

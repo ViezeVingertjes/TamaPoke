@@ -5,9 +5,10 @@
 // thumbs.bin entries (see tools/make_thumbs.py): u8 w, u8 h, u8 palCount, u16 pal[palCount],
 // u8 idx[w*h] with 0xFF = transparent. Pure helpers so the host tests can feed them bad data.
 
-// size in bytes of the entry at `off`, or 0 if its header or body does not fit in `size`
-inline uint32_t thumbEntryBytes(const uint8_t *d, uint32_t size, uint32_t off) {
-  if (off > size - 3) return 0;  // the w,h,palCount header must fit (size >= 10 always)
+// size in bytes of the entry at `off`, or 0 if it starts before `firstOff` (the end of the
+// offset table) or its header or body does not fit in `size`
+inline uint32_t thumbEntryBytes(const uint8_t *d, uint32_t size, uint32_t off, uint32_t firstOff) {
+  if (size < 3 || off < firstOff || off > size - 3) return 0;  // the w,h,palCount header must fit
   uint32_t need = 3 + (uint32_t)d[off + 2] * 2 + (uint32_t)d[off] * d[off + 1];
   return need > size || off > size - need ? 0 : need;
 }
