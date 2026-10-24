@@ -22,6 +22,7 @@
 #include "sdmon.h"
 #include "rtcbat.h"
 #include "imu.h"
+#include "clockset.h"
 #include "i18n.h"
 #include "audio.h"
 #include "power.h"
@@ -94,7 +95,8 @@ bool gameOpen = false;
 uint32_t gameOverUntil = 0;
 float ballX, ballY, ballVX, ballVY, gamePetX;
 uint32_t lastGameStep = 0;  // last stepGame() call: physics runs on real time, not per frame
-uint8_t gameScore, gameMisses;
+uint16_t gameScore;  // not 8 bits: a long run passes 255
+uint8_t gameMisses;
 float hitX, hitY;             // last hit (impact ring)
 uint32_t hitTime = 0;
 bool gameNewHi = false;
@@ -731,6 +733,7 @@ void handleTouch() {
     if (pressed && !wasPressed) {
       wakeUI();
       sackTouch(y);
+      if (!sackOpen) swallowGesture = true;  // the touch that quit is not a gesture when it lifts
     }
     wasPressed = pressed;
     return;
@@ -755,7 +758,7 @@ void handleTouch() {
     // long press without moving on the pet -> release dialog
     if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < U(30) && abs(tYl - tY0) < UY(30) && inPetZone(tX0, tY0) &&
-        !pet.isEgg() && !confirmUntil && !pet.ceremony) {
+        !pet.isEgg() && !confirmUntil && !choiceKind && !pet.ceremony) {
       confirmUntil = millis() + 10000;
       holdFired = true;
     }
@@ -784,6 +787,7 @@ void onSwipeV(int dir) {
     if (dir < 0) cardOpen = false;  // up closes the card
     return;
   }
+  if (choiceKind) return;           // a decision dialog is waiting: it is answered or it times out
   if (dir > 0) {                    // swipe down: set the time
     if (!confirmUntil && !feedMenuUntil) openClock();
   } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
@@ -803,7 +807,7 @@ void onSwipe(int dir) {
     return;
   }
   if (!galleryOpen) {
-    if (!pet.ceremony && !confirmUntil) {
+    if (!pet.ceremony && !confirmUntil && !choiceKind && !feedMenuUntil) {
       galleryOpen = true;
       galleryPage = 0;
       galleryDetail = 0;
@@ -875,10 +879,10 @@ void onTap(int16_t x, int16_t y) {
     bool b1 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B1_Y && y <= CHOICE_B1_Y + CHOICE_BH);  // action
     bool b2 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B2_Y && y <= CHOICE_B2_Y + CHOICE_BH);  // keep / stay together
     if (choiceKind == 1) {                 // evolution
-      if (b1) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
+      if (b1 && pet.canEvolveNow()) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
       else if (b2) pet.declineEvolve();
     } else if (choiceKind == 2) {          // farewell
-      if (b1) pet.startFarewell();
+      if (b1 && pet.canFarewellNow()) pet.startFarewell();
       else if (b2) pet.declineFarewell();
     }
     choiceKind = 0;
@@ -1397,7 +1401,7 @@ bool render() {
 // ---------- minigame: touches with the pokeball ----------
 
 void startGame() {
-  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  if (pet.isEgg() || pet.sleeping || pet.ceremony || pet.evolving()) return;
   gameOpen = true;
   gameOverUntil = 0;
   gameScore = 0;
@@ -1502,7 +1506,7 @@ void stepGame() {
 // ---------- training sack (trains strength) ----------
 
 void startSack() {
-  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  if (pet.isEgg() || pet.sleeping || pet.ceremony || pet.evolving()) return;
   sackOpen = true;
   sackUntil = millis() + 10000;
   sackOverUntil = 0;
@@ -1741,15 +1745,14 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar) {
 // there is no timezone to manage. Preserves the day (does not break streak/age).
 
 void openClock() {
-  uint32_t e = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
+  uint32_t e = clockBase(rtcEpoch(), pet.lastSeenEpoch);  // the RTC first: the cached time lags up to 30 s
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
   clockOpen = true;
 }
 
 void applyClock() {
-  uint32_t base = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
-  uint32_t e = (base / 86400) * 86400 + (uint32_t)clockH * 3600 + (uint32_t)clockM * 60;
+  uint32_t e = clockEpoch(clockBase(rtcEpoch(), pet.lastSeenEpoch), clockH, clockM);
   rtcSetEpoch(e);
   pet.setClock(e);
   clockOpen = false;

@@ -33,6 +33,27 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
   home screen to the profile card. Renders: `make -C test/render shots` (panel 466 round and
   `SIZE=480 ROUND=0`); the reference images in `test/render/golden` were regenerated.
 
+### Fixed
+
+- **A clock set back a day no longer breaks the streak, repeats the step rewards or renews the bond
+  cap.** A day one earlier than the stored one (RTC reseeded, a manual change around midnight) is
+  ignored instead of counted as a gap.
+- **The clock screen crosses midnight.** Setting 23:30 at 00:30 goes back an hour instead of
+  forward 23 hours, and 00:05 at 23:50 goes forward into the next day.
+- The daily bond cap renews with the real day whatever the first act of the day is, and it
+  survives a reboot and a backup restore (a backup from an older firmware starts with a fresh cap).
+- A minigame with score 0 no longer gives bond or the daily care; scores above 255 no longer wrap.
+- Turning down an evolution or a farewell no longer carries over to the next egg.
+- The training bag gives the full +18 for a very long session (the hit count was cut to 8 bits), and
+  the number of care mistakes stops at 255 instead of wrapping to 0.
+- Quitting the training bag with the header no longer fires a stray tap or swipe when the finger lifts.
+- With an evolution or farewell dialog open, swipes and the long press no longer open the card,
+  clock, gallery or the release dialog on top of it; its buttons check the pet is still ready.
+  Play and Train are ignored while the evolution animation runs.
+- The egg ignores taps (also from the serial `HATCH`) while the starter is being chosen.
+- Restoring a backup refuses impossible values: species 0, genes outside 90-110, weight over 100,
+  a nickname with control characters, or a creature still choosing its starter.
+
 ### Removed
 
 - **Every language except English.** The UI strings, the medal texts and the species

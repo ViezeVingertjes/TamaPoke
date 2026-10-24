@@ -1179,9 +1179,9 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(b.importBackup(blob, n));
   CHECK(b.isSeen(94));
 
-  // an older firmware wrote fewer fields (no dexSeen at the end): cut those 19 bytes off and
-  // re-sign; the restore must work and leave the missing field as it was
-  size_t m = n - 4 - 19;
+  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday at the end): cut those
+  // 24 bytes off and re-sign; the restore must work and leave the missing fields as they were
+  size_t m = n - 4 - 24;
   uint8_t old[Pet::BACKUP_MAX_BYTES];
   memcpy(old, blob, m);
   uint32_t sum = fnv(old, m);
@@ -1196,7 +1196,7 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(!c.isSeen(94));
 
   // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
-  size_t mid = n - 4 - 19 - 1 - 2;
+  size_t mid = n - 4 - 24 - 1 - 2;
   memcpy(old, blob, mid);
   uint32_t s3 = fnv(old, mid);
   memcpy(old + mid, &s3, 4);
@@ -1208,4 +1208,229 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   uint32_t s2 = fnv(longer, n + 4 - 4);
   memcpy(longer + n + 4 - 4, &s2, 4);
   CHECK(!c.importBackup(longer, n + 4));  // a newer firmware's longer backup is refused
+}
+
+// ---------------------------------------------------------------- hardening
+TEST(hardening, un_reloj_que_vuelve_atras_no_rompe_la_racha) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.caress();
+  setDay(p, 20001);
+  p.caress();
+  CHECK_EQ((int)p.streak, 2);
+  setDay(p, 20000);                    // the RTC reads an earlier day (lost time, manual change)
+  p.caress();
+  CHECK_EQ((int)p.streak, 2);
+  CHECK_EQ((int)p.lastCareDay, 20001);
+}
+
+TEST(hardening, un_reloj_que_vuelve_atras_no_repite_los_premios_de_pasos) {
+  Pet p;
+  makePet(p, 4);
+  setStats(p, 50, 50, 50, 50);
+  setDay(p, 20001);
+  p.applyWalk(600);                    // goal 1 rewarded: +15 food
+  CHECK_EQ((int)p.fullness, 65);
+  setDay(p, 20000);
+  advance(p, 1);                       // the next minute notices a different day
+  CHECK_EQ((int)p.stepsToday, 600);
+  p.applyWalk(10);
+  CHECK(p.fullness < 70);              // no second snack (a minute of decay may take a little)
+  CHECK_EQ((int)p.stepRewardMask, 1);
+}
+
+TEST(hardening, un_huevo_nuevo_olvida_las_ofertas_rechazadas) {
+  Pet p;
+  makePet(p, 4);
+  p.ageMinutes = 60 * 50;              // level 51
+  p.declineEvolve();
+  p.declineFarewell();
+  p.newEgg();
+  p.chooseStarter(4);
+  p.eggTap(); p.eggTap(); p.eggTap();  // hatches a fresh Charmander
+  setStats(p, 80, 80, 80, 80);
+  p.ageMinutes = 60 * 16;              // level 17: ready to evolve
+  CHECK(p.wantEvolveButton());
+  p.speciesId = 6;                     // a final form, three days old
+  p.ageMinutes = 3 * 1440 + 5;
+  CHECK(p.canFarewellNow());
+  CHECK(p.wantFarewellButton());
+}
+
+TEST(hardening, mil_golpes_en_el_saco_dan_el_maximo_y_no_cero) {
+  Pet p;
+  makePet(p, 4);
+  p.trAtk = 0;
+  CHECK_EQ((int)p.trainStrength(1024), 18);
+  CHECK_EQ((int)p.trAtk, 18);
+}
+
+TEST(hardening, los_descuidos_no_dan_la_vuelta_a_cero) {
+  Pet p;
+  makePet(p, 4);
+  setStats(p, 0, 0, 0, 0);
+  p.careMistakes = 255;
+  advance(p, 1);
+  CHECK_EQ((int)p.careMistakes, 255);
+}
+
+TEST(hardening, el_tope_diario_de_vinculo_se_renueva_con_el_dia_aunque_el_primer_gesto_sea_un_juego) {
+  Pet p;
+  makePet(p, 4);
+  p.bond = 0;
+  setDay(p, 20000);
+  for (int i = 0; i < 12; i++) p.playResult(10);   // reaches the daily cap
+  int capped = p.bond;
+  p.playResult(10);
+  CHECK_EQ((int)p.bond, capped);                   // still capped the same day
+  setDay(p, 20001);
+  int before = p.bond;
+  p.playResult(10);                                // first act of the next day: +2 and the +4 daily care
+  CHECK_EQ((int)p.bond, before + 6);
+}
+
+TEST(hardening, el_tope_diario_de_vinculo_sobrevive_a_un_reinicio) {
+  Pet p;
+  makePet(p, 4);
+  p.bond = 0;
+  setDay(p, 20000);
+  for (int i = 0; i < 12; i++) p.playResult(10);
+  int capped = p.bond;
+  p.flushSave();
+  p.saveNow();
+  Pet q;
+  q.begin();
+  q.setClock(20000UL * 86400 + 43200);
+  q.playResult(10);
+  CHECK_EQ((int)q.bond, capped);
+}
+
+TEST(hardening, una_partida_sin_puntos_no_da_vinculo_ni_cuidado) {
+  Pet p;
+  makePet(p, 4);
+  p.bond = 0;
+  setDay(p, 20000);
+  p.playResult(0);
+  CHECK_EQ((int)p.bond, 0);
+  CHECK_EQ((int)p.streak, 0);
+  CHECK_EQ((int)p.lastCareDay, 0);
+}
+
+TEST(hardening, una_puntuacion_mayor_de_255_no_se_trunca) {
+  Pet p;
+  makePet(p, 4);
+  p.trSpe = 0;
+  p.playResult(300);
+  CHECK_EQ((int)p.trSpe, 60);          // 300 / 5, not (300 % 256) / 5
+  CHECK_EQ((int)p.gameHi, 300);
+}
+
+TEST(hardening, tocar_el_huevo_no_eclosiona_mientras_se_elige_el_inicial) {
+  Pet p;
+  mockNvsReset();
+  mockSetMillis(0);
+  p.begin();
+  CHECK(p.awaitingStarter());
+  p.eggTap(); p.eggTap(); p.eggTap();
+  CHECK(p.isEgg());
+  CHECK(p.awaitingStarter());
+}
+
+// every impossible value below is exported as is (the export does not clamp) and re-signed
+static void expectRefused(void (*mutate)(Pet &), const char *why) {
+  Pet a;
+  makePet(a, 4);
+  mutate(a);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  b.fullness = 61;
+  CHECK_MSG(n > 0 && !b.importBackup(blob, n), why);
+  CHECK_EQ((int)b.fullness, 61);       // and nothing was applied
+}
+
+TEST(hardening, una_copia_con_valores_imposibles_se_rechaza) {
+  expectRefused([](Pet &p) { p.speciesId = 0; }, "species 0 is neither an egg nor a creature");
+  expectRefused([](Pet &p) { p.geneAtk = 255; }, "a gene outside 90..110");
+  expectRefused([](Pet &p) { p.geneSpe = 10; }, "a gene outside 90..110");
+  expectRefused([](Pet &p) { p.weight = 250; }, "weight over 100");
+  expectRefused([](Pet &p) { p.nick[0] = 1; p.nick[1] = 0; }, "a control character in the nickname");
+  expectRefused([](Pet &p) { p.fullness = 255; }, "need over 100");
+}
+
+TEST(hardening, una_copia_de_una_criatura_que_aun_elige_inicial_se_rechaza) {
+  Pet a;
+  mockNvsReset();
+  mockSetMillis(0);
+  a.begin();                           // first game: starterPick is set
+  a.speciesId = 4;                     // but it is not an egg: the pet would never advance
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  CHECK(!b.importBackup(blob, n));
+}
+
+TEST(hardening, poner_el_reloj_atras_no_renueva_el_tope_de_vinculo) {
+  Pet p;
+  makePet(p, 4);
+  p.bond = 0;
+  setDay(p, 20001);
+  for (int i = 0; i < 12; i++) p.playResult(10);
+  int capped = p.bond;
+  setDay(p, 20000);                    // the clock is set back a day
+  p.playResult(10);
+  CHECK_EQ((int)p.bond, capped);       // the cap does not renew
+}
+
+TEST(hardening, restaurar_una_copia_empieza_con_un_tope_de_vinculo_nuevo) {
+  Pet a;
+  makePet(a, 4);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  size_t m = n - 4 - 5;                // a layout from before bondDay/bondToday, re-signed
+  uint32_t sum = fnv(blob, m);
+  memcpy(blob + m, &sum, 4);
+  Pet b;
+  makePet(b, 7);
+  b.bond = 0;
+  setDay(b, 20000);
+  for (int i = 0; i < 12; i++) b.playResult(10);   // today's cap is used up
+  CHECK(b.importBackup(blob, m + 4));
+  int bond = b.bond;
+  setDay(b, 20000);
+  b.playResult(10);
+  CHECK_EQ((int)b.bond, bond + 2 + 4);             // +2 (cap renewed, not inherited) and the daily care
+}
+
+TEST(hardening, un_reloj_atras_de_mas_de_un_dia_si_cuenta_como_cambio) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.caress();
+  setDay(p, 20001);
+  p.caress();
+  setDay(p, 19998);                    // two days back: not a set-back of the clock, a new reality
+  p.caress();
+  CHECK_EQ((int)p.streak, 1);
+  CHECK_EQ((int)p.lastCareDay, 19998);
+}
+
+TEST(hardening, una_copia_completa_conserva_el_tope_de_vinculo_de_hoy) {
+  Pet a;
+  makePet(a, 4);
+  a.bond = 0;
+  setDay(a, 20000);
+  for (int i = 0; i < 12; i++) a.playResult(10);   // today's cap is used up
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  setDay(b, 20000);
+  int bond = b.bond;
+  b.playResult(10);
+  CHECK_EQ((int)b.bond, bond);                     // backup and restore is not a way round the cap
 }

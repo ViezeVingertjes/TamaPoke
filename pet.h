@@ -94,7 +94,7 @@ public:
   bool lovesBerry(uint8_t color) const {
     return !isEgg() && (speciesId % 3) == color;  // hidden taste per species
   }
-  void playResult(uint8_t score);  // minigame reward (trains SPD)
+  void playResult(uint16_t score);  // minigame reward (trains SPD)
   uint8_t trainStrength(uint16_t hits);  // training punching bag (trains STR)
 
   // combat stats: real gen 1 base x genes + level + training
@@ -218,6 +218,7 @@ private:
   uint16_t goodTicks = 0;  // well-cared streak: forges DEF
   uint32_t ceremonyUntil = 0;
   uint8_t bondToday = 0;       // daily cap on bond gain
+  uint32_t bondDay = 0;        // the day (epoch / 86400) bondToday belongs to
   uint32_t medalUntil = 0;     // medal celebration on screen
   uint32_t milestoneUntil = 0; // streak milestone celebration
   uint32_t stepRewardUntil = 0;
