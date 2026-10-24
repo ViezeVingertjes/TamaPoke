@@ -171,6 +171,9 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 // icono i (16x16 a escala SC(3)) dentro de su casilla
 #define FEED_ICON_X(i) (FEED_X + U(9) + (i) * FEED_STRIDE)
 #define FEED_ICON_Y (FEED_Y + UY(8))
+// pastillas de medallas de la ficha: dos columnas
+#define MED_W U(192)
+#define MED_GAP U(6)
 // boton ENTRENAR FUERZA de la ficha
 #define TRAIN_X U(96)
 #define TRAIN_Y UY(300)
@@ -1015,16 +1018,20 @@ int chordW(int y) {
   return h2 > 0 ? 2 * (int)sqrtf((float)h2) : 0;
 }
 
-// elige el tamano grande si el texto cabe en la cuerda a la altura de su linea mas
-// baja (y + alto), y el pequeno si no. Deja puesto el tamano elegido.
-int fitSize(const char *s, int big, int small, int y) {
+// elige el tamano grande si el texto cabe en maxW px, y el pequeno si no. Deja puesto
+// el tamano elegido (con CJK textW() mide con el tamano ya aplicado: por eso se pone antes).
+int fitWidth(const char *s, int big, int small, int maxW) {
   setSize(big);
-  int bottom = y + 7 * big;
-  int topW = chordW(y), botW = chordW(bottom);
-  int avail = (topW < botW ? topW : botW) - U(8);  // 4 px de diseno de aire por lado
-  if (textW(s, big) <= avail) return big;
+  if (textW(s, big) <= maxW) return big;
   setSize(small);
   return small;
+}
+
+// lo mismo contra la cuerda visible de la pantalla redonda a la altura de la linea
+// mas baja del texto (y + alto)
+int fitSize(const char *s, int big, int small, int y) {
+  int topW = chordW(y), botW = chordW(y + 7 * big);
+  return fitWidth(s, big, small, (topW < botW ? topW : botW) - U(8));  // 4 px de diseno de aire por lado
 }
 
 // Imprime respetando la fuente activa. Con la CJK repinta el texto desplazado
@@ -1826,11 +1833,11 @@ void renderCardMedals() {
   printT(head);
 
   for (int i = 0; i < MED_COUNT; i++) {
-    // dos columnas de 192 con 6 de hueco, centradas; las de arriba empiezan en 110 para que
-    // la esquina izquierda no salga del circulo
-    int x = CX - U(195) + (i % 2) * U(198), y = UY(110 + (i / 2) * 54);
+    // dos columnas centradas; las de arriba empiezan en 112 para que la esquina izquierda
+    // quede dentro del circulo
+    int x = CX - (2 * MED_W + MED_GAP) / 2 + (i % 2) * (MED_W + MED_GAP), y = UY(112 + (i / 2) * 54);
     bool g = pet.hasMedal(1 << i);
-    gfx->fillRoundRect(x, y, U(192), UY(44), U(10), g ? UI_BAR_OK : UI_TRACK);
+    gfx->fillRoundRect(x, y, MED_W, UY(44), U(10), g ? UI_BAR_OK : UI_TRACK);
     if (g) {  // marca de conseguida
       gfx->fillCircle(x + U(22), y + UY(22), U(11), UI_BG_DAY);
       gfx->setTextColor(UI_BAR_OK);
@@ -1839,8 +1846,9 @@ void renderCardMedals() {
       printT("v");
     }
     gfx->setTextColor(g ? UI_BG_DAY : 0x8410);
-    setSize(TS(2));
-    setCur(x + U(44), y + UY(14));
+    // la descripcion va a la derecha de la marca (44 px) y debe caber en la pastilla
+    int ms = fitWidth(medalDesc(i), TS(2), TS(1), MED_W - U(44) - U(6));
+    setCur(x + U(44), ms == TS(2) ? y + UY(14) : y + (UY(44) - 7 * ms) / 2);
     printT(medalDesc(i));
   }
 }
@@ -1933,7 +1941,7 @@ static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK 
 // 6 columnas x 5 filas centradas; la fila de abajo cabe dentro del circulo
 #define KB_W U(56)
 #define KB_H UY(46)
-#define KB_X (CX - KB_COLS * KB_W / 2)
+#define KB_X (CX - (KB_COLS * KB_W - U(6)) / 2)  // la ultima columna no lleva el hueco de 6 a la derecha
 #define KB_Y UY(140)
 
 void openKeyboard() {
@@ -2066,8 +2074,8 @@ void renderGallery() {
   char head[24];
   snprintf(head, sizeof(head), T(S_POKEDEX_FMT), pet.registeredCount());
   gfx->setTextColor(UI_INK);
-  setSize(TS(3));
-  setCur(centerX(head, TS(3)), UY(48));  // a 36 el borde de "POKEDEX" salia del circulo
+  int hs = fitSize(head, TS(3), TS(2), UY(48));  // a 36 el borde de "POKEDEX" salia del circulo
+  setCur(centerX(head, hs), UY(48));
   printT(head);
 
   for (int r = 0; r < 4; r++) {

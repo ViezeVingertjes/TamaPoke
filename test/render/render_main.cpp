@@ -88,14 +88,14 @@ static const Scene SCENES[] = {
 // paginas de la ficha, sprites de respaldo...
 static const Scene EXTRA[] = {
   { "feed_menu", [] { closeAll(); adult(6); feedMenuUntil = millis() + 6000; }, false, false },
-  { "release_dialog", [] { closeAll(); adult(6); confirmUntil = millis() + 10000; }, false, false },
-  { "evolve_dialog", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; choiceKind = 1; choiceUntil = millis() + 12000; }, false, false },
-  { "farewell_dialog", [] { closeAll(); adult(6); pet.ageMinutes = FAREWELL_AGE_MIN + 100; choiceKind = 2; choiceUntil = millis() + 12000; }, false, false },
-  { "cta_evolve", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; }, false, false },
-  { "cta_farewell", [] { closeAll(); adult(6); pet.ageMinutes = FAREWELL_AGE_MIN + 100; }, false, false },
-  { "cta_runaway", [] { closeAll(); adult(6); pet.dbgRunawayReady(); }, false, false },
-  { "celebration_medal", [] { closeAll(); adult(6); pet.newMedal = MED_LV10; pet.medalUntil = millis() + 4000; }, false, false },
-  { "celebration_streak", [] { closeAll(); adult(6); pet.streak = 7; pet.milestoneUntil = millis() + 4000; }, false, false },
+  { "release_dialog", [] { closeAll(); adult(6); confirmUntil = millis() + 10000; }, true, false },
+  { "evolve_dialog", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; choiceKind = 1; choiceUntil = millis() + 12000; }, true, false },
+  { "farewell_dialog", [] { closeAll(); adult(6); pet.ageMinutes = FAREWELL_AGE_MIN + 100; choiceKind = 2; choiceUntil = millis() + 12000; }, true, false },
+  { "cta_evolve", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; }, true, false },
+  { "cta_farewell", [] { closeAll(); adult(6); pet.ageMinutes = FAREWELL_AGE_MIN + 100; }, true, false },
+  { "cta_runaway", [] { closeAll(); adult(6); pet.dbgRunawayReady(); }, true, false },
+  { "celebration_medal", [] { closeAll(); adult(6); pet.newMedal = MED_LV10; pet.medalUntil = millis() + 4000; }, true, false },
+  { "celebration_streak", [] { closeAll(); adult(6); pet.streak = 7; pet.milestoneUntil = millis() + 4000; }, true, false },
   { "eating", [] { closeAll(); adult(6); pet.eatUntil = millis() + 2000; }, false, false },
   { "heart", [] { closeAll(); adult(6); pet.heartUntil = millis() + 1000; }, false, false },
   { "poops_hungry", [] { closeAll(); adult(6); pet.poops = 3; pet.fullness = 20; }, false, false },
@@ -105,11 +105,11 @@ static const Scene EXTRA[] = {
   { "bath_pop", [] { closeAll(); adult(6); startBath(); bathUntil = millis() + 500; }, false, false },
   { "evolving", [] { closeAll(); adult(6); pet.prevSpeciesId = 5; pet.evolveUntil = millis() + EVOLVE_ANIM_MS / 2; evoPmd.load(5, false); }, false, false },
   { "runaway", [] { closeAll(); adult(6); pet.startRunaway(); }, false, false },
-  { "egg_rare_cracked", [] { closeAll(); pet.speciesId = -1; pet.eggTaps = 2; pet.eggTarget = 150; }, false, false },
+  { "egg_rare_cracked", [] { closeAll(); pet.speciesId = -1; pet.eggTaps = 2; pet.eggTarget = 150; }, true, false },
   { "main_flash", [] { closeAll(); adult(4); }, false, true },
   { "main_nosprites", [] { closeAll(); adult(25); }, false, true },
-  { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, false, false },
-  { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false, false },
+  { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, true, false },
+  { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, true, false },
   { "gallery_page6", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 6; galleryDirty = true; }, false, false },
   { "gallery_detail_unknown", [] { closeAll(); adult(6); galleryOpen = true; galleryDetail = 3; galleryPmd.load(3, false); }, false, false },
   { "game_over", [] { closeAll(); adult(25); gameOpen = true; gameScore = 12; gameMisses = 3; gameNewHi = true; gameOverUntil = millis() + 4000; gamePetX = CX; ballX = CX; ballY = 300; ballVX = ballVY = 0; }, false, false },
@@ -389,8 +389,8 @@ int main(int argc, char **argv) {
   if (tapsMode) return runTapTests();
   std::vector<const Scene *> all;
   for (const Scene &sc : SCENES) all.push_back(&sc);
-  if (lang == LANG_EN)
-    for (const Scene &sc : EXTRA) all.push_back(&sc);
+  for (const Scene &sc : EXTRA)
+    if (lang == LANG_EN || sc.coreLangs) all.push_back(&sc);
   for (const Scene *scp : all) {
     const Scene &sc = *scp;
     if (!filter.empty() && filter != sc.name) continue;
