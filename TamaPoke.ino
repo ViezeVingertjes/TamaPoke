@@ -668,6 +668,10 @@ void onTap(int16_t x, int16_t y) {
     clockTap(x, y);
     return;
   }
+  // un dialogo caducado aun no borrado por render() ya no esta en pantalla: no recibe toques
+  if (choiceKind && !timeLeft(choiceUntil)) choiceKind = 0;
+  if (confirmUntil && !timeLeft(confirmUntil)) confirmUntil = 0;
+  if (feedMenuUntil && !timeLeft(feedMenuUntil)) feedMenuUntil = 0;
   if (pet.ceremony) return;  // durante la despedida no hay botones
   if (cardOpen) {
     if (cardPage == 0 && y < CARD_NAME_ZONE_H) openKeyboard();  // tocar el nombre = renombrar
@@ -990,28 +994,47 @@ void applyLangFont() {
 //
 // Para la fuente clasica devuelve EXACTAMENTE la misma cuenta que habia antes,
 // asi que este cambio no mueve un pixel en los seis idiomas actuales.
-// Ancho de un texto UTF-8 con unifont a escala 1: 8 px los caracteres de media anchura
-// (ASCII, latin-1, katakana de media anchura) y 16 el resto. getTextBounds() de
-// Arduino_GFX no sirve para esto: con hangul devuelve 1-30 px para textos que miden
-// 60-150 y con japones mide la tinta, no el avance, asi que centrar con el se desviaba.
-static int cjkAdvance(const char *s) {
-  int w = 0;
-  for (const uint8_t *p = (const uint8_t *)s; *p;) {
-    uint32_t cp;
-    int n;
-    if (*p < 0x80) { cp = *p; n = 1; }
-    else if (*p < 0xE0) { cp = ((*p & 0x1F) << 6) | (p[1] & 0x3F); n = 2; }
-    else if (*p < 0xF0) { cp = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); n = 3; }
-    else { cp = 0x10000; n = 4; }
-    w += (cp < 0x100 || (cp >= 0xFF61 && cp <= 0xFF9F)) ? 8 : 16;
-    for (int i = 0; i < n && *p; i++) p++;
+// Ancho de los primeros n bytes de un texto UTF-8 con unifont a escala 1: 8 px los
+// caracteres de media anchura (ASCII, latin-1, katakana de media anchura) y 16 el
+// resto. getTextBounds() de Arduino_GFX no sirve para esto: con hangul devuelve 1-30 px
+// para textos que miden 60-150 y con japones mide la tinta, no el avance.
+// Replica el decodificador de la libreria: una secuencia truncada al final no se dibuja
+// (no avanza), los bytes de continuacion sueltos cuentan como un caracter latin-1 y
+// los codigos por encima de 0xFFFF no tienen glifo en estas fuentes.
+static int cjkAdvanceN(const char *s, int n) {
+  int w = 0, state = 0;
+  uint32_t enc = 0;
+  for (int i = 0; i < n && s[i]; i++) {
+    uint8_t c = (uint8_t)s[i];
+    if (state == 0) {
+      if (c >= 0xFC) { state = 5; enc = c & 1; }
+      else if (c >= 0xF8) { state = 4; enc = c & 3; }
+      else if (c >= 0xF0) { state = 3; enc = c & 7; }
+      else if (c >= 0xE0) { state = 2; enc = c & 15; }
+      else if (c >= 0xC0) { state = 1; enc = c & 0x1F; }
+      else enc = c;
+    } else {
+      state--;
+      enc = (enc << 6) | (c & 0x3F);
+    }
+    if (state == 0 && enc <= 0xFFFF && enc != '\n' && enc != '\r')
+      w += (enc < 0x100 || (enc >= 0xFF61 && enc <= 0xFF9F)) ? 8 : 16;
   }
   return w;
 }
+static int cjkAdvance(const char *s) { return cjkAdvanceN(s, 1 << 30); }
 
+// Para la fuente clasica devuelve EXACTAMENTE strlen()*6*size, la cuenta de siempre. Con
+// una fuente CJK mide con el tamano YA aplicado por setSize() (el argumento se ignora):
+// hay que llamar a setSize() antes.
 uint16_t textW(const char *s, int size) {
   if (!gCjkFont) return (uint16_t)strlen(s) * 6 * size;
-  return (uint16_t)(cjkAdvance(s) * gTextSize);  // el tamano aplicado por setSize()
+  return (uint16_t)(cjkAdvance(s) * gTextSize);
+}
+
+// ancho de los n primeros bytes (para partir textos en lineas)
+static int textWn(const char *s, int n, int size) {
+  return gCjkFont ? cjkAdvanceN(s, n) * gTextSize : n * 6 * size;
 }
 
 // alto de una linea de texto con la fuente y el tamano aplicados
@@ -1046,12 +1069,83 @@ int fitWidth(const char *s, int big, int small, int maxW) {
   return small;
 }
 
-// lo mismo contra la cuerda visible de la pantalla redonda a la altura de la linea
-// mas baja del texto (y + alto)
-int fitSize(const char *s, int big, int small, int y) {
-  setSize(big);  // para medir el alto y el ancho con el tamano que se aplicara
+// ancho disponible para una linea de texto con su borde superior en y: la cuerda visible
+// de la pantalla redonda en su punto mas estrecho (arriba o abajo de la linea) con
+// 4 px de diseno de aire por lado. Requiere el tamano ya aplicado (para textH()).
+int chordAvail(int y) {
   int topW = chordW(y), botW = chordW(y + textH());
-  return fitWidth(s, big, small, (topW < botW ? topW : botW) - U(8));  // 4 px de diseno de aire por lado
+  return (topW < botW ? topW : botW) - U(8);
+}
+
+// cabe el texto, a ese tamano, en la cuerda a la altura y?
+bool fitsChord(const char *s, int size, int y) {
+  setSize(size);
+  return textW(s, size) <= chordAvail(y);
+}
+
+// elige el tamano grande si el texto cabe en la cuerda de su linea, y el pequeno si no
+int fitSize(const char *s, int big, int small, int y) {
+  if (fitsChord(s, big, y)) return big;
+  setSize(small);
+  return small;
+}
+
+// bytes del caracter que empieza en s
+static int charBytes(const char *s) {
+  if (!gCjkFont) return 1;
+  uint8_t c = (uint8_t)*s;
+  int n = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+  for (int i = 1; i < n; i++) if (!s[i]) return i;  // secuencia truncada
+  return n;
+}
+
+// Parte s en hasta maxLines lineas de <= maxW px a la escala aplicada: corta en el ultimo
+// espacio que cabe (o en cualquier caracter si no hay espacios, como el japones). Rellena
+// start/len y devuelve el numero de lineas; si el texto no cabe en maxLines, la ultima
+// se queda cortada.
+int wrapText(const char *s, int size, int maxW, int maxLines, int *start, int *len) {
+  int n = 0, pos = 0, L = (int)strlen(s);
+  while (pos < L && n < maxLines) {
+    while (s[pos] == ' ') pos++;
+    if (pos >= L) break;
+    int i = pos, end = pos, lastSpace = -1;
+    while (i < L) {
+      int cl = charBytes(s + i);
+      if (textWn(s + pos, i + cl - pos, size) > maxW) break;
+      if (s[i] == ' ') lastSpace = i;
+      i += cl;
+      end = i;
+    }
+    int cut;
+    if (i >= L) cut = L;                           // todo el resto cabe
+    else cut = lastSpace > pos ? lastSpace : (end > pos ? end : pos + charBytes(s + pos));
+    int e = cut;
+    while (e > pos && s[e - 1] == ' ') e--;        // sin espacios al final de la linea
+    start[n] = pos;
+    len[n] = e - pos;
+    n++;
+    pos = cut;
+  }
+  return n;
+}
+
+// Escribe s a la escala `size`, partido en <= maxLines lineas de <= maxW px, con el bloque
+// centrado verticalmente en yMid. leftAlign: x es el borde izquierdo; si no, el centro.
+void drawWrapped(const char *s, int size, int x, int yMid, int maxW, int maxLines, bool leftAlign) {
+  setSize(size);
+  int st[4], ln[4];
+  int n = wrapText(s, size, maxW, maxLines > 4 ? 4 : maxLines, st, ln);
+  int gap = U(4);
+  int total = n * textH() + (n - 1) * gap;
+  int y = yMid - total / 2;
+  for (int i = 0; i < n; i++) {
+    char line[64];
+    int l = ln[i] < (int)sizeof(line) - 1 ? ln[i] : (int)sizeof(line) - 1;
+    memcpy(line, s + st[i], l);
+    line[l] = 0;
+    setCur(leftAlign ? x : x - textW(line, size) / 2, y + i * (textH() + gap));
+    printT(line);
+  }
 }
 
 // Imprime respetando la fuente activa. Con la CJK repinta el texto desplazado
@@ -1197,9 +1291,7 @@ void render() {
       char q[48];
       snprintf(q, sizeof(q), T(S_RELEASE_FMT), dexName(pet.speciesId));
       gfx->setTextColor(UI_INK);
-      int qs = fitWidth(q, TS(2), TS(1), U(278) - U(16));  // con nombres largos no cabe a tamano 2
-      setCur(centerX(q, qs), UY(196) + (TS(2) * 7 - textH()) / 2);
-      printT(q);
+      drawWrapped(q, TS(2), CX, UY(196) + 7 * TS(2) / 2, U(278) - U(16), 2, false);
       setSize(TS(2));
       gfx->fillRoundRect(YES_X, YES_Y, YES_W, YES_H, U(12), UI_BAR_OK);
       gfx->setTextColor(UI_WHITE);
@@ -1649,9 +1741,8 @@ void renderClock() {
   printT(lp);
 
   gfx->setTextColor(UI_TRACK);
-  int cs = fitSize(T(S_CLOCK_CANCEL), TS(2), TS(1), UY(410));  // en algunos idiomas no cabe a tamano 2
-  setCur(centerX(T(S_CLOCK_CANCEL), cs), UY(410));
-  printT(T(S_CLOCK_CANCEL));
+  setSize(TS(2));  // cabe en la cuerda de la ultima linea; si no, pasa a dos lineas
+  drawWrapped(T(S_CLOCK_CANCEL), TS(2), CX, UY(410), chordAvail(UY(424)), 2, false);
 
   // --- hora, botones, OK y version: siempre en la fuente latina, aunque el idioma sea CJK ---
   useLatinFont();
@@ -1870,10 +1961,8 @@ void renderCardMedals() {
       printT("v");
     }
     gfx->setTextColor(g ? UI_BG_DAY : 0x8410);
-    // la descripcion va a la derecha de la marca (44 px) y debe caber en la pastilla
-    int ms = fitWidth(medalDesc(i), TS(2), TS(1), MED_W - U(44) - U(6));
-    setCur(x + U(44), ms == TS(2) ? y + UY(14) : y + (UY(44) - 7 * ms) / 2);
-    printT(medalDesc(i));
+    // la descripcion va a la derecha de la marca (44 px); si no cabe en una linea pasa a dos
+    drawWrapped(medalDesc(i), TS(2), x + U(44), y + UY(22), MED_W - U(44) - U(6), 2, true);
   }
 }
 
@@ -2183,8 +2272,8 @@ void drawBattery() {
 void drawHeader(const char *name, uint16_t nameColor, const char *msg) {
   drawBattery();
   gfx->setTextColor(nameColor);
-  setSize(TS(3));
-  setCur(centerX(name, TS(3)), UY(52));
+  int hs = fitSize(name, TS(3), TS(2), UY(52));  // nombre + nivel largos no caben a tamano 3 en la parte alta del circulo
+  setCur(centerX(name, hs), UY(52) + (TS(3) * 7 - textH()) / 2);
   printT(name);
   gfx->setTextColor(inkColor());
   setSize(TS(2));
@@ -2305,9 +2394,7 @@ void drawFarewellButton() {
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
   gfx->setTextColor(UI_INK);
-  int fs = fitWidth(buf, TS(2), TS(1), FAR_BTN_W - U(16));  // con nombres largos no cabe a tamano 2
-  setCur(centerX(buf, fs), y + (h - textH()) / 2);
-  printT(buf);
+  drawWrapped(buf, TS(2), CX, y + h / 2, FAR_BTN_W - U(16), 2, false);  // con nombres largos pasa a dos lineas
 }
 
 // boton-CTA sombrio de escapada por abandono: "<nombre> se siente abandonado..."
@@ -2322,9 +2409,7 @@ void drawRunawayButton() {
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_RUNAWAY_BTN), nm);
   gfx->setTextColor(C565(0xc8, 0xd2, 0xe0));
-  int fs = fitWidth(buf, TS(2), TS(1), FAR_BTN_W - U(16));
-  setCur(centerX(buf, fs), y + (h - textH()) / 2);
-  printT(buf);
+  drawWrapped(buf, TS(2), CX, y + h / 2, FAR_BTN_W - U(16), 2, false);
 }
 
 // animacion epica de evolucion: halo radial + rayos giratorios + parpadeo del

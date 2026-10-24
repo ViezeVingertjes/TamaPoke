@@ -389,6 +389,35 @@ static int runMeasureTests() {
       }
     }
   }
+  // UTF-8 mal formado o fuera de la fuente: textW() debe coincidir tambien con lo que pinta la libreria
+  // (los caracteres que no estan en la fuente avanzan 0 en la libreria y textW() los cuenta:
+  // solo afecta a texto fuera de las tablas de traduccion, que no se usa)
+  static const char *const oddJa[] = {
+    "\xE3", "\xE3\x81", "ab\xE3", "\xE3\x81\x82\xE3\x81", "\xE3\x81\x82!\xEF\xBC\x81", "a\xE3\x81\x82",
+  };
+  static const char *const oddKo[] = {  // el mismo patron con una silaba hangul (U+AC00)
+    "\xEA", "\xEA\xB0", "ab\xEA", "\xEA\xB0\x80\xEA\xB0", "\xEA\xB0\x80!?", "a\xEA\xB0\x80",
+  };
+  for (Lang lg : { LANG_JA, LANG_KO }) {
+    setLang(lg);
+    applyLangFont();
+    for (const char *t : (lg == LANG_JA ? oddJa : oddKo)) {
+      for (int size = 1; size <= 4; size++) {
+        setSize(size);
+        // el decodificador de la libreria conserva su estado UTF-8 entre llamadas: una
+        // secuencia truncada se traga los bytes siguientes. Se vacia antes de cada caso.
+        gfx->setCursor(0, 100);
+        gfx->print("aaaaaaa");
+        gfx->setCursor(0, 100);
+        gfx->print(t);
+        checked++;
+        if ((int)textW(t, size) != gfx->getCursorX()) {
+          fprintf(stderr, "FALLA %s tam %d (cadena rara %d bytes, primero 0x%02X): textW=%d, el cursor avanza %d\n", lg == LANG_JA ? "JA" : "KO", size, (int)strlen(t), (unsigned char)t[0], (int)textW(t, size), (int)gfx->getCursorX());
+          fails++;
+        }
+      }
+    }
+  }
   fprintf(stderr, "%d fallos de medida (%d cadenas)\n", fails, checked);
   return fails ? 1 : 0;
 }
@@ -411,6 +440,23 @@ static void fitChord(const char *what, const char *text, int size, int y) {
   int top = chordW(y), bot = chordW(y + textH());
   fitBox(what, text, size, (top < bot ? top : bot) - U(8));
 }
+// texto partido en <= maxLines lineas (como drawWrapped): cada linea cabe y no se pierde nada
+static void fitWrapped(const char *what, const char *text, int size, int maxW, int maxLines) {
+  setSize(size);
+  int st[4], ln[4];
+  int n = wrapText(text, size, maxW, maxLines, st, ln);
+  int L = (int)strlen(text);
+  while (L > 0 && text[L - 1] == ' ') L--;
+  bool ok = n > 0 && st[n - 1] + ln[n - 1] == L;
+  for (int i = 0; i < n; i++) {
+    char line[96]; memcpy(line, text + st[i], ln[i]); line[ln[i]] = 0;
+    if (textW(line, size) > maxW) ok = false;
+  }
+  if (!ok) {
+    fprintf(stderr, "FALLA %-3s %-22s no cabe en %d lineas de %d px  '%s'\n", gFitLang, what, maxLines, maxW, text);
+    gFitFails++;
+  }
+}
 // el peor nombre de especie del idioma
 static const char *longestName() {
   const char *best = "";
@@ -430,8 +476,12 @@ static int runFitTests() {
     char b[96];
     const char *ln = longestName();
     // --- escena principal (todo el ancho) ---
-    snprintf(b, sizeof(b), T(S_NAME_FMT), "*", ln, 999);
-    fitBox("nombre y nivel (cabecera)", b, TS(3) , UI_W - U(40));
+    const char *worst[] = { ln, "ABCDEFGHIJK" };  // el nombre mas largo y un apodo de 11 letras (nick[12])
+    for (const char *nm : worst) {
+      snprintf(b, sizeof(b), T(S_NAME_FMT), "*", nm, 999);
+      int hs = fitSize(b, TS(3), TS(2), UY(52));
+      if (!fitsChord(b, hs, UY(52))) { fprintf(stderr, "FALLA %-3s cabecera de la escena no cabe en el circulo: '%s'\n", gFitLang, b); gFitFails++; }
+    }
     for (StrId id : { S_EVOLVING, S_EATING, S_LIKES, S_HUNGRY, S_NEEDS_BATH, S_EXHAUSTED, S_SAD, S_CHUBBY, S_IS_SHINY, S_HAPPY,
                       S_FAREWELL, S_RUNAWAY, S_GOODBYE, S_EGG_TOUCH, S_EGG_MOVES, S_EGG_ALMOST })
       fitBox("mensaje de estado", T(id), TS(2), UI_W - U(40));
@@ -441,16 +491,38 @@ static int runFitTests() {
     fitChord("titulo de inicial", T(S_CHOOSE_STARTER), TS(2), UY(68));
     for (int i = 0; i < 3; i++) fitBox("nombre de inicial en su fila", dexName(STARTER_DEX[i]), TS(3), STARTER_ROW_X + STARTER_ROW_W - U(178) - U(8));
     // --- dialogos ---
-    snprintf(b, sizeof(b), T(S_RELEASE_FMT), ln);
-    fitBox("soltar? (tamano pequeno)", b, TS(1), U(278) - U(16));
+    for (const char *nm : worst) {
+      snprintf(b, sizeof(b), T(S_RELEASE_FMT), nm);
+      fitWrapped("soltar?", b, TS(2), U(278) - U(16), 2);
+    }
     fitBox("SI", T(S_YES), TS(2), YES_W - U(8));
     fitBox("NO", T(S_NO), TS(2), YES_W - U(8));
     for (StrId id : { S_EVO_Q, S_EVO_TAP, S_EVO_KEEP, S_FAR_Q, S_FAR_GO, S_FAR_STAY }) fitBox("dialogo de decision", T(id), TS(2), CHOICE_W - U(16));
     fitBox("boton evolucionar", T(S_EVO_TAP), TS(3), EVO_BTN_W - U(16));
-    snprintf(b, sizeof(b), T(S_FAREWELL_BTN), ln);
-    fitBox("boton despedida (tamano pequeno)", b, TS(1), FAR_BTN_W - U(16));
-    snprintf(b, sizeof(b), T(S_RUNAWAY_BTN), ln);
-    fitBox("boton escapada (tamano pequeno)", b, TS(1), FAR_BTN_W - U(16));
+    for (const char *nm : worst) {
+      snprintf(b, sizeof(b), T(S_FAREWELL_BTN), nm);
+      fitWrapped("boton despedida", b, TS(2), FAR_BTN_W - U(16), 2);
+      snprintf(b, sizeof(b), T(S_RUNAWAY_BTN), nm);
+      fitWrapped("boton escapada", b, TS(2), FAR_BTN_W - U(16), 2);
+    }
+    for (int i = 0; i < MED_COUNT; i++) {
+      fitWrapped("descripcion de medalla", medalDesc(i), TS(2), MED_W - U(44) - U(6), 2);
+      fitBox("etiqueta de medalla", medalLabel(i), TS(2), U(100));
+    }
+    setSize(TS(2));
+    fitWrapped("cancelar del reloj", T(S_CLOCK_CANCEL), TS(2), chordAvail(UY(424)), 2);
+    // cadenas sueltas que no estaban cubiertas
+    fitBox("huevo (cabecera)", T(S_EGG_HDR), TS(3), UI_W - U(40));
+    fitChord("huevo legendario", T(S_EGG_LEGEND), TS(2), UY(316));
+    fitChord("huevo raro", T(S_EGG_RARE), TS(2), UY(316));
+    for (StrId id : { S_BERRY_RED, S_BERRY_BLUE, S_BERRY_GREEN }) {
+      snprintf(b, sizeof(b), T(S_INFO_FMT), T(id), 9999UL);
+      fitChord("baya y edad", b, TS(2), UY(296));
+    }
+    snprintf(b, sizeof(b), T(S_LVL_FMT), 999);
+    fitChord("nivel grande", b, TS(5), UY(86));
+    fitBox("sin sprites", T(S_NO_SPRITES), TS(2), UI_W - U(40));
+    fitBox("cargar sprites", T(S_LOAD_SPRITES), TS(2), UI_W - U(40));
     fitBox("medalla (banner)", T(S_MEDAL_BANNER), TS(3), U(320) - U(16));
     fitBox("hito (banner)", T(S_GREAT), TS(3), U(320) - U(16));
     snprintf(b, sizeof(b), T(S_STREAK_DAYS_FMT), 365);
@@ -492,7 +564,6 @@ static int runFitTests() {
     fitBox("MIN", T(S_MIN), TS(2), CLOCK_BTN_W * 2 + (CLK_X3 - CLK_X2 - CLOCK_BTN_W));
     fitBox("sonido activado", T(S_SND_ON), TS(2), SND_PILL_W - U(8));
     fitBox("sonido desactivado", T(S_SND_OFF), TS(2), SND_PILL_W - U(8));
-    fitChord("cancelar el reloj (tamano pequeno)", T(S_CLOCK_CANCEL), TS(1), UY(410));
     // --- minijuegos ---
     snprintf(b, sizeof(b), T(S_SCORE_FMT), 999);
     fitBox("puntuacion", b, TS(4), UI_W - U(40));
