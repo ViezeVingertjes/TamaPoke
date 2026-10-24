@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdlib.h>
 
 // Power policy. Everything that decides how hard the board works lives here as
 // pure functions (no hardware), so they can be tested on the PC (test/test_power.cpp).
@@ -87,4 +88,11 @@ inline bool lightSleepAllowed(const PowerCtx &c) {
 // how often the battery is read over I2C
 inline uint32_t powerCacheMs(const PowerCtx &c) {
   return (c.screenOff || dimStageFor(c.idleMs) == DIM_OFF) ? 10000 : 2000;
+}
+
+// Touch wake-up from the PWR screen-off: a stray brush must not light the panel (pocket,
+// bag), so the finger has to stay put for this long. The PWR button still wakes at once.
+#define POWER_WAKE_HOLD_MS 700
+inline bool touchWakes(uint32_t heldMs, int dx, int dy, int slop) {
+  return heldMs >= POWER_WAKE_HOLD_MS && abs(dx) < slop && abs(dy) < slop;
 }

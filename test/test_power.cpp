@@ -159,3 +159,12 @@ TEST(power, con_la_pantalla_apagada_y_sin_usb_el_bucle_despierta_cinco_veces_por
   CHECK(lightSleepAllowed(c));
   CHECK_EQ(1000 / POWER_SLEEP_MS, 5);                  // before: 1000 wakeups per second
 }
+
+TEST(power, el_toque_solo_despierta_si_se_mantiene_quieto) {
+  CHECK(!touchWakes(100, 0, 0, 30));               // a brush
+  CHECK(!touchWakes(POWER_WAKE_HOLD_MS - 1, 0, 0, 30));
+  CHECK(touchWakes(POWER_WAKE_HOLD_MS, 0, 0, 30));
+  CHECK(touchWakes(2000, 29, -29, 30));
+  CHECK(!touchWakes(2000, 30, 0, 30));             // dragging is not a hold
+  CHECK(!touchWakes(2000, 0, -31, 30));
+}

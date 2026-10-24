@@ -357,6 +357,7 @@ void loop() {
     lastPwr = now;
     if (pwrShortPressed()) {
       screenOff = !screenOff;
+      wasPressed = false;  // a finger already down when the screen goes off starts a fresh wake hold
       if (!screenOff) wakeUI();
     }
   }
@@ -645,6 +646,30 @@ void handleTouch() {
   int16_t x, y;
   bool pressed = touch.getPoint(&x, &y, 1) > 0;
   expireDialogs();  // long press and gestures see the same state as the drawing
+
+  // screen off with PWR: a touch only wakes it if it is held in place (see touchWakes)
+  if (screenOff) {
+    if (pressed && !wasPressed) {
+      tX0 = tXl = x;
+      tY0 = tYl = y;
+      tStart = millis();
+      holdFired = false;
+    } else if (pressed) {
+      tXl = x;
+      tYl = y;
+      if (!holdFired && touchWakes(millis() - tStart, tXl - tX0, tYl - tY0, U(30))) {
+        screenOff = false;
+        holdFired = true;
+        swallowGesture = true;  // the finger is still down: its release does nothing
+        wakeUI();
+        sfxPlay(SFX_TAP);
+      }
+    } else {
+      holdFired = false;
+    }
+    wasPressed = pressed;
+    return;
+  }
 
   // training sack: every touch counts instantly (rapid mashing)
   if (sackOpen) {
