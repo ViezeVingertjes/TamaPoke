@@ -1745,15 +1745,14 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar) {
 // there is no timezone to manage. Preserves the day (does not break streak/age).
 
 void openClock() {
-  uint32_t e = rtcEpoch() ? rtcEpoch() : pet.lastSeenEpoch;  // same source as applyClock: the cached time lags
+  uint32_t e = clockBase(rtcEpoch(), pet.lastSeenEpoch);  // the RTC first: the cached time lags up to 30 s
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
   clockOpen = true;
 }
 
 void applyClock() {
-  uint32_t base = rtcEpoch() ? rtcEpoch() : pet.lastSeenEpoch;  // the RTC is fresher (lastSeenEpoch lags up to 30 s)
-  uint32_t e = clockEpoch(base, clockH, clockM);
+  uint32_t e = clockEpoch(clockBase(rtcEpoch(), pet.lastSeenEpoch), clockH, clockM);
   rtcSetEpoch(e);
   pet.setClock(e);
   clockOpen = false;

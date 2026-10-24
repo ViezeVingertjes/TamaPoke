@@ -642,6 +642,7 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(nick);
   io(stepDay); io(stepsToday); io(stepsTotal); io(stepRewardMask);
   io(dexSeen);
+  io(bondDay); io(bondToday);
 }
 
 namespace {
@@ -715,8 +716,10 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   ceremony = CER_NONE;
   evolveUntil = 0;
   neglectTicks = 0;
-  bondDay = 0;     // today's bond cap belongs to the pet that was here, not to the restored one
-  bondToday = 0;
+  if (r.stopped) {  // an older layout without today's bond cap: it must not inherit the previous pet's
+    bondDay = 0;
+    bondToday = 0;
+  }
   lastSeenEpoch = 0;
   prefs.putUInt("seen", 0);  // no offline catch-up for the time since the backup was taken
   save();

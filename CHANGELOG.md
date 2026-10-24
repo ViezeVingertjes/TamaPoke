@@ -41,7 +41,7 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 - **The clock screen crosses midnight.** Setting 23:30 at 00:30 goes back an hour instead of
   forward 23 hours, and 00:05 at 23:50 goes forward into the next day.
 - The daily bond cap renews with the real day whatever the first act of the day is, and it
-  survives a reboot (a restored backup starts with a fresh cap).
+  survives a reboot and a backup restore (a backup from an older firmware starts with a fresh cap).
 - A minigame with score 0 no longer gives bond or the daily care; scores above 255 no longer wrap.
 - Turning down an evolution or a farewell no longer carries over to the next egg.
 - The training bag gives the full +18 for a very long session (the hit count was cut to 8 bits), and

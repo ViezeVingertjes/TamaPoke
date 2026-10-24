@@ -34,3 +34,11 @@ TEST(clockset, sin_reloj_valido_no_da_la_vuelta_al_ano_2106) {
   CHECK_EQ((int)clockEpoch(0, 18, 0), 18 * 3600);
   CHECK_EQ((int)clockEpoch(100, 0, 5), 5 * 60);
 }
+
+TEST(clockset, la_base_prefiere_el_rtc_luego_lo_guardado_y_luego_una_fecha_razonable) {
+  CHECK_EQ((int)clockBase(5000000, 4999990), 5000000);   // the RTC is fresher than the cached time
+  CHECK_EQ((int)clockBase(0, 4999990), 4999990);
+  CHECK_EQ((int)clockBase(0, 0), 1767225600);            // no time at all: 2026-01-01, as at boot
+  // so that any hh:mm set then is a real date, never day 0 (which means "no clock")
+  CHECK(clockEpoch(clockBase(0, 0), 0, 0) / 86400 > 0);
+}
