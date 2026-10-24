@@ -332,10 +332,16 @@ void loop() {
   // volcado). Es la mayor carga evitable de la placa. Cada render repinta la
   // escena entera, asi que no queda nada a medias; y al quedarse lastRender
   // congelado, el primer frame tras despertar sale en el acto.
+  bool drewFrame = false;
   if (!screenOff && now - lastRender >= (uint32_t)((gameOpen || sackOpen) ? 85 : 100)) {
     lastRender = now;
     render();
+    drewFrame = true;
   }
+  // cede la CPU en los pases que no dibujan: sin esto el loop gira a pleno rendimiento
+  // entre frames (render son ~70 de cada 100 ms); 1 ms no se nota en el tactil (se lee
+  // cada 20 ms) y el frame no se retrasa
+  if (!drewFrame) delay(1);
 }
 
 // brillo segun sueno + inactividad (proteccion del AMOLED)
