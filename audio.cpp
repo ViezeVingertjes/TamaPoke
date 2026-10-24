@@ -220,15 +220,16 @@ void audioBegin() {
 
 bool audioBusy() { return gAmpHold && (int32_t)(gAmpHoldUntil - millis()) > 0; }
 
-static void enqueue(uint16_t id) {
+static bool enqueue(uint16_t id) {
   if (gReady && gOn && gQ) {
     if (gIdle) {  // an alert while idle (e.g. "ready to evolve") has to be heard
       gAmpHoldUntil = millis() + 4000;
       gAmpHold = true;
       updateAmplifierPower();
     }
-    xQueueSend(gQ, &id, 0);  // drop if the queue is full
+    return xQueueSend(gQ, &id, 0) == pdTRUE;  // dropped if the queue is full
   }
+  return false;
 }
 
 void sfxPlay(uint8_t id) { enqueue(id); }
@@ -237,8 +238,7 @@ void chirpPlay(int16_t dex) {
   static uint32_t last = 0;
   uint32_t now = millis();
   if (dex < 1 || dex > DEX_COUNT || (last && now - last < 1500)) return;  // tapping must not babble
-  last = now;
-  enqueue(CHIRP_BASE + dex);
+  if (enqueue(CHIRP_BASE + dex)) last = now;  // only a call that was queued uses up the pause
 }
 
 void audioSetEnabled(bool on) {
