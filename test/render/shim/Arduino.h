@@ -55,6 +55,7 @@ public:
 struct HostSerial : MockSerial {
   void setTxTimeoutMs(int) {}
   void setRxBufferSize(int) {}
+  void flush() {}
   void setTimeout(int) {}
   int available() { return 0; }
   String readStringUntil(char) { return String(); }
