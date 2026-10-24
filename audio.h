@@ -19,6 +19,7 @@ enum Sfx : uint8_t {
 
 void audioBegin();          // init ES8311 + I2S + amplifier + audio task
 void sfxPlay(uint8_t id);   // queues an effect (does not block the loop)
+void chirpPlay(int16_t dex);  // queues the species' call (at most one every 1.5 s)
 void audioSetEnabled(bool on);
 bool audioEnabled();
 void audioSetSleeping(bool sleeping);  // asleep: amplifier off

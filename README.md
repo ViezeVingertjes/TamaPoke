@@ -216,7 +216,7 @@ If one bottoms out it counts as a *slip-up*.
 - 🫧 **Bath** → a foam scene that cleans up the poops.
 
 **Touch gestures:**
-- Tap the creature = pet it (+happiness, bond).
+- Tap the creature = pet it (+happiness, bond); it calls out with its own synthesized chirp.
 - Horizontal swipe = open the **Pokédex / gallery**.
 - Vertical swipe up = open the **stat card** (5 pages: Profile / Battle / Medals /
   Progress / Steps; swipe between them; tap the name on Profile to rename; on Battle the

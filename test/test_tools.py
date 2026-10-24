@@ -6,6 +6,7 @@
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -206,6 +207,35 @@ class TestSketchSanity(unittest.TestCase):
         # the first numbered header (the [Unreleased] one, if any, doesn't count)
         log = re.search(r'^## \[(\d[\d.]*)\]', leer('CHANGELOG.md'), re.M).group(1)
         self.assertEqual((fw, badge), (log, log), 'FW_VERSION, badge del README y CHANGELOG no coinciden')
+
+
+class TestWebBuild(unittest.TestCase):
+    """tools/validate_web_build.py: what the installer serves matches the tree."""
+
+    @staticmethod
+    def thumbs(pixel):
+        # one 2x1 thumbnail with a 1-color palette, every pixel = `pixel`
+        entry = bytes([2, 1, 1, 0x11, 0x11, pixel, pixel])
+        return b'TPTH' + struct.pack('<H', 1) + struct.pack('<I', 10) + entry
+
+    def test_las_miniaturas_validas_pasan(self):
+        import validate_web_build as v
+        v.validate_thumbs(self.thumbs(0), 1)
+        v.validate_thumbs(self.thumbs(0xFF), 1)  # transparent
+
+    def test_una_miniatura_rota_se_rechaza(self):
+        import validate_web_build as v
+        with self.assertRaises(SystemExit):
+            v.validate_thumbs(self.thumbs(1), 1)         # index outside the palette
+        with self.assertRaises(SystemExit):
+            v.validate_thumbs(self.thumbs(0)[:-1], 1)    # truncated
+        with self.assertRaises(SystemExit):
+            v.validate_thumbs(self.thumbs(0), 2)         # wrong count
+
+    def test_el_instalador_publicado_coincide_con_el_arbol(self):
+        r = subprocess.run([sys.executable, os.path.join(TOOLS, 'validate_web_build.py')],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
 class TestBuffersDeTexto(unittest.TestCase):

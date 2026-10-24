@@ -57,6 +57,7 @@ int nearbyShown(const NbEntry **out) {
   return t.shown(out);
 }
 
+void chirpPlay(int16_t) {}
 void audioSetSleeping(bool) {}
 void audioSetIdle(bool) {}
 bool audioBusy() { return false; }
