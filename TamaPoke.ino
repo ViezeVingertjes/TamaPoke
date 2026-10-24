@@ -180,10 +180,11 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define CLOCK_BTN_W U(58)
 #define CLOCK_BTN_H UY(58)
 #define CLOCK_BTN_Y UY(190)
-#define CLK_X0 U(104)
-#define CLK_X1 U(170)
-#define CLK_X2 U(252)
-#define CLK_X3 U(318)
+// grupos hora (- +) y minutos (- +) de 124 de ancho con 24 de hueco, centrados en la pantalla
+#define CLK_X0 U(97)
+#define CLK_X1 U(163)
+#define CLK_X2 U(245)
+#define CLK_X3 U(311)
 #define SND_PILL_X U(34)
 #define SND_PILL_W U(96)
 #define CLOCK_OK_X U(133)
@@ -997,6 +998,35 @@ uint16_t textW(const char *s, int size) {
 // x del cursor para dejar el texto centrado en CX
 int centerX(const char *s, int size) { return CX - textW(s, size) / 2; }
 
+// Texto solo latino (hora, teclas, "OK"): con la fuente CJK activa saldria diminuto
+// (setSize divide la escala) y desplazado. Se cambia a la clasica mientras se pinta
+// y se vuelve a la del idioma con applyLangFont().
+void useLatinFont() {
+  gCjkFont = false;
+  gfx->setFont();
+  gfx->setUTF8Print(false);
+  gFontAscent = 0;
+}
+
+// ancho visible de la pantalla redonda a la altura y (px); el borde es el circulo UI_R
+int chordW(int y) {
+  int dy = y - CY;
+  int h2 = UI_R * UI_R - dy * dy;
+  return h2 > 0 ? 2 * (int)sqrtf((float)h2) : 0;
+}
+
+// elige el tamano grande si el texto cabe en la cuerda a la altura de su linea mas
+// baja (y + alto), y el pequeno si no. Deja puesto el tamano elegido.
+int fitSize(const char *s, int big, int small, int y) {
+  setSize(big);
+  int bottom = y + 7 * big;
+  int topW = chordW(y), botW = chordW(bottom);
+  int avail = (topW < botW ? topW : botW) - U(8);  // 4 px de diseno de aire por lado
+  if (textW(s, big) <= avail) return big;
+  setSize(small);
+  return small;
+}
+
 // Imprime respetando la fuente activa. Con la CJK repinta el texto desplazado
 // 1 px: la unifont a escala reducida deja trazos de 1 px y se ve tenue, y una
 // fuente de verdad negrita a este tamano junta los trazos y estropea los kana.
@@ -1098,7 +1128,10 @@ void render() {
     drawBars();
     drawButtons();
     drawCelebration();
-    if (pet.wantEvolveButton()) drawEvolveButton();        // CTA rojo: evolucionar
+    // sin dialogo abierto encima: el boton de despedida es mas ancho que el dialogo y asomaba por los lados
+    if (choiceKind || confirmUntil || feedMenuUntil) {
+      // un dialogo tapa el boton
+    } else if (pet.wantEvolveButton()) drawEvolveButton();        // CTA rojo: evolucionar
     else if (pet.canRunawayNow()) drawRunawayButton();     // CTA sombrio: escapada (abandono)
     else if (pet.wantFarewellButton()) drawFarewellButton();  // CTA dorado: despedida
   }
@@ -1439,8 +1472,9 @@ void renderGame() {
   setCur(centerX(rec, TS(2)), UY(76));
   printT(rec);
   for (int i = 0; i < 3; i++) {
-    if (i < 3 - gameMisses) gfx->fillCircle(U(180 + i * 28), UY(104), U(6), UI_BAR_BAD);
-    else gfx->drawCircle(U(180 + i * 28), UY(104), U(6), UI_TRACK);
+    // tres puntos separados 28 px de diseno, centrados bajo el marcador
+    if (i < 3 - gameMisses) gfx->fillCircle(CX + U((i - 1) * 28), UY(104), U(6), UI_BAR_BAD);
+    else gfx->drawCircle(CX + U((i - 1) * 28), UY(104), U(6), UI_TRACK);
   }
 
   if (pmd.loaded) {
@@ -1537,7 +1571,7 @@ void drawClockBtn(int x, int y, const char *l) {
   gfx->drawRoundRect(x, y, CLOCK_BTN_W, CLOCK_BTN_H, U(12), UI_INK);
   gfx->setTextColor(UI_INK);
   setSize(TS(4));
-  setCur(x + (CLOCK_BTN_W - 6 * TS(4)) / 2, y + (CLOCK_BTN_H - 7 * TS(4)) / 2);  // un caracter: 6 x 7 px por escala
+  setCur(x + (CLOCK_BTN_W - textW(l, TS(4))) / 2, y + (CLOCK_BTN_H - 7 * TS(4)) / 2);  // fuente latina: 7 px de alto por escala
   printT(l);
 }
 
@@ -1558,19 +1592,22 @@ void renderClock() {
 
   char t[8];
   snprintf(t, sizeof(t), "%02d:%02d", clockH, clockM);
+  useLatinFont();  // la hora y los +/- son latinos aunque el idioma sea CJK
   setSize(TS(7));
-  setCur(CX - 15 * TS(7), UY(108));  // "hh:mm" son 5 caracteres de 6 px por escala: la mitad, 15 * escala
+  setCur(centerX(t, TS(7)), UY(108));
   printT(t);
 
   drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-");  // hora -
   drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+");  // hora +
   drawClockBtn(CLK_X2, CLOCK_BTN_Y, "-");  // min -
   drawClockBtn(CLK_X3, CLOCK_BTN_Y, "+");  // min +
+  applyLangFont();
   setSize(TS(2));
   gfx->setTextColor(UI_TRACK);
-  setCur(U(120), UY(256));
+  // cada etiqueta, centrada bajo su grupo de botones
+  setCur((CLK_X0 + CLK_X1 + CLOCK_BTN_W - textW(T(S_HOUR), TS(2))) / 2, UY(256));
   printT(T(S_HOUR));
-  setCur(U(276), UY(256));
+  setCur((CLK_X2 + CLK_X3 + CLOCK_BTN_W - textW(T(S_MIN), TS(2))) / 2, UY(256));
   printT(T(S_MIN));
 
   // interruptor de sonido (izquierda de la fila de idioma)
@@ -1595,21 +1632,25 @@ void renderClock() {
 
   gfx->fillRoundRect(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, U(14), UI_BAR_OK);
   gfx->setTextColor(UI_BG_DAY);
+  useLatinFont();
   setSize(TS(3));
-  setCur(CX - 6 * TS(3), UY(352));  // "OK": 2 caracteres de 6 px por escala
+  setCur(centerX("OK", TS(3)), UY(352));
   printT("OK");
 
+  applyLangFont();
   gfx->setTextColor(UI_TRACK);
-  setSize(TS(2));
-  setCur(centerX(T(S_CLOCK_CANCEL), TS(2)), UY(410));
+  int cs = fitSize(T(S_CLOCK_CANCEL), TS(2), TS(1), UY(410));  // en algunos idiomas no cabe a tamano 2
+  setCur(centerX(T(S_CLOCK_CANCEL), cs), UY(410));
   printT(T(S_CLOCK_CANCEL));
 
   // version del firmware (discreta, abajo del todo)
   char ver[20];
   snprintf(ver, sizeof(ver), "TamaPoke v%s", FW_VERSION);
+  useLatinFont();
   setSize(TS(1));
   setCur(centerX(ver, TS(1)), UY(436));
   printT(ver);
+  applyLangFont();
   gfx->flush();
 }
 
@@ -1909,6 +1950,7 @@ void renderKeyboard() {
   setSize(TS(2));
   setCur(centerX(T(S_NAME), TS(2)), UY(56));
   printT(T(S_NAME));
+  useLatinFont();  // el apodo y las teclas son alfabeto latino
   // buffer actual
   gfx->fillRoundRect(U(83), UY(84), U(300), UY(40), U(8), UI_WHITE);
   gfx->drawRoundRect(U(83), UY(84), U(300), UY(40), U(8), UI_INK);
@@ -1927,14 +1969,15 @@ void renderKeyboard() {
     // texto centrado en la tecla (la fuente mide 7 px de alto por escala)
     int ty = y + (kh - 7 * TS(2)) / 2;
     if (i < 28) {
-      setCur(x + (kw - 6 * TS(2)) / 2, ty);
+      setCur(x + (kw - textW("W", TS(2))) / 2, ty);
       printT(KB_KEYS[i]);
     } else {
       const char *lab = (i == 28) ? "<-" : "OK";
-      setCur(x + (kw - 12 * TS(2)) / 2, ty);
+      setCur(x + (kw - textW(lab, TS(2))) / 2, ty);
       printT(lab);
     }
   }
+  applyLangFont();
   gfx->flush();
 }
 
