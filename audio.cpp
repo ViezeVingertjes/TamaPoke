@@ -1,4 +1,6 @@
 #include "audio.h"
+#include "species_chirp.h"
+#include "dex.h"
 #include "pin_config.h"
 #include <Arduino.h>
 #include <Wire.h>
@@ -24,7 +26,8 @@ static bool gIdle = false;          // no recent interaction (see power.h): the 
 static uint32_t gAmpHoldUntil = 0;  // an effect requested while idle keeps the amplifier on until here
 static bool gAmpHold = false;       // (separate flag: so the comparison does not break when millis() wraps)
 static uint32_t gAmpOnAt = 0;       // when the amplifier was turned on
-static QueueHandle_t gQ = nullptr;
+static QueueHandle_t gQ = nullptr;  // uint16_t: an Sfx id, or CHIRP_BASE + dex number
+#define CHIRP_BASE 0x100
 
 // The NS4150B takes much longer than 8 ms to settle after each power-down, so
 // turning it on right before each effect swallowed the short ones: the startup
@@ -146,16 +149,46 @@ static void playTone(uint16_t f, uint16_t ms) {
   }
 }
 
+// a chirp note: the pitch glides by `slide` Hz over its length; phase accumulator in 16.16
+static void playChirpNote(const ChirpNote &n) {
+  int total = SAMPLE_RATE * n.ms / 1000;
+  const int amp = n.wave == CHIRP_TRI ? 6000 : 4000;  // a triangle is quieter at the same height
+  uint32_t phase = 0;
+  int done = 0;
+  while (done < total) {
+    int len = total - done; if (len > 256) len = 256;
+    for (int i = 0; i < len; i++) {
+      int idx = done + i;
+      int hz = n.freq + n.slide * idx / total;
+      phase += (uint32_t)(hz < 100 ? 100 : hz) * 65536 / SAMPLE_RATE;
+      int p = phase & 0xFFFF;
+      int s = n.wave == CHIRP_TRI ? (p < 32768 ? p * 2 - 32768 : 98303 - p * 2) * amp / 32768
+                                  : (p < 32768 ? amp : -amp);
+      if (idx < 64) s = s * idx / 64;                          // attack
+      else if (idx > total - 96) s = s * (total - idx) / 96;   // decay
+      buf[i * 2] = buf[i * 2 + 1] = (int16_t)s;
+    }
+    i2s.write((uint8_t *)buf, len * 4);
+    done += len;
+  }
+}
+
 static void audioTask(void *) {
-  uint8_t id;
+  uint16_t id;
   for (;;) {
-    if (xQueueReceive(gQ, &id, portMAX_DELAY) && gOn && !gSleeping && gReady &&
-        id < SFX_COUNT) {
-      const SfxDef &d = SFX[id];
+    if (xQueueReceive(gQ, &id, portMAX_DELAY) && gOn && !gSleeping && gReady) {
+      bool isChirp = id >= CHIRP_BASE;
+      SpeciesChirp chirp;
+      if (isChirp ? !speciesChirp(id - CHIRP_BASE, &chirp) : id >= SFX_COUNT) continue;
       // the NS4150B takes over 8 ms to settle: if it was just turned on, the effect waits
       int32_t since = (int32_t)(millis() - gAmpOnAt);
       if (since >= 0 && since < 50) vTaskDelay(pdMS_TO_TICKS(50 - since));
-      for (uint8_t i = 0; i < d.len; i++) playTone(d.n[i].f, d.n[i].ms);
+      if (isChirp) {
+        for (const ChirpNote &n : chirp.notes) playChirpNote(n);
+      } else {
+        const SfxDef &d = SFX[id];
+        for (uint8_t i = 0; i < d.len; i++) playTone(d.n[i].f, d.n[i].ms);
+      }
     }
   }
 }
@@ -180,14 +213,14 @@ void audioBegin() {
 
   gReady = true;
   updateAmplifierPower();
-  gQ = xQueueCreate(8, sizeof(uint8_t));
+  gQ = xQueueCreate(8, sizeof(uint16_t));
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 1, nullptr, 0);
   sfxPlay(SFX_HATCH);  // startup jingle (confirms that it plays)
 }
 
 bool audioBusy() { return gAmpHold && (int32_t)(gAmpHoldUntil - millis()) > 0; }
 
-void sfxPlay(uint8_t id) {
+static void enqueue(uint16_t id) {
   if (gReady && gOn && gQ) {
     if (gIdle) {  // an alert while idle (e.g. "ready to evolve") has to be heard
       gAmpHoldUntil = millis() + 4000;
@@ -196,6 +229,16 @@ void sfxPlay(uint8_t id) {
     }
     xQueueSend(gQ, &id, 0);  // drop if the queue is full
   }
+}
+
+void sfxPlay(uint8_t id) { enqueue(id); }
+
+void chirpPlay(int16_t dex) {
+  static uint32_t last = 0;
+  uint32_t now = millis();
+  if (dex < 1 || dex > DEX_COUNT || (last && now - last < 1500)) return;  // tapping must not babble
+  last = now;
+  enqueue(CHIRP_BASE + dex);
 }
 
 void audioSetEnabled(bool on) {

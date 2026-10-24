@@ -931,7 +931,10 @@ void onTap(int16_t x, int16_t y) {
   if (inPetZone(x, y)) {
     Serial.println("PET");
     pet.caress();
-    if (!pet.sleeping) sfxPlay(SFX_HEART);
+    if (!pet.sleeping) {
+      sfxPlay(SFX_HEART);
+      chirpPlay(pet.speciesId);  // nothing for an egg (dex -1)
+    }
   }
 }
 
@@ -2281,6 +2284,7 @@ void galleryTap(int16_t x, int16_t y) {
   if (dex > 151) return;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
+  if (pet.isRegistered(dex)) chirpPlay(dex);  // a known species calls out
 }
 
 void drawBattery() {
