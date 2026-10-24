@@ -6,6 +6,7 @@
 #   make fit                 -> cada texto real cabe en su caja o en el circulo
 #   make check               -> compara con golden/en y golden/sq480 (falla si alguna pantalla cambia)
 #   make golden              -> regenera golden/ (solo si el cambio de interfaz es intencionado)
+#   make readme              -> docs/screens/*.png para el README (desde golden/)
 #   make shots SIZE=240      -> otro tamano de lienzo (cuadrado, en pixeles)
 #   make shots ROUND=0       -> panel cuadrado (menus a pantalla completa); por defecto, redondo
 # Compila el codigo grafico de la libreria GFX Library for Arduino
@@ -41,7 +42,7 @@ $(BUILD)/flags: FORCE
 	@echo '$(CXX) $(CXXFLAGS_ALL)' | cmp -s - $@ || echo '$(CXX) $(CXXFLAGS_ALL)' > $@
 FORCE:
 
-.PHONY: shots taps fit power check golden clean
+.PHONY: shots taps fit power check golden readme clean
 shots: $(BIN)
 	@mkdir -p $(SHOTS) && find $(SHOTS) -maxdepth 1 -type f -delete
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) $(abspath $(SHOTS)) $(FILTER)
@@ -74,6 +75,10 @@ check: renders
 golden: renders
 	@python3 compare.py --update --prune $(CHECKDIR)/en golden/en || exit 1
 	@python3 compare.py --update --prune $(CHECKDIR)/sq480 golden/sq480
+
+# imagenes del README (docs/screens/), a partir de las referencias de golden/
+readme:
+	python3 readme_shots.py
 
 taps: $(BIN)
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null --taps
