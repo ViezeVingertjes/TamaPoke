@@ -183,7 +183,9 @@ void setup() {
   // CRITICO: encender la alimentacion del panel (BLDO1=OLED VDD 3.3V) ANTES de
   // inicializar el display. Si el PMU se reseteo (drenaje total), este rail
   // queda OFF y la pantalla se ve negra aunque el resto de la placa funcione.
+#ifndef BOARD_AMOLED_216  // los ejemplos de Waveshare 2.16 arrancan el panel sin tocar los rails
   pmuEnablePanel();
+#endif
 
   // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
   // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
