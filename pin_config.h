@@ -13,8 +13,13 @@
 #define LCD_SCLK 38
 #define LCD_CS 12
 #define LCD_RESET 39
+// -DLCD_WIDTH/-DLCD_HEIGHT sustituyen el tamano (solo el renderer del host lo usa)
+#ifndef LCD_WIDTH
 #define LCD_WIDTH 466
+#endif
+#ifndef LCD_HEIGHT
 #define LCD_HEIGHT 466
+#endif
 
 // Táctil capacitivo CST9217 por I2C
 #define IIC_SDA 15

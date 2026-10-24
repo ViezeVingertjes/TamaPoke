@@ -22,20 +22,11 @@
 #include "rtcbat.h"
 #include "i18n.h"
 #include "audio.h"
+#include "layout.h"
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
 #define FW_VERSION "1.17"
-
-// Geometria de la interfaz, derivada del tamano del lienzo (= el panel). En la
-// 1.75 da los mismos 466 / 233 / 231 / 205 / 560 de siempre.
-#define UI_W LCD_WIDTH
-#define UI_H LCD_HEIGHT
-#define UI_R (UI_W / 2 - 2)  // radio del fondo circular de los menus
-#define CX (UI_W / 2)        // centro de la pantalla
-#define CY (UI_H / 2)
-#define BALL_R (UI_R - 26)   // radio de la pared del minijuego de la bola
-#define PANEL_Y 312          // inicio de la franja inferior de botones
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);

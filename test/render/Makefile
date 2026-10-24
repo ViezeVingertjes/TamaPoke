@@ -4,6 +4,7 @@
 #   make shots LANG_ID=6     -> otro idioma (0 ES, 1 EN, 2 FR, 3 DE, 4 IT, 5 PT, 6 JA, 7 KO)
 #   make check               -> compara con golden/<idioma> (falla si alguna pantalla cambia)
 #   make golden              -> regenera golden/ (solo si el cambio de interfaz es intencionado)
+#   make shots SIZE=240      -> otro tamano de lienzo (cuadrado, en pixeles)
 # Compila el codigo grafico de la libreria GFX Library for Arduino y saca las fuentes
 # CJK de la libreria U8g2 (GFX_FONT_FILE / U8G2_FONTS si no estan en ~/Arduino).
 CXX      ?= g++
@@ -28,7 +29,7 @@ BUILD    := build
 BIN      := $(BUILD)/render
 OPT      ?= -O1 -g
 CXXFLAGS_ALL := -std=c++17 $(OPT) -Wno-narrowing -Wno-write-strings -fpermissive \
-                -ffp-contract=off -I shim -I ../shim -I $(ROOT) -I $(BUILD) -I $(GFX_SRC) $(CXXFLAGS)
+                -ffp-contract=off $(if $(SIZE),-DLCD_WIDTH=$(SIZE) -DLCD_HEIGHT=$(SIZE)) -I shim -I ../shim -I $(ROOT) -I $(BUILD) -I $(GFX_SRC) $(CXXFLAGS)
 GFX_SOURCES := $(GFX_SRC)/Arduino_GFX.cpp $(GFX_SRC)/Arduino_G.cpp $(GFX_SRC)/Arduino_DataBus.cpp \
                $(GFX_SRC)/canvas/Arduino_Canvas.cpp
 SOURCES  := render_main.cpp host.cpp ../shim/shim.cpp $(ROOT)/pet.cpp $(ROOT)/i18n.cpp $(ROOT)/sdmon.cpp \
@@ -63,8 +64,10 @@ versions:
 
 # renderiza todos los idiomas en build/check/<idioma> (aparte de build/shots)
 CHECKDIR := $(BUILD)/check
-.PHONY: renders
-renders: $(BIN) versions
+.PHONY: renders nosize
+nosize:
+	@test -z "$(SIZE)" || { echo "SIZE solo vale para 'make shots': las referencias son de 466 px"; exit 1; }
+renders: nosize $(BIN) versions
 	@rm -rf $(CHECKDIR); for l in $(LANGS); do n=$${l%%:*}; \
 	  $(MAKE) --no-print-directory shots LANG_ID=$${l##*:} SHOTS=$(CHECKDIR)/$$n >/dev/null || exit 1; done
 
