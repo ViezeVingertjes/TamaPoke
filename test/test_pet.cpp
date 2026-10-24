@@ -996,3 +996,18 @@ TEST(backup, un_valor_fuera_de_rango_con_checksum_valido_se_deshace) {
   CHECK_EQ((int)b.fullness, 61);              // rolled back
   CHECK_EQ((int)b.speciesId, 7);
 }
+
+TEST(backup, un_valor_absurdo_con_checksum_valido_se_rechaza_y_se_deshace) {
+  Pet a;
+  makePet(a, 4);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  b.bond = 33;
+  a.bond = 150;                                // impossible value; the export does not clamp
+  size_t n2 = a.exportBackup(blob, sizeof(blob));
+  CHECK(n2 == n);
+  CHECK(!b.importBackup(blob, n2));
+  CHECK_EQ((int)b.bond, 33);                   // rolled back
+}

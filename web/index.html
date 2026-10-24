@@ -247,6 +247,7 @@ document.getElementById('files').onchange = async (ev) => {
 const BACKUP_MAX = 128;
 
 async function readBackup() {
+  lineBuf = '';  // a DONE/ERR left over from an earlier command must not end this one early
   await writer.write(enc.encode('SAVEGET\n'));
   let size = 0, hex = null;
   for (let l; (l = await readLine(10000)) !== null && l !== 'DONE';) {
@@ -282,11 +283,12 @@ document.getElementById('backup-file').onchange = async (ev) => {
   const data = new Uint8Array(await file.arrayBuffer());
   if (!data.length || data.length > BACKUP_MAX) { log('Restore rejected: not a TamaPoke backup.'); return; }
   try {
-    downloadBackup(await readBackup(), '-before-restore');
-    log('Safety copy of the current save downloaded.');
-    if (!confirm('Restore this backup? It overwrites the current save and restarts the board.')) {
+    if (!confirm('Restore this backup? It first downloads a safety copy of the current save, ' +
+                 'then overwrites it and restarts the board.')) {
       log('Restore cancelled.'); return;
     }
+    downloadBackup(await readBackup(), '-before-restore');
+    log('Safety copy of the current save downloaded: check your downloads before continuing.');
     await writer.write(enc.encode(`SAVEPUT ${data.length}\n`));
     if (!await waitFor('OK')) throw new Error('the board refused the file');
     await writer.write(data);

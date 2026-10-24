@@ -627,6 +627,7 @@ struct BackupWriter {
 struct BackupReader {
   const uint8_t *p;
   template <class T> void operator()(T &v) { memcpy(&v, p, sizeof(T)); p += sizeof(T); }
+  void operator()(bool &v) { v = *p++ != 0; }  // any other byte in a bool would be undefined behaviour
 };
 }  // namespace
 
@@ -652,7 +653,8 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   backupFields(r);
   nick[sizeof(nick) - 1] = 0;
   bool sane = speciesId >= -1 && speciesId <= DEX_COUNT && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
-              fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3;
+              fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
+              bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE;
   if (!sane) {
     BackupReader back{ prev + sizeof(BACKUP_MAGIC) };
     backupFields(back);

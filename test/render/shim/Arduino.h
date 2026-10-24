@@ -57,6 +57,8 @@ struct HostSerial : MockSerial {
   void setRxBufferSize(int) {}
   void flush() {}
   void setTimeout(int) {}
+  unsigned long getTimeout() { return 1000; }
+  int read() { return -1; }
   int available() { return 0; }
   String readStringUntil(char) { return String(); }
   size_t readBytes(uint8_t *, size_t) { return 0; }

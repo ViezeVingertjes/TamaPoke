@@ -517,10 +517,9 @@ void handleSerial() {
     // setup() sets a zero TX timeout so logs never block without a terminal open; the
     // browser is reading now, so wait for the whole answer instead of dropping it
     Serial.setTxTimeoutMs(1500);
-    Serial.printf("SAVE %u\nSAVEHEX ", (unsigned)size);
-    for (size_t i = 0; i < size; i++) Serial.printf("%02X", backup[i]);
-    Serial.println();
-    Serial.println("DONE");
+    char hex[2 * Pet::BACKUP_MAX_BYTES + 1];
+    for (size_t i = 0; i < size; i++) snprintf(hex + 2 * i, 3, "%02X", backup[i]);
+    Serial.printf("SAVE %u\nSAVEHEX %s\nDONE\n", (unsigned)size, hex);
     Serial.flush();
     Serial.setTxTimeoutMs(0);
     return;
@@ -530,10 +529,15 @@ void handleSerial() {
     if (size == 0 || size > Pet::BACKUP_MAX_BYTES) { Serial.println("ERR"); return; }
     uint8_t backup[Pet::BACKUP_MAX_BYTES];
     Serial.println("OK");
+    uint32_t oldTimeout = Serial.getTimeout();
     Serial.setTimeout(6000);
     size_t got = Serial.readBytes(backup, size);
-    Serial.setTimeout(1000);
-    if (got != size || !pet.importBackup(backup, size)) { Serial.println("ERR"); return; }
+    Serial.setTimeout(oldTimeout);
+    if (got != size || !pet.importBackup(backup, size)) {
+      while (Serial.available()) Serial.read();  // leftovers of a bad file must not run as commands
+      Serial.println("ERR");
+      return;
+    }
     Serial.println("DONE");
     delay(150);
     ESP.restart();
