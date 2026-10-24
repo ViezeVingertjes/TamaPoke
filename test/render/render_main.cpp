@@ -145,6 +145,94 @@ static void prepare(const Scene &sc) {
   mockSetMillis(100000);
 }
 
+// ---------- pruebas de toque: se toca el centro de cada elemento dibujado ----------
+static int gTapFails = 0;
+static const Scene *findScene(const char *name) {
+  for (const Scene &sc : SCENES) if (!strcmp(sc.name, name)) return &sc;
+  for (const Scene &sc : EXTRA) if (!strcmp(sc.name, name)) return &sc;
+  fprintf(stderr, "no existe la escena '%s'\n", name);
+  exit(2);
+}
+#define EXPECT(cond, what) do { if (!(cond)) { fprintf(stderr, "FALLA %-22s %s\n", curScene, what); gTapFails++; } } while (0)
+static const char *curScene = "";
+static void begin(const char *name) { curScene = name; prepare(*findScene(name)); }
+static void tapAt(int x, int y) { onTap((int16_t)x, (int16_t)y); }
+
+static int runTapTests() {
+  // selector de comida: el centro de cada icono elige su casilla
+  for (int i = 0; i < 4; i++) {
+    begin("feed_menu");
+    uint8_t w0 = pet.weight;
+    int is = SC(3);
+    tapAt(FEED_ICON_X(i) + 8 * is, FEED_ICON_Y + 8 * is);
+    EXPECT(feedMenuUntil == 0, "el selector se cierra");
+    EXPECT(pet.eating(), "el bicho come");
+    // el #6 (Charizard) tiene por baya favorita la roja (casilla 0): solo esa da el corazon
+    if (i == 0) EXPECT(pet.berryKnown, "la casilla 1 es la baya roja (favorita)");
+    else EXPECT(!pet.berryKnown, "las casillas 2 y 3 no son la baya favorita");
+    if (i == 3) EXPECT(pet.weight > w0, "la casilla 4 es la chuche (engorda)");
+    else EXPECT(pet.weight == w0, "una baya no engorda");
+  }
+  // el borde derecho del recuadro cuenta como la ultima casilla (la chuche)
+  begin("feed_menu");
+  uint8_t w1 = pet.weight;
+  tapAt(FEED_X + FEED_W, FEED_Y + FEED_H / 2);
+  EXPECT(pet.weight > w1, "el ultimo pixel del selector es la chuche");
+  // fuera del recuadro: se cierra sin dar de comer
+  begin("feed_menu");
+  tapAt(FEED_X - 5, FEED_Y + FEED_H / 2);
+  EXPECT(feedMenuUntil == 0 && !pet.eating(), "tocar fuera cierra el selector sin comer");
+  // dialogo de soltar: SI suelta; cualquier otro toque lo cierra sin soltar
+  begin("release_dialog");
+  tapAt(YES_X + YES_W / 2, YES_Y + YES_H / 2);
+  EXPECT(pet.ceremony == CER_RELEASE, "SI suelta al bicho");
+  begin("release_dialog");
+  tapAt(NO_X + YES_W / 2, YES_Y + YES_H / 2);
+  EXPECT(pet.ceremony == CER_NONE && !confirmUntil, "tocar NO cierra el dialogo sin soltar");
+  // dialogos de decision
+  begin("evolve_dialog");
+  tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B1_Y + CHOICE_BH / 2);
+  EXPECT(pet.speciesId != 4, "evolucionar");
+  begin("evolve_dialog");
+  tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B2_Y + CHOICE_BH / 2);
+  EXPECT(pet.speciesId == 4 && !choiceKind && pet.evoDeclinedLv == pet.level(), "mantener forma");
+  begin("farewell_dialog");
+  tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B1_Y + CHOICE_BH / 2);
+  EXPECT(pet.ceremony == CER_FAREWELL, "despedirse");
+  begin("farewell_dialog");
+  tapAt(CHOICE_X + CHOICE_W / 2, CHOICE_B2_Y + CHOICE_BH / 2);
+  EXPECT(pet.ceremony == CER_NONE && !choiceKind && pet.farDeclinedAge > pet.ageMinutes, "quedaros juntos");
+  // botones de final
+  begin("cta_evolve");
+  tapAt(EVO_BTN_X + EVO_BTN_W / 2, EVO_BTN_Y + EVO_BTN_H / 2);
+  EXPECT(choiceKind == 1, "boton de evolucion abre el dialogo");
+  begin("cta_farewell");
+  tapAt(FAR_BTN_X + FAR_BTN_W / 2, FAR_BTN_Y + FAR_BTN_H / 2);
+  EXPECT(choiceKind == 2, "boton de despedida abre el dialogo");
+  begin("cta_runaway");
+  tapAt(FAR_BTN_X + FAR_BTN_W / 2, FAR_BTN_Y + FAR_BTN_H / 2);
+  EXPECT(pet.ceremony == CER_RUNAWAY, "boton de escapada");
+  // botones de accion
+  for (int i = 0; i < 4; i++) {
+    begin("main_day");
+    bool slept = pet.sleeping;
+    tapAt(buttons[i].cx, buttons[i].cy);
+    if (i == 0) EXPECT(feedMenuUntil != 0, "comer abre el selector");
+    if (i == 1) EXPECT(gameOpen, "jugar abre el minijuego");
+    if (i == 2) EXPECT(pet.sleeping != slept, "luz cambia el sueno");
+    if (i == 3) EXPECT(bathUntil != 0, "bano empieza");
+  }
+  // caricia: el centro del sprite cae dentro de la zona del bicho
+  begin("main_day");
+  tapAt(CX, PET_CY);
+  EXPECT(pet.showHeart(), "caricia al bicho");
+  begin("main_day");  // y un toque sobre las barras de estado NO es una caricia
+  tapAt(CX, UY(332));
+  EXPECT(!pet.showHeart(), "las barras no acarician");
+  fprintf(stderr, "%d fallos de toque\n", gTapFails);
+  return gTapFails ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "uso: %s carpeta [idioma] [filtro]\n", argv[0]); return 2; }
   std::string out = argv[1];
@@ -156,6 +244,8 @@ int main(int argc, char **argv) {
     lang = (int)v;
   }
   std::string filter = argc > 3 ? argv[3] : "";
+  bool tapsMode = filter == "--taps";
+  if (tapsMode) filter = "";
   int drawn = 0;
   if (lang < 0 || lang >= LANG_COUNT) { fprintf(stderr, "idioma fuera de rango: %d\n", lang); return 2; }
 
@@ -167,6 +257,7 @@ int main(int argc, char **argv) {
   applyLangFont();
   gPristinePet = pet;
 
+  if (tapsMode) return runTapTests();
   std::vector<const Scene *> all;
   for (const Scene &sc : SCENES) all.push_back(&sc);
   if (lang == LANG_EN)

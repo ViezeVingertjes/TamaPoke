@@ -146,6 +146,29 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define FAR_BTN_H UY(58)
 #define FAR_BTN_X (CX - FAR_BTN_W / 2)
 #define FAR_BTN_Y UY(176)
+// Cajas de los dialogos del juego: el dibujo y el toque usan las mismas, asi no
+// pueden desajustarse.
+// dialogo de decision (evolucionar/mantener, despedirse/quedaros)
+#define CHOICE_X U(93)
+#define CHOICE_W U(280)
+#define CHOICE_BH UY(52)
+#define CHOICE_B1_Y UY(206)
+#define CHOICE_B2_Y UY(268)
+// dialogo "soltar?": boton SI (NO va 130 px de diseno a su derecha)
+#define YES_X U(118)
+#define YES_Y UY(252)
+#define YES_W U(100)
+#define YES_H UY(52)
+#define NO_X (YES_X + U(130))
+// selector de comida: 4 casillas separadas por FEED_STRIDE
+#define FEED_X U(101)
+#define FEED_Y UY(288)
+#define FEED_STRIDE U(66)
+#define FEED_W (4 * FEED_STRIDE)
+#define FEED_H UY(64)
+// icono i (16x16 a escala SC(3)) dentro de su casilla
+#define FEED_ICON_X(i) (FEED_X + U(9) + (i) * FEED_STRIDE)
+#define FEED_ICON_Y (FEED_Y + UY(8))
 // el CST9217 avisa por el pin INT cuando hay datos tactiles; lo usamos para no
 // leer el bus I2C mientras el chip esta dormido (esa lectura se colgaba ~1s)
 volatile bool gTouchIrq = false;
@@ -465,7 +488,7 @@ void handleSerial() {
 // ---------- entrada tactil ----------
 
 bool inPetZone(int16_t x, int16_t y) {
-  return x > 110 && x < 356 && y > 95 && y < 310;
+  return x > U(110) && x < U(356) && y > UY(95) && y < UY(310);
 }
 
 // el toque se resuelve al LEVANTAR el dedo para distinguir tap de deslizar
@@ -519,7 +542,7 @@ void handleTouch() {
     tYl = y;
     // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
     if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
-        abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
+        abs(tXl - tX0) < U(30) && abs(tYl - tY0) < UY(30) && inPetZone(tX0, tY0) &&
         !pet.isEgg() && !confirmUntil && !pet.ceremony) {
       confirmUntil = millis() + 10000;
       holdFired = true;
@@ -529,9 +552,9 @@ void handleTouch() {
     int dx = tXl - tX0, dy = tYl - tY0;
     uint32_t dt = millis() - tStart;
     if (!holdFired && !swallowGesture) {
-      if (abs(dx) > 80 && abs(dy) < 70 && dt < 800) onSwipe(dx > 0 ? 1 : -1);
-      else if (abs(dy) > 80 && abs(dx) < 70 && dt < 800) onSwipeV(dy > 0 ? 1 : -1);
-      else if (dt < 1500 && abs(dx) < 40 && abs(dy) < 40) onTap(tX0, tY0);
+      if (abs(dx) > U(80) && abs(dy) < UY(70) && dt < 800) onSwipe(dx > 0 ? 1 : -1);
+      else if (abs(dy) > UY(80) && abs(dx) < U(70) && dt < 800) onSwipeV(dy > 0 ? 1 : -1);
+      else if (dt < 1500 && abs(dx) < U(40) && abs(dy) < UY(40)) onTap(tX0, tY0);
     }
   }
   wasPressed = pressed;
@@ -634,8 +657,8 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (choiceKind) {          // dialogo de decision: boton accion (arriba) / mantener (abajo)
-    bool b1 = (x >= 93 && x <= 373 && y >= 206 && y <= 258);  // accion
-    bool b2 = (x >= 93 && x <= 373 && y >= 268 && y <= 320);  // mantener / quedaros
+    bool b1 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B1_Y && y <= CHOICE_B1_Y + CHOICE_BH);  // accion
+    bool b2 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B2_Y && y <= CHOICE_B2_Y + CHOICE_BH);  // mantener / quedaros
     if (choiceKind == 1) {                 // evolucion
       if (b1) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
       else if (b2) pet.declineEvolve();
@@ -647,15 +670,16 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (confirmUntil) {        // dialogo "soltar?": SI / NO
-    if (timeLeft(confirmUntil) && x >= 118 && x <= 218 && y >= 252 && y <= 304) {
+    if (timeLeft(confirmUntil) && x >= YES_X && x <= YES_X + YES_W && y >= YES_Y && y <= YES_Y + YES_H) {
       pet.release();
     }
     confirmUntil = 0;
     return;
   }
   if (feedMenuUntil) {       // selector de comida
-    if (timeLeft(feedMenuUntil) && y >= 288 && y <= 352 && x >= 101 && x <= 365) {
-      int item = (x - 101) / 66;
+    if (timeLeft(feedMenuUntil) && y >= FEED_Y && y <= FEED_Y + FEED_H && x >= FEED_X && x <= FEED_X + FEED_W) {
+      int item = (x - FEED_X) / FEED_STRIDE;
+      if (item > 3) item = 3;  // el borde derecho del recuadro cuenta como la ultima casilla
       if (item == 3) pet.feedCandy();
       else pet.feedBerry(item);
       sfxPlay(SFX_EAT);
@@ -1068,12 +1092,11 @@ void render() {
     if (!timeLeft(feedMenuUntil)) {
       feedMenuUntil = 0;
     } else {
-      gfx->fillRoundRect(U(101), UY(288), U(264), UY(64), U(14), UI_WHITE);
-      gfx->drawRoundRect(U(101), UY(288), U(264), UY(64), U(14), inkColor());
-      drawMap(SPR_ICON_FOOD, 16, U(110), UY(296), SC(3), false);
-      drawMap(SPR_ICON_BERRY_B, 16, U(176), UY(296), SC(3), false);
-      drawMap(SPR_ICON_BERRY_G, 16, U(242), UY(296), SC(3), false);
-      drawMap(SPR_ICON_CANDY, 16, U(308), UY(296), SC(3), false);
+      gfx->fillRoundRect(FEED_X, FEED_Y, FEED_W, FEED_H, U(14), UI_WHITE);
+      gfx->drawRoundRect(FEED_X, FEED_Y, FEED_W, FEED_H, U(14), inkColor());
+      const char *const *const items[4] = { SPR_ICON_FOOD, SPR_ICON_BERRY_B, SPR_ICON_BERRY_G, SPR_ICON_CANDY };
+      for (int i = 0; i < 4; i++)
+        drawMap(items[i], 16, FEED_ICON_X(i), FEED_ICON_Y, SC(3), false);
     }
   }
 
@@ -1094,12 +1117,12 @@ void render() {
       setSize(SC(2));
       setCur(centerX(q, SC(2)), UY(196));
       printT(q);
-      gfx->fillRoundRect(U(118), UY(252), U(100), UY(52), U(12), UI_BAR_OK);
+      gfx->fillRoundRect(YES_X, YES_Y, YES_W, YES_H, U(12), UI_BAR_OK);
       gfx->setTextColor(UI_WHITE);
-      setCur(U(118) + (U(100) - textW(T(S_YES), SC(2))) / 2, UY(270));
+      setCur(YES_X + (YES_W - textW(T(S_YES), SC(2))) / 2, UY(270));
       printT(T(S_YES));
-      gfx->fillRoundRect(U(248), UY(252), U(100), UY(52), U(12), UI_BAR_BAD);
-      setCur(U(248) + (U(100) - textW(T(S_NO), SC(2))) / 2, UY(270));
+      gfx->fillRoundRect(NO_X, YES_Y, YES_W, YES_H, U(12), UI_BAR_BAD);
+      setCur(NO_X + (YES_W - textW(T(S_NO), SC(2))) / 2, UY(270));
       printT(T(S_NO));
     }
   }
@@ -2128,11 +2151,11 @@ void drawChoiceDialog() {
   setSize(SC(2));
   setCur(centerX(q, SC(2)), UY(176));
   printT(q);
-  gfx->fillRoundRect(U(93), UY(206), U(280), UY(52), U(12), c1);     // boton accion
+  gfx->fillRoundRect(CHOICE_X, CHOICE_B1_Y, CHOICE_W, CHOICE_BH, U(12), c1);     // boton accion
   gfx->setTextColor(t1);
   setCur(centerX(o1, SC(2)), UY(224));
   printT(o1);
-  gfx->fillRoundRect(U(93), UY(268), U(280), UY(52), U(12), c2);     // boton mantener/quedaros
+  gfx->fillRoundRect(CHOICE_X, CHOICE_B2_Y, CHOICE_W, CHOICE_BH, U(12), c2);     // boton mantener/quedaros
   gfx->setTextColor(t2);
   setCur(centerX(o2, SC(2)), UY(286));
   printT(o2);
