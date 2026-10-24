@@ -1011,3 +1011,97 @@ TEST(backup, un_valor_absurdo_con_checksum_valido_se_rechaza_y_se_deshace) {
   CHECK(!b.importBackup(blob, n2));
   CHECK_EQ((int)b.bond, 33);                   // rolled back
 }
+
+// ---------------------------------------------------------------- walking
+// midday of a given day, to anchor the pet's clock
+static void setDay(Pet &p, uint32_t day) { p.setClock(day * 86400UL + 43200); }
+
+TEST(steps, los_pasos_se_acumulan_y_cambian_de_dia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.applyWalk(300);
+  p.applyWalk(250);
+  CHECK_EQ((int)p.stepsToday, 550);
+  CHECK_EQ((int)p.stepsTotal, 550);
+  setDay(p, 20001);
+  advance(p, 1);                       // the next minute notices the new day
+  CHECK_EQ((int)p.stepsToday, 0);
+  CHECK_EQ((int)p.stepsTotal, 550);
+  CHECK_EQ((int)p.stepRewardMask, 0);
+}
+
+TEST(steps, cada_meta_diaria_da_su_premio_una_sola_vez) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  setStats(p, 50, 50, 50, 50);
+  p.trAtk = 0;
+  p.applyWalk(500);
+  CHECK_EQ((int)p.fullness, 65);       // snack
+  CHECK_EQ((int)p.stepRewardShown(), 0);
+  p.applyWalk(100);
+  CHECK_EQ((int)p.fullness, 65);       // not again
+  p.energy = 50;
+  p.applyWalk(1400);                   // 2000 total
+  CHECK_EQ((int)p.energy, 75);
+  p.applyWalk(3000);                   // 5000 total
+  CHECK_EQ((int)p.trAtk, 5);
+  CHECK_EQ((int)p.stepRewardMask, 7);
+}
+
+TEST(steps, caminar_anima_y_une_pero_con_tope_diario) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  setStats(p, 50, 10, 50, 50);
+  p.bond = 0;
+  p.applyWalk(1000);
+  CHECK_EQ((int)p.joy, 20);            // +1 per 100 steps
+  CHECK_EQ((int)p.bond, 2);            // +1 per 500 steps
+  p.applyWalk(4000);
+  CHECK_EQ((int)p.joy, 30);            // beyond 2000 steps only the 5000 goal's workout counts
+  CHECK_EQ((int)p.bond, 4);
+}
+
+TEST(steps, el_rango_del_sendero_sale_de_los_pasos_totales) {
+  Pet p;
+  makePet(p, 4);
+  CHECK_EQ((int)p.trailRank(), 0);
+  p.stepsTotal = 9999;
+  CHECK_EQ((int)p.trailRank(), 0);
+  p.stepsTotal = 10000;
+  CHECK_EQ((int)p.trailRank(), 1);
+  p.stepsTotal = 250000;
+  CHECK_EQ((int)p.trailRank(), Pet::TRAIL_RANKS);
+}
+
+TEST(steps, un_huevo_cuenta_pasos_pero_no_recibe_premios) {
+  Pet p;
+  mockNvsReset();
+  mockSetMillis(0);
+  p.begin();
+  p.chooseStarter(4);
+  setDay(p, 20000);
+  p.fullness = 40;
+  p.applyWalk(600);
+  CHECK_EQ((int)p.stepsToday, 600);
+  CHECK_EQ((int)p.fullness, 40);
+  CHECK_EQ((int)p.stepRewardMask, 0);  // still owed: given once it hatches
+}
+
+TEST(steps, se_guardan_y_van_en_la_copia) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.applyWalk(1234);
+  a.flushSave();
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  CHECK(n > 0);
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.stepsToday, 1234);
+  CHECK_EQ((int)b.stepsTotal, 1234);
+}

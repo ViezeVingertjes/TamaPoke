@@ -55,6 +55,7 @@ void Pet::syncClock(uint32_t nowEpoch) {
   uint32_t seen = prefs.getUInt("seen", 0);
   lastSeenEpoch = nowEpoch;
   if (nowEpoch == 0) return;
+  ensureStepDay();
   uint32_t mins = (seen && nowEpoch > seen) ? (nowEpoch - seen) / 60 : 0;
   if (mins < 2 || ceremony != CER_NONE || starterPick) {
     save();  // first time, no time to apply, or still picking a starter
@@ -107,6 +108,7 @@ void Pet::update(uint32_t nowMs) {
 }
 
 void Pet::tick() {
+  ensureStepDay();
   if (ceremony != CER_NONE) return;  // time stops during the farewell
   if (starterPick) return;  // the game does not start until a starter is picked: if
                             // time ran here, the egg would hatch on its own at
@@ -595,6 +597,10 @@ void Pet::save() {
   prefs.putUShort("ghi", gameHi);
   prefs.putUShort("shi", strHi);
   prefs.putString("nick", nick);
+  prefs.putUInt("stday", stepDay);
+  prefs.putUInt("stto", stepsToday);
+  prefs.putUInt("stot", stepsTotal);
+  prefs.putUChar("stmask", stepRewardMask);
 }
 
 // The saved fields in one place: the same list writes and reads the backup, so the two
@@ -608,6 +614,7 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(streak); io(bestStreak); io(lastCareDay); io(bond);
   io(medals); io(totalMedals); io(lastMilestone); io(gameHi); io(strHi);
   io(nick);
+  io(stepDay); io(stepsToday); io(stepsTotal); io(stepRewardMask);
 }
 
 namespace {
@@ -669,6 +676,61 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   return true;
 }
 
+void Pet::ensureStepDay() {
+  uint32_t d = today();
+  if (!d || d == stepDay) return;  // no clock yet, or still the same day
+  stepDay = d;
+  stepsToday = 0;
+  stepRewardMask = 0;
+}
+
+uint32_t Pet::stepGoal(uint8_t i) {
+  static const uint32_t G[STEP_GOALS] = { 500, 2000, 5000 };
+  return G[i];
+}
+
+uint32_t Pet::trailGoal(uint8_t i) {
+  static const uint32_t G[TRAIL_RANKS] = { 10000, 50000, 100000, 250000 };
+  return G[i];
+}
+
+uint8_t Pet::trailRank() const {
+  uint8_t r = 0;
+  while (r < TRAIL_RANKS && stepsTotal >= trailGoal(r)) r++;
+  return r;
+}
+
+// crossings of a multiple of `every` between a and b, counting only steps below `cap`
+static uint8_t crossings(uint32_t a, uint32_t b, uint32_t every, uint32_t cap) {
+  if (a > cap) a = cap;
+  if (b > cap) b = cap;
+  return (uint8_t)(b / every - a / every);
+}
+
+void Pet::applyWalk(uint16_t steps) {
+  if (!steps) return;
+  ensureStepDay();
+  uint32_t before = stepsToday;
+  stepsToday += steps;
+  stepsTotal += steps;
+  if (isEgg() || ceremony != CER_NONE) return;  // counted, but the pet is not there to enjoy it
+  // walking cheers it up and bonds a little, only for the first 2000 steps of a day
+  joy = clamp100(joy + crossings(before, stepsToday, 100, 2000));
+  addBond(crossings(before, stepsToday, 500, 2000));
+  for (uint8_t i = 0; i < STEP_GOALS; i++) {
+    if (stepsToday < stepGoal(i) || (stepRewardMask & (1 << i))) continue;
+    stepRewardMask |= 1 << i;
+    if (i == 0) fullness = clamp100(fullness + 15);       // a snack
+    else if (i == 1) energy = clamp100(energy + 25);
+    else trAtk = clamp100(trAtk + 5);                      // a workout
+    stepRewardIdx = i;
+    stepRewardUntil = millis() + 4500;
+    heartUntil = millis() + HEART_MS;
+    if (!sleeping) sfxPlay(SFX_MEDAL);
+  }
+  if (stepsToday / 100 != before / 100) pendingSave = true;  // flushed when the screen dims
+}
+
 void Pet::load() {
   fullness = prefs.getUChar("full", 80);
   joy = prefs.getUChar("joy", 80);
@@ -719,6 +781,10 @@ void Pet::load() {
   gameHi = prefs.getUShort("ghi", 0);
   strHi = prefs.getUShort("shi", 0);
   prefs.getString("nick", nick, sizeof(nick));
+  stepDay = prefs.getUInt("stday", 0);
+  stepsToday = prefs.getUInt("stto", 0);
+  stepsTotal = prefs.getUInt("stot", 0);
+  stepRewardMask = prefs.getUChar("stmask", 0);
   // seeding: the current pet counts as raised (old saves)
   if (speciesId >= 1) registerSpecies(speciesId);
 }

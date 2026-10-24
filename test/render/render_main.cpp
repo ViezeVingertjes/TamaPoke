@@ -127,6 +127,7 @@ static const Scene SCENES[] = {
   { "main_nosprites", [] { closeAll(); adult(25); }, true },
   { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, false },
   { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false },
+  { "card_steps", [] { closeAll(); adult(6); cardOpen = true; cardPage = 4; pet.stepsToday = 3240; pet.stepsTotal = 61250; }, false },
   { "gallery_page6", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 6; galleryDirty = true; }, false },
   { "gallery_detail_unknown", [] { closeAll(); adult(6); galleryOpen = true; galleryDetail = 3; galleryPmd.load(3, false); }, false },
   { "game_over", [] { closeAll(); adult(25); gameOpen = true; gameScore = 12; gameMisses = 3; gameNewHi = true; gameOverUntil = millis() + 4000; gamePetX = CX; ballX = CX; ballY = 300; ballVX = ballVY = 0; }, false },
@@ -556,6 +557,14 @@ static int runFitTests() {
   snprintf(b, sizeof(b), T(S_MEDALS_FMT), 8, 8);
   fitChord("medallas", b, TS(3), UY(48));
   fitChord("progreso", T(S_PROGRESS), TS(3), UY(44));
+  fitChord("pasos", T(S_STEPS), TS(3), UY(44));
+  snprintf(b, sizeof(b), T(S_STEPS_NEXT_FMT), 5000UL);
+  fitChord("siguiente meta", b, TS(2), UY(190));
+  fitChord("metas hechas", T(S_STEPS_ALL_DONE), TS(2), UY(190));
+  snprintf(b, sizeof(b), T(S_STEPS_TOTAL_FMT), 4294967295UL);
+  fitChord("pasos totales", b, TS(2), UY(284));
+  for (int r = 0; r <= Pet::TRAIL_RANKS; r++) fitChord("rango", trailName(r), TS(2), UY(308));
+  for (StrId id : { S_STEP_REWARD_1, S_STEP_REWARD_2, S_STEP_REWARD_3 }) fitBox("mensaje de pasos", T(id), TS(2), UI_W - U(40));
   snprintf(b, sizeof(b), T(S_NEXT_LVL_FMT), 60, 999);
   fitChord("siguiente nivel", b, TS(2), UY(190));
   fitChord("etiqueta de evolucion", T(S_EVO_LABEL), TS(2), UY(230));
@@ -615,6 +624,10 @@ static int runPowerTests() {
   PCHECK(render(), "la ficha se repinta si cambia un dato");
   begin("card_medals");
   PCHECK(render() && !render(), "las medallas: una vez y quietas");
+  begin("card_steps");
+  PCHECK(render() && !render(), "los pasos: una vez y quietos");
+  pet.stepsToday += 10;
+  PCHECK(render(), "los pasos se repintan al caminar");
   begin("starter");
   PCHECK(render() && !render(), "la eleccion de inicial: una vez y quieta");
   // animated screens: always drawn
