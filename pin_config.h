@@ -1,7 +1,12 @@
 #pragma once
 
-// Pines oficiales de la Waveshare ESP32-S3-Touch-AMOLED-1.75
-// Fuente: github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75 (libraries/Mylibrary/pin_config.h)
+// Pines oficiales de la Waveshare ESP32-S3-Touch-AMOLED-1.75 y -2.16 (mismos pines)
+// Fuentes: github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75 y ...-2.16
+//   (libraries/Mylibrary/pin_config.h)
+//
+// Placa: por defecto la 1.75 (redonda, 466x466). Para la 2.16 (cuadrada, 480x480)
+// descomenta la linea siguiente o compila con -DBOARD_AMOLED_216.
+// #define BOARD_AMOLED_216
 
 #define XPOWERS_CHIP_AXP2101
 
@@ -14,18 +19,29 @@
 #define LCD_CS 12
 #define LCD_RESET 39
 // -DLCD_WIDTH/-DLCD_HEIGHT sustituyen el tamano (solo el renderer del host lo usa)
+#ifdef BOARD_AMOLED_216
+#define LCD_SIZE_DEFAULT 480
+#define LCD_ROUND_DEFAULT 0
+#define LCD_OFF_X 0  // columna/fila del CO5300 donde empieza el lienzo
+#define LCD_OFF_Y 0
+#else
+#define LCD_SIZE_DEFAULT 466
+#define LCD_ROUND_DEFAULT 1
+#define LCD_OFF_X 6
+#define LCD_OFF_Y 0
+#endif
 #ifndef LCD_WIDTH
-#define LCD_WIDTH 466
+#define LCD_WIDTH LCD_SIZE_DEFAULT
 #endif
 #ifndef LCD_HEIGHT
-#define LCD_HEIGHT 466
+#define LCD_HEIGHT LCD_SIZE_DEFAULT
 #endif
 // 1 = pantalla redonda (menus sobre un disco), 0 = cuadrada (menus a pantalla completa)
 #ifndef LCD_ROUND
-#define LCD_ROUND 1
+#define LCD_ROUND LCD_ROUND_DEFAULT
 #endif
 
-// Táctil capacitivo CST9217 por I2C
+// Táctil capacitivo CST9217 (1.75) / CST9220 (2.16) por I2C
 #define IIC_SDA 15
 #define IIC_SCL 14
 #define TP_INT 11

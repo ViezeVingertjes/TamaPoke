@@ -7,8 +7,15 @@ on:
 
 jobs:
   firmware:
-    name: Compile firmware
+    name: Compile firmware (${{ matrix.board }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - board: Waveshare AMOLED 1.75
+            flags: ""
+          - board: Waveshare AMOLED 2.16
+            flags: "-DBOARD_AMOLED_216"
     steps:
       - uses: actions/checkout@v4
 
@@ -28,9 +35,19 @@ jobs:
         run: arduino-cli lib install "GFX Library for Arduino" SensorLib XPowersLib U8g2
 
       - name: Compile
+        if: matrix.flags == ''
         run: >
           arduino-cli compile --warnings=all
           --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
+          .
+
+      - name: Compile (with board flags)
+        if: matrix.flags != ''
+        run: >
+          arduino-cli compile --warnings=all
+          --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
+          --build-property "compiler.cpp.extra_flags=${{ matrix.flags }}"
+          --build-property "compiler.c.extra_flags=${{ matrix.flags }}"
           .
 
   generated:

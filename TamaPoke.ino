@@ -36,7 +36,7 @@
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
 Arduino_CO5300 *panel = new Arduino_CO5300(
-  bus, LCD_RESET, 0 /*rotation*/, LCD_WIDTH, LCD_HEIGHT, 6, 0, 0, 0);
+  bus, LCD_RESET, 0 /*rotation*/, LCD_WIDTH, LCD_HEIGHT, LCD_OFF_X, LCD_OFF_Y, 0, 0);
 // Framebuffer completo en PSRAM: dibujamos todo y hacemos flush() (sin parpadeo)
 Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
 
@@ -244,11 +244,18 @@ void setup() {
   // CRITICO: encender la alimentacion del panel (BLDO1=OLED VDD 3.3V) ANTES de
   // inicializar el display. Si el PMU se reseteo (drenaje total), este rail
   // queda OFF y la pantalla se ve negra aunque el resto de la placa funcione.
+#ifndef BOARD_AMOLED_216  // los ejemplos de Waveshare 2.16 arrancan el panel sin tocar los rails
   pmuEnablePanel();
+#endif
 
   // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
   // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
+#ifdef BOARD_AMOLED_216
+  // orientacion de Waveshare para la 2.16 (MADCTL); va emparejada con el
+  // swap/mirror del tactil de mas abajo: si cambia una, cambia la otra
+  bus->writeC8D8(0x36, 0xA0);
+#endif
   panel->setBrightness(180);
   applyLangFont();  // fuente del idioma guardado (clasica salvo CJK)
 
@@ -258,12 +265,17 @@ void setup() {
     touchOk = touch.begin(Wire, 0x5A, IIC_SDA, IIC_SCL);
     if (!touchOk) delay(150);
   }
-  if (!touchOk) Serial.println("CST9217 no detectado");
+  if (!touchOk) Serial.println("tactil CST92xx no detectado");
   // begin() deja el chip en modo comando (lee la identidad y no sale);
   // hace falta un reset por hardware para que vuelva a reportar toques
   touch.reset();
   touch.setMaxCoordinates(LCD_WIDTH, LCD_HEIGHT);
+#ifdef BOARD_AMOLED_216
+  touch.setSwapXY(true);  // combinacion del ejemplo oficial de Waveshare 2.16
+  touch.setMirrorXY(true, false);
+#else
   touch.setMirrorXY(true, true);  // el panel esta montado girado 180 grados
+#endif
   // INT activo-bajo: salta cuando hay datos. Gatea las lecturas I2C (ver loop)
   pinMode(TP_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TP_INT), touchIsr, FALLING);
