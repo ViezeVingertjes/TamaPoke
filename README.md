@@ -348,6 +348,10 @@ What the firmware does to save power (the policy is in `power.h`, covered by `te
   after a power-up so the start is not cut.
 - **Low battery (< 20 %, not charging):** brightness capped (100, then 60 under 10 %) and frames twice as slow.
 - **Battery reads over I2C** every 10 s instead of 2 s when the screen is off or almost off.
+- **Battery gauge from the voltage.** On battery the percentage comes from a typical single-cell LiPo
+  discharge curve (`batcurve.h`) over a smoothed voltage and only goes down while discharging; on USB or while
+  charging the PMU's own gauge is used. When the smoothed voltage stays under 3.30 V for 30 s the pet is saved
+  and the PMU powers off (not in the first 30 s after boot); the PMU itself is set to cut at 3.1 V as a backstop.
 - The pet walks by real time, so lower frame rates do not slow it down.
 
 ## Nearby TamaPokes

@@ -27,6 +27,8 @@ void pmuEnablePanel() {}
 int batPercent() { return gBatPercent; }
 bool batCharging() { return gBatCharging; }
 int batMillivolts() { return 3900; }
+bool batShouldShutdown() { return false; }
+void batPowerOff() {}
 bool usbPresent() { return false; }
 bool usbPresentNow() { return false; }
 void batSetPollMs(uint32_t) {}

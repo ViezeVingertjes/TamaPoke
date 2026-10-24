@@ -13,6 +13,8 @@ void batSetPollMs(uint32_t ms);   // cada cuanto se lee el PMU por I2C (se alarg
 int batPercent();                // 0-100, -1 si no hay bateria conectada
 bool batCharging();
 int batMillivolts();               // tension de la bateria en mV, 0 si no hay lectura
+bool batShouldShutdown();          // descargada hasta el limite seguro (batcurve.h): guardar y apagar
+void batPowerOff();                // apagado fisico del PMU
 bool usbPresent();
 bool usbPresentNow();             // sin cache (una lectura I2C): para decidir si se puede dormir
 
