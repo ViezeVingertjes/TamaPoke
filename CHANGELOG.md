@@ -8,6 +8,8 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+## [1.18] - 2026-10-24
+
 ### Added
 
 - **Creatures met nearby are in the Pokédex.** A species shown next to your pet is remembered (the radio only shows the four most recent, with the screen on):
