@@ -1016,7 +1016,7 @@ void render() {
 
   if (pet.isEgg()) {
     drawHeader(T(S_EGG_HDR), inkColor(), eggMsg());
-    int s = 5, x = CX - 16 * s, y = PET_CY - 16 * s;
+    int s = SC(5), x = CX - 16 * s, y = PET_CY - 16 * s;
     drawMap(SPR_EGG, SPRITE_H, x, y, s, false);
     if (pet.eggCracks() >= 1)
       for (auto &c : CRACK1) gfx->fillRect(x + c[0] * s, y + c[1] * s, s, s, INK_K);
@@ -1026,7 +1026,7 @@ void render() {
       const char *rar = (pet.eggRarity() == R_LEGENDARIO) ? T(S_EGG_LEGEND) : T(S_EGG_RARE);
       gfx->setTextColor(pet.eggRarity() == R_LEGENDARIO ? UI_BAR_WARN : 0x4C98);
       setSize(SC(2));
-      setCur(centerX(rar, SC(2)), 316);
+      setCur(centerX(rar, SC(2)), UY(316));
       printT(rar);
     }
     char reg[24];
@@ -1034,7 +1034,7 @@ void render() {
     gfx->fillRect(0, PANEL_Y, UI_W, UI_H - PANEL_Y, gNight ? UI_BG_NIGHT : UI_BG_DAY);
     gfx->setTextColor(inkColor());
     setSize(SC(2));
-    setCur(centerX(reg, SC(2)), 348);
+    setCur(centerX(reg, SC(2)), UY(348));
     printT(reg);
   } else {
     const DexEntry &d = DEX_TBL[pet.speciesId];
@@ -2064,51 +2064,51 @@ void drawCeremony() {
   if (panic) {
     // final triste: penumbra azulada + lluvia
     for (int i = 0; i < 46; i++) {
-      int rx = (i * 47 + now / 3) % UI_W;
-      int ry = (i * 91 + now / 2) % (UI_H + 4);
-      gfx->drawLine(rx, ry, rx - 3, ry + 12, C565(0x6a, 0x84, 0xb0));
+      int rx = U(i * 47 + now / 3) % UI_W;
+      int ry = UY(i * 91 + now / 2) % (UI_H + UY(4));
+      gfx->drawLine(rx, ry, rx - U(3), ry + UY(12), C565(0x6a, 0x84, 0xb0));
     }
     bool fade = false;
     if (t < 0.30f) {                       // cabizbajo, temblando
       act = pmd.has(PMD_HURT) ? PMD_HURT : PMD_IDLE;
-      x = CX + (int)(4 * sinf(now * 0.04f));
+      x = CX + (int)(U(4) * sinf(now * 0.04f));
     } else {                               // se aleja despacio y se desvanece
       act = pmd.has(PMD_WALKL) ? PMD_WALKL : PMD_IDLE;
-      x = CX - (int)(((t - 0.30f) / 0.70f) * (CX + 120));
+      x = CX - (int)(((t - 0.30f) / 0.70f) * (CX + U(120)));
       fade = (t > 0.6f) && ((now / 160) % 2 == 0);  // parpadea hacia la silueta
     }
-    drawPmdAct(act, x, y, now, true, fade, 5);  // fade=silueta: se difumina al irse
+    drawPmdAct(act, x, y, now, true, fade, SC(5));  // fade=silueta: se difumina al irse
     // lagrima cayendo del bicho
     if (t < 0.55f) {
-      int ty = y - 150 + (int)((now / 6) % 40);
-      gfx->fillRect(x + 6, ty, 3, 6, C565(0x9a, 0xc4, 0xe8));
+      int ty = y - UY(150) + UY((int)((now / 6) % 40));
+      gfx->fillRect(x + U(6), ty, SC(3), UY(6), C565(0x9a, 0xc4, 0xe8));
     }
     return;
   }
 
   // despedida epica: halo dorado pulsante + chispas y corazones que ascienden
-  int gcy = PET_GROUND - 96;
+  int gcy = PET_GROUND - UY(96);
   for (int k = 0; k < 4; k++) {
-    int r = 60 + k * 34 + (int)(10 * sinf(now * 0.02f));
+    int r = U(60 + k * 34) + (int)(U(10) * sinf(now * 0.02f));
     gfx->drawCircle(CX, gcy, r, C565(0xff, 0xdf, 0x8a));
   }
   for (int i = 0; i < 16; i++) {
-    int px = (i * 71 + 28) % UI_W;
-    int py = 410 - (int)((now / 8 + i * 70) % 360);   // suben y reaparecen abajo
-    if (py < 30) continue;
-    if (i % 4 == 0) drawMap(SPR_HEART, 32, px - 8, py - 8, 1, false);  // corazoncito
-    else gfx->fillRect(px, py, 4, 4, (i % 2) ? C565(0xff, 0xe7, 0x9f) : C565(0xff, 0x9a, 0xc0));
+    int px = U(i * 71 + 28) % UI_W;
+    int py = UY(410) - UY((int)((now / 8 + i * 70) % 360));   // suben y reaparecen abajo
+    if (py < UY(30)) continue;
+    if (i % 4 == 0) drawMap(SPR_HEART, 32, px - U(8), py - UY(8), SC(1), false);  // corazoncito
+    else gfx->fillRect(px, py, SC(4), SC(4), (i % 2) ? C565(0xff, 0xe7, 0x9f) : C565(0xff, 0x9a, 0xc0));
   }
 
   if (t < 0.45f) {                         // reverencia / pose de despedida
     act = pmd.has(PMD_POSE) ? PMD_POSE : (pmd.has(PMD_NOD) ? PMD_NOD : PMD_IDLE);
   } else {                                 // se aleja por la derecha
     act = pmd.has(PMD_WALKR) ? PMD_WALKR : PMD_IDLE;
-    x = CX + (int)(((t - 0.45f) / 0.55f) * (CX + 140));
+    x = CX + (int)(((t - 0.45f) / 0.55f) * (CX + U(140)));
   }
-  drawPmdAct(act, x, y, now, true, false, 5);
+  drawPmdAct(act, x, y, now, true, false, SC(5));
   if (pet.showHeart())                     // corazon grande siguiendo al bicho
-    drawMap(SPR_HEART, 32, x + 50, y - 190, 2, false);
+    drawMap(SPR_HEART, 32, x + U(50), y - UY(190), SC(2), false);
 }
 
 // dialogo de decision (2 botones apilados): evolucionar/mantener o despedirse/quedaros
@@ -2190,36 +2190,37 @@ void drawRunawayButton() {
 // sprite acelerando + chispas que salen disparadas + fogonazo final
 void drawEvolveFX(uint32_t now) {
   float t = pet.evolveT();          // 0..1
-  int cx = CX, cy = PET_GROUND - 96;
+  int cx = CX, cy = PET_GROUND - UY(96);
 
   // halo radial que crece y pulsa
-  int halo = 36 + (int)(t * 150) + (int)(8 * sinf(now * 0.02f));
+  int halo = U(36) + (int)(t * U(150)) + (int)(U(8) * sinf(now * 0.02f));
   for (int k = 0; k < 4; k++) {
-    int r = halo - k * 7;
+    int r = halo - U(k * 7);
     if (r > 0) gfx->drawCircle(cx, cy, r, UI_WHITE);
   }
   // rayos giratorios desde el centro del bicho
   float base = now * 0.004f;
   for (int i = 0; i < 12; i++) {
     float a = base + i * (float)(PI / 6);
-    int len = 90 + (int)(70 * (0.5f + 0.5f * sinf(now * 0.012f + i)));
+    int len = U(90) + (int)(U(70) * (0.5f + 0.5f * sinf(now * 0.012f + i)));
     gfx->drawLine(cx, cy, cx + (int)(cosf(a) * len), cy + (int)(sinf(a) * len), UI_WHITE);
   }
   // parpadeo entre la forma ANTERIOR y la NUEVA (siluetas), acelerando; al
   // final (t>0.9) se queda fija en la nueva para el fogonazo de revelado
   int period = 60 + (int)(220 * (1.0f - t));
   bool showOld = t < 0.9f && evoPmd.loaded && ((now / period) % 2) == 0;
-  if (showOld) drawPmdActM(evoPmd, PMD_IDLE, cx, PET_GROUND, 0, true, true, 5);
-  else drawPmdAct(PMD_IDLE, cx, PET_GROUND, 0, true, true, 5);
+  if (showOld) drawPmdActM(evoPmd, PMD_IDLE, cx, PET_GROUND, 0, true, true, SC(5));
+  else drawPmdAct(PMD_IDLE, cx, PET_GROUND, 0, true, true, SC(5));
   // chispas que salen disparadas
   for (int i = 0; i < 10; i++) {
     float a = i * (float)(PI / 5) + t * 4.0f;
-    int d = (int)((now / 14 + i * 33) % 200);
+    int d = (int)(U(now / 14 + i * 33) % U(200));
     int sx = cx + (int)(cosf(a) * d), sy = cy + (int)(sinf(a) * d);
-    gfx->fillRect(sx - 2, sy - 2, 5, 5, (i & 1) ? C565(0xff, 0xe0, 0x70) : UI_WHITE);
+    int q = SC(5);  // chispa cuadrada centrada en (sx, sy)
+    gfx->fillRect(sx - q / 2, sy - q / 2, q, q, (i & 1) ? C565(0xff, 0xe0, 0x70) : UI_WHITE);
   }
   // fogonazo final antes de revelar la forma nueva
-  if (t > 0.9f) gfx->fillCircle(cx, cy, (int)(300 * (t - 0.9f) / 0.1f), UI_WHITE);
+  if (t > 0.9f) gfx->fillCircle(cx, cy, (int)(U(300) * (t - 0.9f) / 0.1f), UI_WHITE);
 }
 
 void drawPet() {
@@ -2236,19 +2237,19 @@ void drawPet() {
     // sin SD y sin sprite de flash: aviso claro de que faltan sprites
     gfx->setTextColor(inkColor());
     setSize(SC(6));
-    setCur(CX - 18, PET_CY - 80);
+    setCur(CX - 3 * SC(6), PET_CY - UY(80));  // "?" mide 6 px por escala: la mitad es 3 * escala
     printT("?");
     setSize(SC(2));
     const char *l1 = T(S_NO_SPRITES);
-    setCur(centerX(l1, SC(2)), PET_CY - 4);
+    setCur(centerX(l1, SC(2)), PET_CY - UY(4));
     printT(l1);
     const char *l2 = T(S_LOAD_SPRITES);
-    setCur(centerX(l2, SC(2)), PET_CY + 20);
+    setCur(centerX(l2, SC(2)), PET_CY + UY(20));
     printT(l2);
     return;
   }
   const Species &sp = SPECIES[fi];
-  int s = sp.scale;
+  int s = SC(sp.scale);
   int x = CX - 16 * s;
   int y = PET_CY - 16 * s;
 
@@ -2259,13 +2260,14 @@ void drawPet() {
     int sfi = flashIdxForDex(showDex);
     if (sfi >= 0) {
       const Species &show = SPECIES[sfi];
-      drawMap(show.sprite, SPRITE_H, CX - 16 * show.scale, PET_CY - 16 * show.scale, show.scale, flash);
+      int ss = SC(show.scale);
+      drawMap(show.sprite, SPRITE_H, CX - 16 * ss, PET_CY - 16 * ss, ss, flash);
     }
     return;
   }
 
   PetMood m = pet.mood();
-  if (m == MOOD_HAPPY && (millis() / 500) % 2) y -= 6;  // saltito
+  if (m == MOOD_HAPPY && (millis() / 500) % 2) y -= UY(6);  // saltito
 
   drawMap(sp.sprite, SPRITE_H, x, y, s, false);
 
@@ -2278,7 +2280,7 @@ void drawPet() {
   if (m == MOOD_EATING) overlayMouth(sp, x, y, s, true);
   else if (m == MOOD_SAD) overlayMouth(sp, x, y, s, false);
 
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + 20 * s, y - 2 * s, 2, false);
+  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + 20 * s, y - 2 * s, SC(2), false);
 }
 
 // ---------- escena de bano ----------
@@ -2289,9 +2291,9 @@ void startBath() {
   bathPending = true;
   int cx = (int)beh.x;
   for (auto &b : bubbles) {
-    b.x = cx - 70 + random(140);
-    b.y = PET_GROUND - random(150);
-    b.r = 8 + random(16);
+    b.x = cx - U(70) + random(U(140));
+    b.y = PET_GROUND - random(UY(150));
+    b.r = U(8) + random(U(16));
     b.ph = random(64);
   }
 }
@@ -2318,8 +2320,8 @@ void drawBath() {
     // espuma: pompas meciendose y subiendo poco a poco
     float t = now / 220.0f;
     for (auto &b : bubbles) {
-      int bx = b.x + (int)(sinf(t + b.ph) * 6);
-      int by = b.y - (int)((3000 - left) / 90);
+      int bx = b.x + (int)(sinf(t + b.ph) * U(6));
+      int by = b.y - UY((int)((3000 - left) / 90));
       gfx->fillCircle(bx, by, b.r, UI_WHITE);
       gfx->drawCircle(bx, by, b.r, 0x7E3D);
       gfx->fillCircle(bx - b.r / 3, by - b.r / 3, b.r / 4, UI_BG_DAY);
@@ -2328,10 +2330,11 @@ void drawBath() {
     // las pompas revientan: destellos
     for (int i = 0; i < 8; i++) {
       auto &b = bubbles[i];
-      int sx = b.x + (i % 3) * 6 - 6, sy = b.y - 18;
+      int sx = b.x + U((i % 3) * 6 - 6), sy = b.y - UY(18);
       uint16_t col = (i % 2) ? UI_BAR_WARN : UI_WHITE;
-      gfx->fillRect(sx - 6, sy - 1, 13, 3, col);
-      gfx->fillRect(sx - 1, sy - 6, 3, 13, col);
+      int th = SC(3), len = U(13);  // cruz centrada en (sx, sy)
+      gfx->fillRect(sx - len / 2, sy - th / 2, len, th, col);
+      gfx->fillRect(sx - th / 2, sy - len / 2, th, len, col);
     }
   }
 }
@@ -2363,11 +2366,11 @@ uint8_t pmdFrameAt(const PmdAct &a, uint32_t t, bool loop) {
 void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool sil, uint8_t maxS) {
   const PmdAct &a = m.acts[actId];
   if (!a.frames) return;
-  uint8_t sBase = m.acts[PMD_IDLE].h ? 170 / m.acts[PMD_IDLE].h : 5;
-  if (sBase < 2) sBase = 2;
+  int sBase = m.acts[PMD_IDLE].h ? UY(170) / m.acts[PMD_IDLE].h : SC(5);
+  if (sBase < SC(2)) sBase = SC(2);
   if (sBase > maxS) sBase = maxS;
-  uint8_t s = sBase;
-  while (s > 2 && a.h * s > 250) s--;  // acciones con frame grande (ataque)
+  int s = sBase;
+  while (s > SC(2) && a.h * s > UY(250)) s--;  // acciones con frame grande (ataque)
   uint8_t fi = pmdFrameAt(a, t, loop);
   const uint8_t *fr = a.data + (uint32_t)fi * a.w * a.h;
   // anclar por los pies (a.base), no por el alto del lienzo: asi las acciones
@@ -2393,7 +2396,7 @@ void behNext() {
   int r = random(100);
   if (r < 35 && (pmd.has(PMD_WALKL) || pmd.has(PMD_WALKR))) {
     beh.mode = 1;  // paseo
-    beh.targetX = 150 + random(176);
+    beh.targetX = U(150) + random(U(176));
     beh.until = now + 15000;
   } else if (r < 60) {
     // gesto aleatorio entre los disponibles
@@ -2441,11 +2444,11 @@ void drawPetPMD() {
     if (now > beh.until) behNext();
     if (beh.mode == 1) {
       float d = beh.targetX - beh.x;
-      if (fabsf(d) < 4) {
+      if (fabsf(d) < 4.0f * UI_F) {
         behNext();
         act = PMD_IDLE;
       } else {
-        beh.x += (d > 0 ? 3.0f : -3.0f);
+        beh.x += (d > 0 ? 3.0f : -3.0f) * UI_F;  // px por frame, proporcional al panel
         act = (d > 0) ? PMD_WALKR : PMD_WALKL;
       }
     } else {
@@ -2455,14 +2458,16 @@ void drawPetPMD() {
     if (!pmd.has(act)) act = PMD_IDLE;
   }
 
-  drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, 5);
+  drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, SC(5));
 
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + 50, PET_GROUND - 190, 2, false);
+  if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + U(50), PET_GROUND - UY(190), SC(2), false);
 }
 
 // sprite animado desde la SD: zoom entero por pixel, frames a su ritmo
 void drawPetSD() {
-  int s = mon.scale;
+  int s = UY(200) / mon.h;  // como en la carga (200 / alto), pero con el escenario escalado
+  if (s < SC(2)) s = SC(2);
+  if (s > SC(5)) s = SC(5);
   int w = mon.w * s, h = mon.h * s;
   int x = CX - w / 2;
   int y = PET_CY - h / 2;
@@ -2471,7 +2476,7 @@ void drawPetSD() {
   if (pet.evolving()) {
     sil = (millis() / 300) % 2;
   } else if (pet.mood() == MOOD_HAPPY && (millis() / 500) % 2) {
-    y -= 6;  // saltito
+    y -= UY(6);  // saltito
   }
 
   uint16_t fm = mon.frameMs ? mon.frameMs : 100;
@@ -2487,7 +2492,7 @@ void drawPetSD() {
   }
 
   // emotes en vez de expresiones (los sprites importados no tienen anclas)
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + w - 30, y - 50, 2, false);
+  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + w - U(30), y - UY(50), SC(2), false);
 }
 
 // ojo cerrado: borra el ojo 3x4 y dibuja el parpado
