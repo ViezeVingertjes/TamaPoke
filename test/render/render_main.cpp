@@ -362,6 +362,37 @@ static int runTapTests() {
   return gTapFails ? 1 : 0;
 }
 
+// ---------- medida de texto: textW() debe ser lo que de verdad avanza el cursor ----------
+static int runMeasureTests() {
+  int fails = 0, checked = 0;
+  gfx->setTextWrap(false);
+  for (Lang lg : { LANG_JA, LANG_KO }) {
+    setLang(lg);
+    applyLangFont();
+    for (int size = 1; size <= 4; size++) {
+      std::vector<const char *> all;
+      for (int id = 0; id < STR_COUNT; id++) all.push_back(T((StrId)id));
+      for (int i = 0; i < MED_COUNT; i++) { all.push_back(medalName(i)); all.push_back(medalLabel(i)); all.push_back(medalDesc(i)); }
+      for (int d = 1; d <= 151; d++) all.push_back(dexName(d));
+      for (const char *t : all) {
+        if (!t || !*t) continue;
+        setSize(size);
+        int w = textW(t, size);
+        gfx->setCursor(0, 100);
+        gfx->print(t);
+        int adv = gfx->getCursorX();
+        checked++;
+        if (w != adv) {
+          if (fails < 100000) fprintf(stderr, "FALLA %s tam %d: textW=%d, el cursor avanza %d  '%s'\n", lg == LANG_JA ? "JA" : "KO", size, w, adv, t);
+          fails++;
+        }
+      }
+    }
+  }
+  fprintf(stderr, "%d fallos de medida (%d cadenas)\n", fails, checked);
+  return fails ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) { fprintf(stderr, "uso: %s carpeta [idioma] [filtro]\n", argv[0]); return 2; }
   std::string out = argv[1];
@@ -374,7 +405,8 @@ int main(int argc, char **argv) {
   }
   std::string filter = argc > 3 ? argv[3] : "";
   bool tapsMode = filter == "--taps";
-  if (tapsMode) filter = "";
+  bool measureMode = filter == "--measure";
+  if (tapsMode || measureMode) filter = "";
   int drawn = 0;
   if (lang < 0 || lang >= LANG_COUNT) { fprintf(stderr, "idioma fuera de rango: %d\n", lang); return 2; }
 
@@ -387,6 +419,7 @@ int main(int argc, char **argv) {
   gPristinePet = pet;
 
   if (tapsMode) return runTapTests();
+  if (measureMode) return runMeasureTests();
   std::vector<const Scene *> all;
   for (const Scene &sc : SCENES) all.push_back(&sc);
   for (const Scene &sc : EXTRA)

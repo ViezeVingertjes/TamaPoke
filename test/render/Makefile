@@ -2,6 +2,7 @@
 #   make shots               -> build/shots/*.ppm (ingles, 466x466)
 #   make shots FILTER=main_day  -> solo esa pantalla
 #   make taps                -> toca el centro de cada boton y dialogo (admite SIZE=)
+#   make measure             -> textW() contra lo que avanza el cursor, en japones y coreano
 #   make shots LANG_ID=6     -> otro idioma (0 ES, 1 EN, 2 FR, 3 DE, 4 IT, 5 PT, 6 JA, 7 KO)
 #   make check               -> compara con golden/<idioma> (falla si alguna pantalla cambia)
 #   make golden              -> regenera golden/ (solo si el cambio de interfaz es intencionado)
@@ -46,7 +47,7 @@ $(BUILD)/flags: FORCE
 	@echo '$(CXX) $(CXXFLAGS_ALL)' | cmp -s - $@ || echo '$(CXX) $(CXXFLAGS_ALL)' > $@
 FORCE:
 
-.PHONY: shots taps check golden clean
+.PHONY: shots taps measure check golden clean
 shots: $(BIN)
 	@mkdir -p $(SHOTS) && find $(SHOTS) -maxdepth 1 -type f -delete
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) $(abspath $(SHOTS)) $(LANG_ID) $(FILTER)
@@ -83,6 +84,9 @@ golden: renders
 
 taps: $(BIN)
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null 1 --taps
+
+measure: $(BIN)
+	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null 1 --measure
 
 $(BUILD)/TamaPoke.gen.cpp: $(ROOT)/TamaPoke.ino protos.py
 	@mkdir -p $(BUILD)

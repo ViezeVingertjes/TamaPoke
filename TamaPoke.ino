@@ -184,10 +184,10 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define CLOCK_BTN_H UY(58)
 #define CLOCK_BTN_Y UY(190)
 // grupos hora (- +) y minutos (- +) de 124 de ancho con 24 de hueco, centrados en la pantalla
-#define CLK_X0 U(97)
-#define CLK_X1 U(163)
-#define CLK_X2 U(245)
-#define CLK_X3 U(311)
+#define CLK_X0 (CX - U(136))
+#define CLK_X1 (CX - U(70))
+#define CLK_X2 (CX + U(12))
+#define CLK_X3 (CX + U(78))
 #define SND_PILL_X U(34)
 #define SND_PILL_W U(96)
 #define CLOCK_OK_X U(133)
@@ -990,13 +990,32 @@ void applyLangFont() {
 //
 // Para la fuente clasica devuelve EXACTAMENTE la misma cuenta que habia antes,
 // asi que este cambio no mueve un pixel en los seis idiomas actuales.
-uint16_t textW(const char *s, int size) {
-  if (!gCjkFont) return (uint16_t)strlen(s) * 6 * size;
-  int16_t x1, y1;
-  uint16_t w, h;
-  gfx->getTextBounds(s, 0, 0, &x1, &y1, &w, &h);
+// Ancho de un texto UTF-8 con unifont a escala 1: 8 px los caracteres de media anchura
+// (ASCII, latin-1, katakana de media anchura) y 16 el resto. getTextBounds() de
+// Arduino_GFX no sirve para esto: con hangul devuelve 1-30 px para textos que miden
+// 60-150 y con japones mide la tinta, no el avance, asi que centrar con el se desviaba.
+static int cjkAdvance(const char *s) {
+  int w = 0;
+  for (const uint8_t *p = (const uint8_t *)s; *p;) {
+    uint32_t cp;
+    int n;
+    if (*p < 0x80) { cp = *p; n = 1; }
+    else if (*p < 0xE0) { cp = ((*p & 0x1F) << 6) | (p[1] & 0x3F); n = 2; }
+    else if (*p < 0xF0) { cp = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F); n = 3; }
+    else { cp = 0x10000; n = 4; }
+    w += (cp < 0x100 || (cp >= 0xFF61 && cp <= 0xFF9F)) ? 8 : 16;
+    for (int i = 0; i < n && *p; i++) p++;
+  }
   return w;
 }
+
+uint16_t textW(const char *s, int size) {
+  if (!gCjkFont) return (uint16_t)strlen(s) * 6 * size;
+  return (uint16_t)(cjkAdvance(s) * gTextSize);  // el tamano aplicado por setSize()
+}
+
+// alto de una linea de texto con la fuente y el tamano aplicados
+static int textH() { return (gCjkFont ? 16 : 7) * gTextSize; }
 
 // x del cursor para dejar el texto centrado en CX
 int centerX(const char *s, int size) { return CX - textW(s, size) / 2; }
@@ -1030,7 +1049,8 @@ int fitWidth(const char *s, int big, int small, int maxW) {
 // lo mismo contra la cuerda visible de la pantalla redonda a la altura de la linea
 // mas baja del texto (y + alto)
 int fitSize(const char *s, int big, int small, int y) {
-  int topW = chordW(y), botW = chordW(y + 7 * big);
+  setSize(big);  // para medir el alto y el ancho con el tamano que se aplicara
+  int topW = chordW(y), botW = chordW(y + textH());
   return fitWidth(s, big, small, (topW < botW ? topW : botW) - U(8));  // 4 px de diseno de aire por lado
 }
 
@@ -1136,7 +1156,7 @@ void render() {
     drawButtons();
     drawCelebration();
     // sin dialogo abierto encima: el boton de despedida es mas ancho que el dialogo y asomaba por los lados
-    if (choiceKind || confirmUntil || feedMenuUntil) {
+    if ((choiceKind && timeLeft(choiceUntil)) || timeLeft(confirmUntil) || timeLeft(feedMenuUntil)) {
       // un dialogo tapa el boton
     } else if (pet.wantEvolveButton()) drawEvolveButton();        // CTA rojo: evolucionar
     else if (pet.canRunawayNow()) drawRunawayButton();     // CTA sombrio: escapada (abandono)
@@ -1578,7 +1598,7 @@ void drawClockBtn(int x, int y, const char *l) {
   gfx->drawRoundRect(x, y, CLOCK_BTN_W, CLOCK_BTN_H, U(12), UI_INK);
   gfx->setTextColor(UI_INK);
   setSize(TS(4));
-  setCur(x + (CLOCK_BTN_W - textW(l, TS(4))) / 2, y + (CLOCK_BTN_H - 7 * TS(4)) / 2);  // fuente latina: 7 px de alto por escala
+  setCur(x + (CLOCK_BTN_W - textW(l, TS(4))) / 2, y + (CLOCK_BTN_H - textH()) / 2);  // se llama con la fuente latina puesta
   printT(l);
 }
 
@@ -1592,23 +1612,13 @@ static const char *const LANG_CODES[LANG_COUNT] = { "ES", "EN", "FR", "DE", "IT"
 void renderClock() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+
+  // --- textos del idioma activo ---
   gfx->setTextColor(UI_INK);
   setSize(TS(3));
   setCur(centerX(T(S_SET_TIME), TS(3)), UY(44));
   printT(T(S_SET_TIME));
 
-  char t[8];
-  snprintf(t, sizeof(t), "%02d:%02d", clockH, clockM);
-  useLatinFont();  // la hora y los +/- son latinos aunque el idioma sea CJK
-  setSize(TS(7));
-  setCur(centerX(t, TS(7)), UY(108));
-  printT(t);
-
-  drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-");  // hora -
-  drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+");  // hora +
-  drawClockBtn(CLK_X2, CLOCK_BTN_Y, "-");  // min -
-  drawClockBtn(CLK_X3, CLOCK_BTN_Y, "+");  // min +
-  applyLangFont();
   setSize(TS(2));
   gfx->setTextColor(UI_TRACK);
   // cada etiqueta, centrada bajo su grupo de botones
@@ -1624,7 +1634,7 @@ void renderClock() {
   gfx->drawRoundRect(SND_PILL_X, LANG_PILL_Y, SND_PILL_W, LANG_PILL_H, U(8), UI_INK);
   gfx->setTextColor(snd ? UI_BG_DAY : UI_INK);
   setSize(TS(2));
-  setCur(SND_PILL_X + (SND_PILL_W - textW(sl, TS(2))) / 2, LANG_PILL_Y + (LANG_PILL_H - 7 * TS(2)) / 2);
+  setCur(SND_PILL_X + (SND_PILL_W - textW(sl, TS(2))) / 2, LANG_PILL_Y + (LANG_PILL_H - textH()) / 2);
   printT(sl);
 
   // selector de idioma: una pildora que cicla los 6 idiomas al tocar
@@ -1634,30 +1644,43 @@ void renderClock() {
   snprintf(lp, sizeof(lp), "%s >", LANG_CODES[gLang]);
   gfx->setTextColor(UI_INK);
   setSize(TS(2));
-  setCur(LANG_PILL_X + (LANG_PILL_W - textW(lp, TS(2))) / 2, LANG_PILL_Y + (LANG_PILL_H - 7 * TS(2)) / 2);
+  setCur(LANG_PILL_X + (LANG_PILL_W - textW(lp, TS(2))) / 2, LANG_PILL_Y + (LANG_PILL_H - textH()) / 2);
   printT(lp);
 
-  gfx->fillRoundRect(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, U(14), UI_BAR_OK);
-  gfx->setTextColor(UI_BG_DAY);
-  useLatinFont();
-  setSize(TS(3));
-  setCur(centerX("OK", TS(3)), UY(352));
-  printT("OK");
-
-  applyLangFont();
   gfx->setTextColor(UI_TRACK);
   int cs = fitSize(T(S_CLOCK_CANCEL), TS(2), TS(1), UY(410));  // en algunos idiomas no cabe a tamano 2
   setCur(centerX(T(S_CLOCK_CANCEL), cs), UY(410));
   printT(T(S_CLOCK_CANCEL));
 
+  // --- hora, botones, OK y version: siempre en la fuente latina, aunque el idioma sea CJK ---
+  useLatinFont();
+  gfx->setTextColor(UI_INK);
+  char t[8];
+  snprintf(t, sizeof(t), "%02d:%02d", clockH, clockM);
+  setSize(TS(7));
+  setCur(centerX(t, TS(7)), UY(108));
+  printT(t);
+
+  drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-");  // hora -
+  drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+");  // hora +
+  drawClockBtn(CLK_X2, CLOCK_BTN_Y, "-");  // min -
+  drawClockBtn(CLK_X3, CLOCK_BTN_Y, "+");  // min +
+
+  gfx->fillRoundRect(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, U(14), UI_BAR_OK);
+  gfx->setTextColor(UI_BG_DAY);
+  setSize(TS(3));
+  setCur(centerX("OK", TS(3)), UY(352));
+  printT("OK");
+
   // version del firmware (discreta, abajo del todo)
   char ver[20];
   snprintf(ver, sizeof(ver), "TamaPoke v%s", FW_VERSION);
-  useLatinFont();
+  gfx->setTextColor(UI_TRACK);
   setSize(TS(1));
   setCur(centerX(ver, TS(1)), UY(436));
   printT(ver);
-  applyLangFont();
+
+  applyLangFont();  // deja puesta la fuente del idioma para la siguiente pantalla
   gfx->flush();
 }
 
