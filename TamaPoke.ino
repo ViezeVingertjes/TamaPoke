@@ -1785,9 +1785,11 @@ void renderCardMedals() {
   printT(head);
 
   for (int i = 0; i < MED_COUNT; i++) {
-    int x = U(28 + (i % 2) * 206), y = UY(104 + (i / 2) * 54);
+    // dos columnas de 192 con 6 de hueco, centradas; las de arriba empiezan en 110 para que
+    // la esquina izquierda no salga del circulo
+    int x = CX - U(195) + (i % 2) * U(198), y = UY(110 + (i / 2) * 54);
     bool g = pet.hasMedal(1 << i);
-    gfx->fillRoundRect(x, y, U(196), UY(44), U(10), g ? UI_BAR_OK : UI_TRACK);
+    gfx->fillRoundRect(x, y, U(192), UY(44), U(10), g ? UI_BAR_OK : UI_TRACK);
     if (g) {  // marca de conseguida
       gfx->fillCircle(x + U(22), y + UY(22), U(11), UI_BG_DAY);
       gfx->setTextColor(UI_BAR_OK);
@@ -1887,10 +1889,11 @@ void renderCard() {
 
 static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK = 30
 #define KB_COLS 6
-#define KB_X U(40)
-#define KB_Y UY(150)
-#define KB_W U(64)
-#define KB_H UY(52)
+// 6 columnas x 5 filas centradas; la fila de abajo cabe dentro del circulo
+#define KB_W U(56)
+#define KB_H UY(46)
+#define KB_X (CX - KB_COLS * KB_W / 2)
+#define KB_Y UY(140)
 
 void openKeyboard() {
   kbOpen = true;
@@ -2002,7 +2005,7 @@ void renderGallery() {
       drawPmdActM(galleryPmd, PMD_IDLE, CX, UY(300), reg ? millis() : 0, true, !reg, SC(6));
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL, UY(135), SC(4), !reg);
+      if (t) drawThumb(t, CX - GAL_CELL / 2, UY(135), SC(4), !reg);  // drawThumb centra en su celda
     }
     gfx->setTextColor(UI_INK);
     setSize(TS(2));
@@ -2021,7 +2024,7 @@ void renderGallery() {
   snprintf(head, sizeof(head), T(S_POKEDEX_FMT), pet.registeredCount());
   gfx->setTextColor(UI_INK);
   setSize(TS(3));
-  setCur(centerX(head, TS(3)), UY(36));
+  setCur(centerX(head, TS(3)), UY(48));  // a 36 el borde de "POKEDEX" salia del circulo
   printT(head);
 
   for (int r = 0; r < 4; r++) {
