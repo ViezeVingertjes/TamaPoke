@@ -350,6 +350,26 @@ static int runTapTests() {
   float wdx = ballX - CX, wdy = ballY - CY;
   EXPECT(sqrtf(wdx * wdx + wdy * wdy) <= BALL_R + 0.5f, "la bola no cruza la pared");
   EXPECT(ballVX < 0, "la pared devuelve la bola");
+#if !LCD_ROUND
+  // panel cuadrado: techo y paredes. Una bola que sube pegada al techo rebota y baja; una que
+  // sale por un lado vuelve; una que ya esta fuera pero va hacia dentro no se invierte.
+  begin("game");
+  gameScore = 3; ballX = CX; ballY = CY - BALL_R + U(1); ballVX = 0; ballVY = -4 * UI_F; lastGameStep = 0;
+  mockAdvanceMillis(85); stepGame();
+  EXPECT(ballY >= CY - BALL_R - 0.5f && ballVY > 0, "el techo devuelve la bola hacia abajo");
+  begin("game");
+  gameScore = 3; ballX = CX + BALL_R - U(1); ballY = CY + UY(100); ballVX = 5 * UI_F; ballVY = 0; lastGameStep = 0;
+  mockAdvanceMillis(85); stepGame();
+  EXPECT(ballX <= CX + BALL_R + 0.5f && ballVX < 0, "la pared derecha devuelve la bola");
+  begin("game");  // una esquina arriba a la izquierda: las dos paredes a la vez
+  gameScore = 3; ballX = CX - BALL_R + U(1); ballY = CY - BALL_R + U(1); ballVX = -5 * UI_F; ballVY = -5 * UI_F; lastGameStep = 0;
+  mockAdvanceMillis(85); stepGame();
+  EXPECT(ballVX > 0 && ballVY > 0 && ballX >= CX - BALL_R - 0.5f && ballY >= CY - BALL_R - 0.5f, "la esquina devuelve la bola");
+  begin("game");  // ya fuera pero yendo hacia dentro: se corrige la posicion y la velocidad se respeta
+  gameScore = 3; ballX = CX - BALL_R - U(6); ballY = CY; ballVX = 2 * UI_F; ballVY = 0; lastGameStep = 0;
+  mockAdvanceMillis(85); stepGame();
+  EXPECT(ballX >= CX - BALL_R - 0.5f && ballVX > 0, "dentro-hacia-dentro no invierte la velocidad");
+#endif
   // saco de entrenamiento: tocar golpea, la cabecera abandona
   begin("sack");
   uint16_t h0 = sackHits;

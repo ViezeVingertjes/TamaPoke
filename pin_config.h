@@ -20,6 +20,10 @@
 #ifndef LCD_HEIGHT
 #define LCD_HEIGHT 466
 #endif
+// 1 = pantalla redonda (menus sobre un disco), 0 = cuadrada (menus a pantalla completa)
+#ifndef LCD_ROUND
+#define LCD_ROUND 1
+#endif
 
 // Táctil capacitivo CST9217 por I2C
 #define IIC_SDA 15

@@ -8,6 +8,7 @@
 #   make check               -> compara con golden/<idioma> (falla si alguna pantalla cambia)
 #   make golden              -> regenera golden/ (solo si el cambio de interfaz es intencionado)
 #   make shots SIZE=240      -> otro tamano de lienzo (cuadrado, en pixeles)
+#   make shots ROUND=0       -> panel cuadrado (menus a pantalla completa); por defecto, redondo
 # Compila el codigo grafico de la libreria GFX Library for Arduino y saca las fuentes
 # CJK de la libreria U8g2 (GFX_FONT_FILE / U8G2_FONTS si no estan en ~/Arduino).
 CXX      ?= g++
@@ -28,11 +29,12 @@ $(error falta la libreria U8g2: instalala o pasa U8G2_FONTS=.../src/clib/u8g2_fo
 endif
 endif
 ROOT     := ../..
-BUILD    := build
+# cada variante (SIZE/ROUND) compila en su carpeta: asi check no recompila el mismo binario
+BUILD    := build$(if $(SIZE)$(ROUND),/v$(SIZE)_$(ROUND))
 BIN      := $(BUILD)/render
 OPT      ?= -O1 -g
 CXXFLAGS_ALL := -std=c++17 $(OPT) -Wno-narrowing -Wno-write-strings -fpermissive \
-                -ffp-contract=off $(if $(SIZE),-DLCD_WIDTH=$(SIZE) -DLCD_HEIGHT=$(SIZE)) -I shim -I ../shim -I $(ROOT) -I $(BUILD) -I $(GFX_SRC) $(CXXFLAGS)
+                -ffp-contract=off $(if $(SIZE),-DLCD_WIDTH=$(SIZE) -DLCD_HEIGHT=$(SIZE)) $(if $(ROUND),-DLCD_ROUND=$(ROUND)) -I shim -I ../shim -I $(ROOT) -I $(BUILD) -I $(GFX_SRC) $(CXXFLAGS)
 GFX_SOURCES := $(GFX_SRC)/Arduino_GFX.cpp $(GFX_SRC)/Arduino_G.cpp $(GFX_SRC)/Arduino_DataBus.cpp \
                $(GFX_SRC)/canvas/Arduino_Canvas.cpp
 SOURCES  := render_main.cpp host.cpp ../shim/shim.cpp $(ROOT)/pet.cpp $(ROOT)/i18n.cpp $(ROOT)/sdmon.cpp \
@@ -69,19 +71,22 @@ versions:
 CHECKDIR := $(BUILD)/check
 .PHONY: renders nosize
 nosize:
-	@test -z "$(SIZE)" || { echo "SIZE solo vale para 'make shots': las referencias son de 466 px"; exit 1; }
+	@test -z "$(SIZE)$(ROUND)" || { echo "SIZE y ROUND solo valen para shots, taps y fit: las referencias de los idiomas son de 466 px redondos"; exit 1; }
 renders: nosize $(BIN) versions
 	@rm -rf $(CHECKDIR); for l in $(LANGS); do n=$${l%%:*}; \
-	  $(MAKE) --no-print-directory shots LANG_ID=$${l##*:} SHOTS=$(CHECKDIR)/$$n >/dev/null || exit 1; done
+	  $(MAKE) --no-print-directory shots LANG_ID=$${l##*:} SHOTS=$(CURDIR)/$(CHECKDIR)/$$n >/dev/null || exit 1; done
+	@$(MAKE) --no-print-directory shots SIZE=480 ROUND=0 LANG_ID=1 SHOTS=$(CURDIR)/$(CHECKDIR)/sq480 >/dev/null || exit 1
 
 check: renders
 	@fail=0; for l in $(LANGS); do n=$${l%%:*}; \
-	  echo "== $$n"; python3 compare.py $(CHECKDIR)/$$n golden/$$n || fail=1; done; exit $$fail
+	  echo "== $$n"; python3 compare.py $(CHECKDIR)/$$n golden/$$n || fail=1; done; \
+	echo "== sq480 (panel cuadrado de 480 px, ingles)"; python3 compare.py $(CHECKDIR)/sq480 golden/sq480 || fail=1; exit $$fail
 
 # solo escribe si todos los idiomas se han renderizado bien
 golden: renders
 	@for l in $(LANGS); do n=$${l%%:*}; \
 	  python3 compare.py --update --prune $(CHECKDIR)/$$n golden/$$n || exit 1; done
+	@python3 compare.py --update --prune $(CHECKDIR)/sq480 golden/sq480
 
 taps: $(BIN)
 	cd $(ROOT) && TAMAPOKE_SD=$(SD_DIR) $(abspath $(BIN)) /dev/null 1 --taps

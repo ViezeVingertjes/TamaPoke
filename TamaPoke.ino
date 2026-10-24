@@ -884,10 +884,20 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
   }
 }
 
-// primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
-void renderStarterSelect() {
+// fondo de los menus: un disco sobre negro en la pantalla redonda, todo el lienzo en la
+// cuadrada
+void drawScreenBg() {
+#if LCD_ROUND
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+#else
+  gfx->fillScreen(UI_BG_DAY);
+#endif
+}
+
+// primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
+void renderStarterSelect() {
+  drawScreenBg();
   const char *t = T(S_CHOOSE_STARTER);
   gfx->setTextColor(UI_INK);
   setSize(TS(2));
@@ -1061,16 +1071,21 @@ void useLatinFont() {
   gFontAscent = 0;
 }
 
-// ancho visible de la pantalla redonda a la altura y (px); el borde es el circulo UI_R
+// ancho visible de la pantalla a la altura y (px): en la redonda, la cuerda del circulo UI_R;
+// en la cuadrada, todo el ancho
 int chordW(int y) {
+#if LCD_ROUND
   int dy = y - CY;
   int h2 = UI_R * UI_R - dy * dy;
   return h2 > 0 ? 2 * (int)sqrtf((float)h2) : 0;
+#else
+  return UI_W;
+#endif
 }
 
 // ancho disponible para una linea de texto con su borde superior en y: la cuerda visible
-// de la pantalla redonda en su punto mas estrecho (arriba o abajo de la linea) con
-// 4 px de diseno de aire por lado. Requiere el tamano ya aplicado (para textH()).
+// de la pantalla (en la redonda, la de su punto mas estrecho: arriba o abajo de la linea),
+// con 4 px de diseno de aire por lado. Requiere el tamano ya aplicado (para textH()).
 int chordAvail(int y) {
   int topW = chordW(y), botW = chordW(y + textH());
   return (topW < botW ? topW : botW) - U(8);
@@ -1380,6 +1395,7 @@ void stepGame() {
   ballVY += grav * k;
   ballX += ballVX * k;
   ballY += ballVY * k;
+#if LCD_ROUND
   // rebote en la pared circular
   float dx = ballX - CX, dy = ballY - CY;
   float d = sqrtf(dx * dx + dy * dy);
@@ -1393,6 +1409,13 @@ void stepGame() {
     ballX = CX + nx * BALL_R;
     ballY = CY + ny * BALL_R;
   }
+#else
+  // rebote en las paredes y el techo del cuadrado (el mismo margen que la pared circular):
+  // la posicion se corrige siempre y la velocidad solo se invierte si la bola va hacia fuera
+  if (ballX < CX - BALL_R) { ballX = CX - BALL_R; if (ballVX < 0) ballVX *= -0.85f; }
+  else if (ballX > CX + BALL_R) { ballX = CX + BALL_R; if (ballVX > 0) ballVX *= -0.85f; }
+  if (ballY < CY - BALL_R) { ballY = CY - BALL_R; if (ballVY < 0) ballVY *= -0.85f; }
+#endif
   if (ballY > UY(384)) {  // al suelo
     if (++gameMisses >= 3) {
       gameNewHi = (gameScore > pet.gameHi);
@@ -1712,8 +1735,7 @@ int clockCancelW() {
 }
 
 void renderClock() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+  drawScreenBg();
 
   // --- textos del idioma activo ---
   gfx->setTextColor(UI_INK);
@@ -2035,8 +2057,7 @@ void renderCardProgress() {
 }
 
 void renderCard() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+  drawScreenBg();
   if (cardPage == 0) renderCardProfile();
   else if (cardPage == 1) renderCardStats();
   else if (cardPage == 2) renderCardMedals();
@@ -2073,8 +2094,7 @@ void openKeyboard() {
 }
 
 void renderKeyboard() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+  drawScreenBg();
   gfx->setTextColor(UI_INK);
   setSize(TS(2));
   setCur(centerX(T(S_NAME), TS(2)), UY(56));
@@ -2156,8 +2176,7 @@ void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
 
 void renderGallery() {
   if (galleryDetail) {  // vista detalle: se redibuja siempre (animada)
-    gfx->fillScreen(RGB565_BLACK);
-    gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+    drawScreenBg();
     const DexEntry &d = DEX_TBL[galleryDetail];
     bool reg = pet.isRegistered(galleryDetail);
     char head[32];
@@ -2190,8 +2209,7 @@ void renderGallery() {
   if (!galleryDirty) return;  // la rejilla es estatica
   galleryDirty = false;
 
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, UI_R, UI_BG_DAY);
+  drawScreenBg();
   char head[24];
   snprintf(head, sizeof(head), T(S_POKEDEX_FMT), pet.registeredCount());
   gfx->setTextColor(UI_INK);
