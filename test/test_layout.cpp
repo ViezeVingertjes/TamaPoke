@@ -9,7 +9,6 @@ TEST(layout, en_466_las_medidas_no_cambian) {
 TEST(layout, los_enteros_nunca_bajan_de_uno) {
   for (int panel : { 120, 240, 360, 466, 480 })
     for (int n = -3; n <= 20; n++) {
-      CHECK(uiScaleInt(n, panel) >= 1);
       CHECK(uiScaleFit(n, panel) >= 1);
     }
 }
@@ -29,26 +28,21 @@ TEST(layout, la_escala_de_sprites_nunca_pasa_de_la_caja) {
   CHECK_EQ(uiScaleFit(3, 932), 6);   // 6,0 -> 6
 }
 
-TEST(layout, texto_y_sprites_redondean_distinto) {
-  // 5 * 240/466 = 2,57: el texto sube a 3, el sprite baja a 2
-  CHECK_EQ(uiScaleInt(5, 240), 3);
-  CHECK_EQ(uiScaleFit(5, 240), 2);
-  // en el tamano de diseno son la identidad para cualquier factor usado
+TEST(layout, texto_y_sprites_son_la_identidad_en_el_tamano_de_diseno) {
   for (int n = 1; n <= 8; n++) {
-    CHECK_EQ(uiScaleInt(n, UI_DESIGN), n);
     CHECK_EQ(uiScaleFit(n, UI_DESIGN), n);
+    CHECK_EQ(TS(n) * 1, uiScaleFit(n, UI_W));  // TS y SC usan el mismo redondeo
   }
 }
-
 TEST(layout, valores_calculados_a_mano) {
   CHECK_EQ(uiScale(1, 240), 1);      // 0,52 -> 1
   CHECK_EQ(uiScale(3, 240), 2);      // 1,55 -> 2
   CHECK_EQ(uiScale(100, 240), 52);   // 51,50 -> 52 (mitad hacia arriba)
   CHECK_EQ(uiScale(233, 480), 240);  // 240,05 -> 240
   CHECK_EQ(uiScale(-100, 240), -52);
-  CHECK_EQ(uiScaleInt(4, 240), 2);   // 2,06 -> 2
-  CHECK_EQ(uiScaleInt(1, 120), 1);   // 0,26 -> sube a 1
-  CHECK_EQ(uiScaleInt(10, 480), 10); // 10,3 -> 10
+  CHECK_EQ(uiScaleFit(4, 240), 2);   // 2,06 -> 2
+  CHECK_EQ(uiScaleFit(1, 120), 1);   // 0,26 -> sube a 1
+  CHECK_EQ(uiScaleFit(10, 480), 10); // 10,3 -> 10
 }
 
 TEST(layout, las_constantes_derivadas_valen_lo_de_siempre_en_466) {

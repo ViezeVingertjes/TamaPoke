@@ -24,16 +24,17 @@ constexpr int uiScale(int n, int panel) {
 #define U(n) uiScale((n), UI_W)   // medidas y posiciones horizontales
 #define UY(n) uiScale((n), UI_H)  // medidas y posiciones verticales
 
-// factores enteros (nunca bajan de 1):
-//  - TS: tamano de texto, al entero mas cercano (un texto algo mas grande o
-//    pequeno se lee igual; uno que no cabe, no)
-//  - SC: escala de sprite o pixel-art, hacia abajo, para que el dibujo no se
-//    salga de la caja que se ha escalado con U()/UY() (salvo el minimo de 1,
-//    que en paneles de menos de ~350 px hace que el sprite sea mas grande que su caja)
+// factores enteros (nunca bajan de 1), redondeados HACIA ABAJO para que lo dibujado
+// no sea mas grande que la caja que se escalo con U()/UY():
+//  - TS: tamano de texto (setSize/textW/centerX). Medido con las cadenas reales de los 8
+//    idiomas: redondear al mas cercano desbordaba cajas en paneles de 360 y 240 px.
+//  - SC: escala de sprite o pixel-art (drawMap, drawPmdAct...).
+// Son iguales; se mantienen dos nombres para que el uso quede claro y un test vigile
+// que no se crucen. El minimo de 1 hace que en paneles de menos de ~350 px el dibujo
+// pueda ser mas grande que su caja.
 constexpr int uiAtLeast1(int v) { return v < 1 ? 1 : v; }
-constexpr int uiScaleInt(int n, int panel) { return uiAtLeast1(uiScale(n, panel)); }
 constexpr int uiScaleFit(int n, int panel) { return uiAtLeast1((int)((int64_t)n * panel / UI_DESIGN)); }
-#define TS(n) uiScaleInt((n), UI_W)
+#define TS(n) uiScaleFit((n), UI_W)
 #define SC(n) uiScaleFit((n), UI_W)
 
 // factor lineal respecto al diseno, para magnitudes que no son longitudes enteras
