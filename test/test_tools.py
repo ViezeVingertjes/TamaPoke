@@ -196,6 +196,18 @@ class TestSketchSanity(unittest.TestCase):
 
 
 
+    def test_la_version_coincide_en_sketch_readme_y_changelog(self):
+        def leer(nombre):
+            with open(os.path.join(ROOT, nombre), encoding='utf-8') as fh:
+                return fh.read()
+
+        fw = re.search(r'#define FW_VERSION "([^"]+)"', self.ino).group(1)
+        badge = re.search(r'badge/firmware-v([\d.]+)-', leer('README.md')).group(1)
+        # la primera cabecera numerada (la de [Unreleased], si hay, no cuenta)
+        log = re.search(r'^## \[(\d[\d.]*)\]', leer('CHANGELOG.md'), re.M).group(1)
+        self.assertEqual((fw, badge), (log, log), 'FW_VERSION, badge del README y CHANGELOG no coinciden')
+
+
 class TestBuffersDeTexto(unittest.TestCase):
     """Cada snprintf(buf, sizeof(buf), T(S_x), ...) cabe en su buffer.
 
