@@ -7,8 +7,8 @@
 
 // ---------------------------------------------------------------------------
 // Radio ESP-NOW para ver a los TamaPokes de al lado. Diseno para gastar poco:
-//  - la radio solo esta encendida en ventanas de 0,8 s (cada 15 s en uso, 45 s con la
-//    pantalla atenuada, 2 min con la pantalla apagada) y en una busqueda activa de 60 s
+//  - la radio solo esta encendida en ventanas de 0,8 s (cada 25 s en uso, 45 s con la
+//    pantalla atenuada, 5 min con la pantalla apagada) y en una busqueda activa de 60 s
 //    que empieza al activar la funcion;
 //  - potencia de transmision minima (2 dBm): "cerca" quiere decir cerca;
 //  - el callback de recepcion no hace nada mas que guardar el paquete en un anillo; la

@@ -165,9 +165,9 @@ enum NbMode : uint8_t { NB_OFF = 0, NB_ACTIVE, NB_DIM, NB_NIGHT, NB_SEARCH };
 #define NB_SEARCH_MS 60000UL
 inline uint32_t nbPeriodMs(NbMode m) {
   switch (m) {
-    case NB_ACTIVE: return 15000;
+    case NB_ACTIVE: return 25000;
     case NB_DIM: return 45000;
-    case NB_NIGHT: return 120000;
+    case NB_NIGHT: return 300000;
     default: return 0;  // NB_OFF no tiene ventanas; NB_SEARCH es una sola continua
   }
 }

@@ -149,15 +149,15 @@ TEST(nearby, el_horario_depende_de_si_se_usa_el_aparato) {
 }
 
 TEST(nearby, el_consumo_medio_de_la_radio_es_pequeno) {
-  CHECK(nbDutyPermille(NB_ACTIVE) <= 60);                 // <= 6 % del tiempo con la radio encendida
+  CHECK(nbDutyPermille(NB_ACTIVE) <= 40);                 // <= 4 % del tiempo con la radio encendida
   CHECK(nbDutyPermille(NB_DIM) <= 20);
-  CHECK(nbDutyPermille(NB_NIGHT) <= 7);
+  CHECK(nbDutyPermille(NB_NIGHT) <= 3);
   CHECK_EQ((int)nbDutyPermille(NB_SEARCH), 1000);        // la busqueda activa es continua, pero dura 60 s
   CHECK_EQ((int)nbDutyPermille(NB_OFF), 0);
   CHECK_EQ((int)nbNextDelayMs(NB_OFF, 123), 0);
   for (uint32_t r = 0; r < 100000; r += 37) {             // el retraso se mantiene en periodo +- 25 %
     uint32_t d = nbNextDelayMs(NB_ACTIVE, r);
-    CHECK(d >= 15000 * 3 / 4 && d <= 15000 * 5 / 4);
+    CHECK(d >= 25000 * 3 / 4 && d <= 25000 * 5 / 4);
   }
 }
 
@@ -212,8 +212,8 @@ static void stats(NbMode ma, NbMode mb, uint64_t *median, uint64_t *p90) {
 TEST(nearby, dos_aparatos_en_uso_se_descubren_en_pocos_minutos) {
   uint64_t med, p90;
   stats(NB_ACTIVE, NB_ACTIVE, &med, &p90);
-  CHECK(med < 200000);        // mediana: ~3 min
-  CHECK(p90 < 640000);        // 9 de cada 10: ~10 min
+  CHECK(med < 420000);        // mediana: ~6 min
+  CHECK(p90 < 1400000);       // 9 de cada 10: ~21 min
 }
 
 TEST(nearby, con_la_pantalla_atenuada_tarda_mas_pero_se_descubren) {
@@ -222,7 +222,7 @@ TEST(nearby, con_la_pantalla_atenuada_tarda_mas_pero_se_descubren) {
   CHECK(med < 1700000);       // mediana: ~25 min
   CHECK(p90 < 5800000);
   stats(NB_ACTIVE, NB_DIM, &med, &p90);
-  CHECK(med < 520000);
+  CHECK(med < 700000);
 }
 
 TEST(nearby, la_busqueda_activa_encuentra_al_otro_en_segundos_si_los_dos_buscan) {
@@ -234,7 +234,7 @@ TEST(nearby, la_busqueda_activa_encuentra_al_otro_en_segundos_si_los_dos_buscan)
 TEST(nearby, la_busqueda_activa_encuentra_a_uno_que_solo_escucha_por_ventanas) {
   uint64_t med, p90;
   stats(NB_SEARCH, NB_ACTIVE, &med, &p90);
-  CHECK(p90 <= 20000);        // en cuanto el otro abre una ventana (<= 18,75 s) + el tiempo de la senal
+  CHECK(p90 <= 26000);        // en cuanto el otro abre una ventana (<= 31,25 s) + el tiempo de la senal
   stats(NB_SEARCH, NB_DIM, &med, &p90);
   CHECK(p90 <= 60000);        // la busqueda dura un minuto: alcanza a una ventana del modo atenuado (<= 56 s)
 }
