@@ -41,9 +41,26 @@ void rtcSetEpoch(uint32_t e) {
                                tmv.tm_hour, tmv.tm_min, tmv.tm_sec));
 }
 
+// Explicit charger setup instead of the PMU's power-on defaults, which some boards
+// charge badly with (found by ShadowEnemyx's fork). 500 mA is about 0.45C on the
+// 1100 mAh LiPo; the 4.2 V target and 100 mA termination match a standard cell.
+static void configureBatteryCharger() {
+  pmu.setVbusCurrentLimit(XPOWERS_AXP2101_VBUS_CUR_LIM_900MA);
+  pmu.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_500MA);
+  pmu.setPrechargeCurr(XPOWERS_AXP2101_PRECHARGE_100MA);
+  pmu.setChargerTerminationCurr(XPOWERS_AXP2101_CHG_ITERM_100MA);
+  pmu.enableChargerTerminationLimit();
+  pmu.setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V2);
+  pmu.enableCellbatteryCharge();
+  Serial.printf("AXP2101 charger: vbusLim=%u chgCur=%u target=%u\n",
+                pmu.getVbusCurrentLimit(), pmu.getChargerConstantCurr(),
+                pmu.getChargeTargetVoltage());
+}
+
 bool batBegin() {
   pmuOk = pmu.begin(Wire, AXP2101_SLAVE_ADDRESS, IIC_SDA, IIC_SCL);
   if (!pmuOk) { Serial.println("AXP2101 no detectado"); return false; }
+  configureBatteryCharger();
   pmu.enableBattVoltageMeasure();
   pmu.setSysPowerDownVoltage(BAT_HW_CUTOFF_MV);  // backup: the PMU cuts power by itself if the firmware does not make it in time
   return true;
