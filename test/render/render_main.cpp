@@ -229,6 +229,81 @@ static int runTapTests() {
   begin("main_day");  // y un toque sobre las barras de estado NO es una caricia
   tapAt(CX, UY(332));
   EXPECT(!pet.showHeart(), "las barras no acarician");
+  // eleccion de inicial: el centro de cada fila elige su Pokemon
+  for (int i = 0; i < 3; i++) {
+    begin("starter");
+    EXPECT(pet.awaitingStarter(), "la escena parte de la eleccion de inicial");
+    tapAt(STARTER_ROW_X + STARTER_ROW_W / 2, STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP) + STARTER_ROW_H / 2);
+    EXPECT(!pet.awaitingStarter() && pet.eggTarget == STARTER_DEX[i], "la fila elige su inicial");
+  }
+  begin("starter");  // el hueco entre filas y fuera de ellas no elige nada
+  tapAt(STARTER_ROW_X + STARTER_ROW_W / 2, STARTER_ROW_Y + STARTER_ROW_H + STARTER_ROW_GAP / 2);
+  tapAt(STARTER_ROW_X - U(10), STARTER_ROW_Y + STARTER_ROW_H / 2);
+  EXPECT(pet.awaitingStarter(), "tocar fuera de las filas no elige");
+  // galeria: cada celda abre su detalle; la cabecera sale; el detalle vuelve a la rejilla
+  for (int r = 0; r < 4; r++)
+    for (int c = 0; c < 4; c++) {
+      begin("gallery");
+      tapAt(GAL_X + c * GAL_CELL + GAL_CELL / 2, GAL_Y + r * GAL_CELL_Y + GAL_CELL_Y / 2);
+      EXPECT(galleryDetail == r * 4 + c + 1, "la celda abre su Pokemon");
+    }
+  begin("gallery");
+  tapAt(CX, HEADER_ZONE_H - 1);
+  EXPECT(!galleryOpen, "tocar la cabecera cierra la galeria");
+  begin("gallery");
+  tapAt(GAL_X + GAL_CELL / 2, HEADER_ZONE_H + (GAL_Y - HEADER_ZONE_H) / 2);  // entre la cabecera y la rejilla
+  EXPECT(galleryOpen && !galleryDetail, "el hueco bajo la cabecera no hace nada");
+  begin("gallery_detail");
+  tapAt(CX, CY);
+  EXPECT(galleryOpen && !galleryDetail, "tocar el detalle vuelve a la rejilla");
+  // ficha: el nombre abre el teclado, ENTRENAR FUERZA abre el saco
+  begin("card_profile");
+  tapAt(CX, CARD_NAME_ZONE_H - 1);
+  EXPECT(kbOpen, "tocar el nombre abre el teclado");
+  begin("card_profile");
+  tapAt(CX, CARD_NAME_ZONE_H + UY(40));
+  EXPECT(!kbOpen && !cardOpen, "tocar bajo el nombre cierra la ficha");
+  begin("card_stats");
+  tapAt(TRAIN_X + TRAIN_W / 2, TRAIN_Y + TRAIN_H / 2);
+  EXPECT(sackOpen && !cardOpen, "ENTRENAR FUERZA abre el saco");
+  begin("card_stats");
+  tapAt(TRAIN_X + TRAIN_W / 2, TRAIN_Y - UY(12));
+  EXPECT(!sackOpen && !cardOpen, "tocar fuera del boton cierra la ficha sin entrenar");
+  // teclado: cada tecla (su centro) escribe su letra; <- borra; OK guarda
+  for (int i = 0; i < 28; i++) {
+    begin("keyboard");
+    nameLen = 0; nameBuf[0] = 0;
+    tapAt(KB_X + (i % KB_COLS) * KB_W + (KB_W - U(6)) / 2, KB_Y + (i / KB_COLS) * KB_H + (KB_H - UY(6)) / 2);
+    EXPECT(nameLen == 1 && nameBuf[0] == KB_KEYS[i], "la tecla escribe su letra");
+  }
+  begin("keyboard");  // "ASH" + <-  =>  "AS"
+  tapAt(KB_X + (28 % KB_COLS) * KB_W + KB_W / 2, KB_Y + (28 / KB_COLS) * KB_H + KB_H / 2);
+  EXPECT(nameLen == 2, "<- borra una letra");
+  begin("keyboard");
+  tapAt(KB_X + (29 % KB_COLS) * KB_W + KB_W / 2, KB_Y + (29 / KB_COLS) * KB_H + KB_H / 2);
+  EXPECT(!kbOpen && !strcmp(pet.nick, "ASH"), "OK guarda el apodo");
+  // reloj: botones +/-, sonido, idioma y OK
+  begin("clock");
+  tapAt(CLK_X0 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockH == 13, "hora -");
+  tapAt(CLK_X1 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockH == 14, "hora +");
+  tapAt(CLK_X2 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockM == 34, "min -");
+  tapAt(CLK_X3 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockM == 35, "min +");
+  tapAt((CLK_X0 + CLOCK_BTN_W + CLK_X1) / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockH == 14 && clockM == 35, "el hueco entre botones no cambia nada");
+  bool snd = audioEnabled();
+  tapAt(SND_PILL_X + SND_PILL_W / 2, LANG_PILL_Y + LANG_PILL_H / 2);
+  EXPECT(audioEnabled() != snd, "interruptor de sonido");
+  audioSetEnabled(snd);
+  Lang lg = gLang;
+  tapAt(LANG_PILL_X + LANG_PILL_W / 2, LANG_PILL_Y + LANG_PILL_H / 2);
+  EXPECT(gLang != lg, "cicla el idioma");
+  setLang(lg); applyLangFont();
+  tapAt(CLOCK_OK_X + CLOCK_OK_W / 2, CLOCK_OK_Y + CLOCK_OK_H / 2);
+  EXPECT(!clockOpen, "OK cierra el reloj");
   fprintf(stderr, "%d fallos de toque\n", gTapFails);
   return gTapFails ? 1 : 0;
 }
