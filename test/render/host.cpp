@@ -35,6 +35,8 @@ bool usbPresentNow() { return false; }
 void batSetPollMs(uint32_t) {}
 void pwrSetup() {}
 bool pwrShortPressed() { return false; }
+bool gShimTouchDown = false;
+int16_t gShimTouchX = 0, gShimTouchY = 0;
 bool imuBegin() { return false; }
 bool imuOk() { return false; }
 void imuPoll(uint32_t) {}
