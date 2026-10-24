@@ -546,8 +546,7 @@ void handleTouch() {
   if (sackOpen) {
     if (pressed && !wasPressed) {
       lastInteract = millis();
-      if (y < 72) sackOpen = false;  // tocar arriba = abandonar
-      else sackTap();
+      sackTouch(y);
     }
     wasPressed = pressed;
     return;
@@ -1176,30 +1175,32 @@ void startGame() {
 }
 
 void respawnBall() {
-  ballX = 150 + random(166);
-  ballY = 96;
+  ballX = U(150) + random(U(166));
+  ballY = UY(96);
   float sp = 1.6f + gameScore * 0.05f;  // mas viva segun avanzas
   if (sp > 4.0f) sp = 4.0f;
+  sp *= UI_F;
   ballVX = random(2) ? sp : -sp;
   ballVY = 0;
 }
 
 void gameTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
-  if (y < 72) {  // tocar la cabecera = abandonar sin premio
+  if (y < HEADER_ZONE_H) {  // tocar la cabecera = abandonar sin premio
     gameOpen = false;
     return;
   }
   float dx = ballX - x, dy = ballY - y;
-  if (dx * dx + dy * dy < 74 * 74) {  // toque a la bola!
+  if (dx * dx + dy * dy < (float)U(74) * U(74)) {  // toque a la bola!
     gameScore++;
     sfxPlay(SFX_PLAY);
     // golpe mas suave: impulso moderado que crece poco a poco con la puntuacion
-    float lift = 6.6f + (gameScore > 16 ? 3.5f : gameScore * 0.22f);
+    float lift = (6.6f + (gameScore > 16 ? 3.5f : gameScore * 0.22f)) * UI_F;
     ballVY = -lift;
     ballVX += dx * 0.12f;
-    if (ballVX > 6.5f) ballVX = 6.5f;
-    if (ballVX < -6.5f) ballVX = -6.5f;
+    const float vmax = 6.5f * UI_F;
+    if (ballVX > vmax) ballVX = vmax;
+    if (ballVX < -vmax) ballVX = -vmax;
     hitX = ballX;
     hitY = ballY;
     hitTime = millis();
@@ -1220,6 +1221,7 @@ void stepGame() {
 
   float grav = 0.40f + gameScore * 0.013f;  // cae un poco mas rapido cada vez
   if (grav > 0.80f) grav = 0.80f;
+  grav *= UI_F;
   ballVY += grav * k;
   ballX += ballVX * k;
   ballY += ballVY * k;
@@ -1236,7 +1238,7 @@ void stepGame() {
     ballX = CX + nx * BALL_R;
     ballY = CY + ny * BALL_R;
   }
-  if (ballY > 384) {  // al suelo
+  if (ballY > UY(384)) {  // al suelo
     if (++gameMisses >= 3) {
       gameNewHi = (gameScore > pet.gameHi);
       pet.playResult(gameScore);  // actualiza el record y da felicidad
@@ -1248,8 +1250,9 @@ void stepGame() {
   }
   // el bicho la sigue por abajo
   float chase = (ballX - gamePetX) * 0.12f;
-  if (chase > 7) chase = 7;
-  if (chase < -7) chase = -7;
+  const float cmax = 7 * UI_F;
+  if (chase > cmax) chase = cmax;
+  if (chase < -cmax) chase = -cmax;
   gamePetX += chase * k;
 }
 
@@ -1265,10 +1268,16 @@ void startSack() {
   sackNewHi = false;
 }
 
+// toque con el saco abierto: la cabecera abandona, el resto golpea
+void sackTouch(int16_t y) {
+  if (y < HEADER_ZONE_H) sackOpen = false;
+  else sackTap();
+}
+
 void sackTap() {
   if (!timeLeft(sackUntil)) return;  // ya termino el tiempo
   sackHits++;
-  sackShake = 16;  // sacude el saco
+  sackShake = 16 * UI_F;  // sacude el saco
 }
 
 void drawGameScene();  // prototipo (definida mas abajo)
@@ -1286,24 +1295,24 @@ void renderSack() {
     snprintf(b, sizeof(b), T(S_HITS_FMT), sackHits);
     gfx->setTextColor(ink);
     setSize(TS(4));
-    setCur(centerX(b, TS(4)), 150);
+    setCur(centerX(b, TS(4)), UY(150));
     printT(b);
     char g[18];
     snprintf(g, sizeof(g), T(S_STR_GAIN_FMT), sackGain);
     gfx->setTextColor(UI_BAR_BAD);
     setSize(TS(3));
-    setCur(centerX(g, TS(3)), 210);
+    setCur(centerX(g, TS(3)), UY(210));
     printT(g);
     setSize(TS(2));
     if (sackNewHi && sackHits > 0) {
       gfx->setTextColor(UI_BAR_WARN);
-      setCur(centerX(T(S_NEW_RECORD), TS(2)), 256);
+      setCur(centerX(T(S_NEW_RECORD), TS(2)), UY(256));
       printT(T(S_NEW_RECORD));
     } else {
       char r[18];
       snprintf(r, sizeof(r), T(S_RECORD_FMT), pet.strHi);
       gfx->setTextColor(ink);
-      setCur(centerX(r, TS(2)), 256);
+      setCur(centerX(r, TS(2)), UY(256));
       printT(r);
     }
     gfx->flush();
@@ -1323,31 +1332,31 @@ void renderSack() {
   // aporreo activo
   sackShake *= 0.84f;
   int off = (int)(sackShake * sinf(now * 0.05f));
-  int sx = CX + off, top = 86, sy = 150;
-  gfx->fillRect(CX - 3, 56, 6, top - 56, ink);          // gancho/cuerda
-  gfx->fillRect(sx - 4, top - 30, 8, 34, ink);          // cadena
-  gfx->fillRoundRect(sx - 42, top, 84, 150, 26, C565(0xb5, 0x3a, 0x3a));  // saco
-  gfx->fillRoundRect(sx - 42, top, 84, 22, 18, C565(0x7e, 0x28, 0x28));   // tapa
-  gfx->drawRoundRect(sx - 42, top, 84, 150, 26, ink);
-  gfx->fillRect(sx - 42, top + 70, 84, 4, C565(0x7e, 0x28, 0x28));        // costura
+  int sx = CX + off, top = UY(86);
+  gfx->fillRect(CX - U(3), UY(56), U(6), top - UY(56), ink);          // gancho/cuerda
+  gfx->fillRect(sx - U(4), top - UY(30), U(8), UY(34), ink);          // cadena
+  gfx->fillRoundRect(sx - U(42), top, U(84), UY(150), U(26), C565(0xb5, 0x3a, 0x3a));  // saco
+  gfx->fillRoundRect(sx - U(42), top, U(84), UY(22), U(18), C565(0x7e, 0x28, 0x28));   // tapa
+  gfx->drawRoundRect(sx - U(42), top, U(84), UY(150), U(26), ink);
+  gfx->fillRect(sx - U(42), top + UY(70), U(84), UY(4), C565(0x7e, 0x28, 0x28));        // costura
 
   // contador de golpes
   char buf[8];
   snprintf(buf, sizeof(buf), "%u", sackHits);
   gfx->setTextColor(ink);
   setSize(TS(6));
-  setCur(centerX(buf, TS(6)), 268);
+  setCur(centerX(buf, TS(6)), UY(268));
   printT(buf);
 
   setSize(TS(2));
-  setCur(centerX(T(S_HIT_FAST), TS(2)), 322);
+  setCur(centerX(T(S_HIT_FAST), TS(2)), UY(322));
   printT(T(S_HIT_FAST));
 
   // barra de tiempo
   uint32_t left = sackUntil - now;
-  int bw = 280, fw = (int)((uint32_t)bw * left / 10000);
-  gfx->fillRoundRect(CX - bw / 2, 350, bw, 16, 5, UI_TRACK);
-  if (fw > 2) gfx->fillRoundRect(CX - bw / 2, 350, fw, 16, 5, UI_BAR_OK);
+  int bw = U(280), fw = (int)((uint32_t)bw * left / 10000);
+  gfx->fillRoundRect(CX - bw / 2, UY(350), bw, UY(16), U(5), UI_TRACK);
+  if (fw > 2) gfx->fillRoundRect(CX - bw / 2, UY(350), fw, UY(16), U(5), UI_BAR_OK);
 
   gfx->flush();
 }
@@ -1361,11 +1370,11 @@ void drawGameScene() {
   else if (hh < 8) { top = C565(0xd1, 0x6a, 0x86); bot = C565(0xf3, 0xb8, 0x7c); }
   else if (hh < 18){ top = C565(0x8f, 0xc8, 0xea); bot = C565(0xdc, 0xee, 0xe6); }
   else             { top = C565(0xc7, 0x5a, 0x4a); bot = C565(0xf0, 0xae, 0x64); }
-  int hor = 376;
-  for (int y = 0; y < hor; y += 8)
-    gfx->fillRect(0, y, UI_W, 8, lerp565(top, bot, y, hor));
+  int hor = UY(376);
+  for (int y = 0; y < hor; y += UY(8))
+    gfx->fillRect(0, y, UI_W, UY(8), lerp565(top, bot, y, hor));
   if (night)
-    for (auto &st : STARS) gfx->fillRect(st[0], st[1], 4, 4, UI_WHITE);
+    for (auto &st : STARS) gfx->fillRect(U(st[0]), UY(st[1]), SC(4), SC(4), UI_WHITE);
   uint8_t bio = pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome;
   uint16_t soil = BIOME_SOIL[bio < 6 ? bio : 0];
   if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
@@ -1389,23 +1398,23 @@ void renderGame() {
     snprintf(buf, sizeof(buf), T(S_SCORE_FMT), gameScore);
     gfx->setTextColor(ink);
     setSize(TS(4));
-    setCur(centerX(buf, TS(4)), 160);
+    setCur(centerX(buf, TS(4)), UY(160));
     printT(buf);
     setSize(TS(2));
     if (gameNewHi && gameScore > 0) {
       gfx->setTextColor(UI_BAR_WARN);
-      setCur(centerX(T(S_NEW_RECORD), TS(2)), 214);
+      setCur(centerX(T(S_NEW_RECORD), TS(2)), UY(214));
       printT(T(S_NEW_RECORD));
     } else {
       char rec[20];
       snprintf(rec, sizeof(rec), T(S_RECORD_FMT), pet.gameHi);
       gfx->setTextColor(ink);
-      setCur(centerX(rec, TS(2)), 214);
+      setCur(centerX(rec, TS(2)), UY(214));
       printT(rec);
     }
     const char *msg = gameScore >= 10 ? T(S_GREAT_JOY) : T(S_PLUS_JOY);
     gfx->setTextColor(ink);
-    setCur(centerX(msg, TS(2)), 250);
+    setCur(centerX(msg, TS(2)), UY(250));
     printT(msg);
     gfx->flush();
     return;
@@ -1419,7 +1428,7 @@ void renderGame() {
   snprintf(buf, sizeof(buf), "%u", gameScore);
   gfx->setTextColor(ink);
   setSize(TS(4));
-  setCur(centerX(buf, TS(4)), 30);
+  setCur(centerX(buf, TS(4)), UY(30));
   printT(buf);
   // 24 y no 12: en japones "きろく %u" son 10 bytes antes de la cifra y el
   // record se quedaba en su primer digito ("きろく 2" con 219). Las tallas de
@@ -1427,24 +1436,24 @@ void renderGame() {
   char rec[24];
   snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.gameHi);
   setSize(TS(2));
-  setCur(centerX(rec, TS(2)), 76);
+  setCur(centerX(rec, TS(2)), UY(76));
   printT(rec);
   for (int i = 0; i < 3; i++) {
-    if (i < 3 - gameMisses) gfx->fillCircle(180 + i * 28, 104, 6, UI_BAR_BAD);
-    else gfx->drawCircle(180 + i * 28, 104, 6, UI_TRACK);
+    if (i < 3 - gameMisses) gfx->fillCircle(U(180 + i * 28), UY(104), U(6), UI_BAR_BAD);
+    else gfx->drawCircle(U(180 + i * 28), UY(104), U(6), UI_TRACK);
   }
 
   if (pmd.loaded) {
-    uint8_t act = (ballX > gamePetX + 4) ? PMD_WALKR : (ballX < gamePetX - 4) ? PMD_WALKL : PMD_IDLE;
+    uint8_t act = (ballX > gamePetX + U(4)) ? PMD_WALKR : (ballX < gamePetX - U(4)) ? PMD_WALKL : PMD_IDLE;
     if (!pmd.has(act)) act = PMD_IDLE;
-    drawPmdAct(act, (int)gamePetX, 394, millis(), true, false, 3);
+    drawPmdAct(act, (int)gamePetX, UY(394), millis(), true, false, SC(3));
   } else if (mon.loaded) {
-    int s = (mon.h * 2 > 130) ? 1 : 2;
+    int s = SC((mon.h * 2 > UY(130)) ? 1 : 2);
     int w = mon.w * s, h = mon.h * s;
     uint16_t fm = mon.frameMs ? mon.frameMs : 100;
     uint16_t fi = (millis() / fm) % mon.frames;
     const uint8_t *fr = mon.data + (uint32_t)fi * mon.w * mon.h;
-    int px = (int)gamePetX - w / 2, py = 394 - h;
+    int px = (int)gamePetX - w / 2, py = UY(394) - h;
     for (int r = 0; r < mon.h; r++)
       for (int c = 0; c < mon.w; c++) {
         uint8_t idx = fr[r * mon.w + c];
@@ -1456,13 +1465,14 @@ void renderGame() {
   // anillo de impacto que se expande y desvanece (feedback suave del golpe)
   uint32_t ht = millis() - hitTime;
   if (hitTime && ht < 260) {
-    int rad = 22 + (int)(ht / 6);
+    int rad = U(22 + (int)(ht / 6));
     gfx->drawCircle((int)hitX, (int)hitY, rad, C565(0xff, 0xe7, 0x9f));
-    gfx->drawCircle((int)hitX, (int)hitY, rad - 2, C565(0xff, 0xd9, 0x8a));
+    gfx->drawCircle((int)hitX, (int)hitY, rad - U(2), C565(0xff, 0xd9, 0x8a));
   }
 
   // la pokeball
-  drawMap(SPR_ICON_PLAY, 16, (int)ballX - 24, (int)ballY - 24, 3, false);
+  int bs = SC(3);  // pokeball 16x16, centrada en (ballX, ballY)
+  drawMap(SPR_ICON_PLAY, 16, (int)ballX - 8 * bs, (int)ballY - 8 * bs, bs, false);
 
   gfx->flush();
 }

@@ -156,7 +156,11 @@ static const Scene *findScene(const char *name) {
 #define EXPECT(cond, what) do { if (!(cond)) { fprintf(stderr, "FALLA %-22s %s\n", curScene, what); gTapFails++; } } while (0)
 static const char *curScene = "";
 static void begin(const char *name) { curScene = name; prepare(*findScene(name)); }
-static void tapAt(int x, int y) { onTap((int16_t)x, (int16_t)y); }
+static void tapAt(int x, int y) {
+  // handleTouch() desvia el saco antes de onTap(): se usa su misma funcion
+  if (sackOpen) { sackTouch((int16_t)y); return; }
+  onTap((int16_t)x, (int16_t)y);
+}
 
 static int runTapTests() {
   // selector de comida: el centro de cada icono elige su casilla
@@ -304,6 +308,56 @@ static int runTapTests() {
   setLang(lg); applyLangFont();
   tapAt(CLOCK_OK_X + CLOCK_OK_W / 2, CLOCK_OK_Y + CLOCK_OK_H / 2);
   EXPECT(!clockOpen, "OK cierra el reloj");
+  // minijuego de la bola: tocar la bola puntua, fuera no, la cabecera abandona
+  begin("game");
+  uint8_t sc0 = gameScore;
+  tapAt((int)ballX, (int)ballY);
+  EXPECT(gameScore == sc0 + 1 && ballVY < 0, "tocar la bola puntua y la lanza hacia arriba");
+  begin("game");
+  tapAt((int)ballX + U(120), (int)ballY + UY(120));
+  EXPECT(gameScore == sc0, "tocar lejos de la bola no puntua");
+  begin("game");
+  tapAt(CX, UY(30));
+  EXPECT(!gameOpen, "tocar la cabecera abandona el minijuego");
+  begin("game");
+  for (int i = 0; i < 50; i++) {  // la bola reaparece siempre dentro de su zona y a su altura
+    respawnBall();
+    EXPECT(ballX >= U(150) && ballX < U(150) + U(166) && ballY == UY(96), "la bola reaparece en su zona");
+    EXPECT(fabsf(ballVX) >= 1.6f * UI_F - 0.001f && fabsf(ballVX) <= 4.0f * UI_F + 0.001f, "velocidad inicial proporcional");
+  }
+  // radio de toque: 0,9 de U(74) da, 1,1 no
+  begin("game");
+  tapAt((int)ballX + (int)(0.9f * U(74)), (int)ballY);
+  EXPECT(gameScore == sc0 + 1, "un toque a 0,9 del radio puntua");
+  begin("game");
+  tapAt((int)ballX + (int)(1.1f * U(74)), (int)ballY);
+  EXPECT(gameScore == sc0, "un toque a 1,1 del radio no puntua");
+  // trayectoria proporcional: la altura del salto de una bola golpeada, dividida
+  // por UI_F, es la de diseno (simulada aqui con las constantes del juego a 466)
+  begin("game");
+  gameScore = 7; gameMisses = 0; ballX = CX; ballY = UY(250); ballVX = ballVY = 0; lastGameStep = 0;
+  tapAt((int)ballX, (int)ballY);  // golpe: gameScore pasa a 8
+  float y0 = ballY, top = ballY;
+  for (int i = 0; i < 40; i++) { mockAdvanceMillis(85); stepGame(); if (ballY < top) top = ballY; }
+  float v = -(6.6f + 8 * 0.22f), g = 0.40f + 8 * 0.013f, yy = 0, ref = 0;  // diseno a 466
+  for (int i = 0; i < 40; i++) { v += g; yy += v; if (yy < ref) ref = yy; }
+  float rise = (y0 - top) / UI_F, refRise = -ref;
+  EXPECT(fabsf(rise - refRise) <= 0.04f * refRise + 3, "el salto de la bola es proporcional al panel");
+  // la pared: una bola que sale disparada contra el borde rebota y no lo cruza
+  begin("game");
+  gameScore = 3; ballX = CX + BALL_R - U(2); ballY = CY; ballVX = 5 * UI_F; ballVY = 0; lastGameStep = 0;
+  mockAdvanceMillis(85); stepGame();
+  float wdx = ballX - CX, wdy = ballY - CY;
+  EXPECT(sqrtf(wdx * wdx + wdy * wdy) <= BALL_R + 0.5f, "la bola no cruza la pared");
+  EXPECT(ballVX < 0, "la pared devuelve la bola");
+  // saco de entrenamiento: tocar golpea, la cabecera abandona
+  begin("sack");
+  uint16_t h0 = sackHits;
+  tapAt(CX, UY(200));
+  EXPECT(sackHits == h0 + 1, "tocar el saco cuenta un golpe");
+  begin("sack");
+  tapAt(CX, UY(30));
+  EXPECT(!sackOpen, "tocar la cabecera abandona el saco");
   fprintf(stderr, "%d fallos de toque\n", gTapFails);
   return gTapFails ? 1 : 0;
 }
