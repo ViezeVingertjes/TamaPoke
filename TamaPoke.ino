@@ -25,6 +25,7 @@
 #include "i18n.h"
 #include "audio.h"
 #include "power.h"
+#include "nearby_radio.h"
 #include "blit.h"
 #include "layout.h"
 
@@ -49,6 +50,10 @@ Pet pet;
 // sprite animado de la SD para la especie actual (si existe el archivo)
 SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
 PmdMon pmd;         // sprite PMD multi-accion (pantalla principal)
+// vecinos (TamaPokes cercanos): un sprite por hueco, cargado de la SD de uno en uno
+struct NbSlot { uint32_t id; uint8_t species; bool shiny; };
+PmdMon nbPmd[NB_MAX_SHOWN];
+NbSlot nbSlot[NB_MAX_SHOWN];
 PmdMon evoPmd;      // forma anterior, solo durante el parpadeo de evolucion
 int16_t monFor = -2;
 bool monShinyFor = false;
@@ -289,6 +294,7 @@ void setup() {
   }
   pet.syncClock(e);
 
+  nearbyBegin();  // id de este aparato; la radio solo se enciende en ventanas cortas (nearby.cpp)
   audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
 
   lastInteract = millis();
@@ -387,6 +393,9 @@ void loop() {
   // entera, asi que no queda nada a medias; y al quedarse lastRender congelado, el primer
   // frame tras despertar sale en el acto.
   PowerCtx pc = powerCtx(millis());
+  NbSelf nbSelf = { !pet.isEgg() && pet.speciesId >= 1, (uint8_t)pet.speciesId, pet.shiny, pet.sleeping, pet.level() };
+  nearbyPoll(now, pc, nbSelf);
+  if (!screenOff) ensureNeighbors();
   audioSetIdle(!amplifierWanted(pc));  // el amplificador consume en reposo
   batSetPollMs(powerCacheMs(pc));
   uint32_t interval = frameIntervalMs(pc);
@@ -448,7 +457,7 @@ void updateBrightness(uint32_t now) {
 // no perder el puerto serie de la tarjeta SD: se mira sin cache, por si se acaba de enchufar.
 void idleWait(PowerCtx c) {
   // no se duerme justo tras dibujar (el volcado DMA del frame sigue en marcha) ni con un aviso sonando
-  if (lightSleepAllowed(c) && millis() - lastRender >= 100 && !audioBusy()) {
+  if (lightSleepAllowed(c) && millis() - lastRender >= 100 && !audioBusy() && !nearbyRadioOn()) {
     c.usb = usbPresentNow();
     if (!lightSleepAllowed(c)) { delay(idleDelayMs(c)); return; }
     if (digitalRead(TP_INT) == LOW) { gTouchIrq = true; delay(1); return; }  // toque pendiente: no se duerme
@@ -458,6 +467,8 @@ void idleWait(PowerCtx c) {
       uint32_t due = lastRender + iv - millis();
       if ((int32_t)due < (int32_t)ms) ms = (int32_t)due > 1 ? due : 1;
     }
+    uint32_t nb = nearbyNextEventMs(millis());  // el sueno no pasa de la proxima ventana de radio
+    if (nb && nb < ms) ms = nb;
     esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000);
     gpio_wakeup_enable((gpio_num_t)TP_INT, GPIO_INTR_LOW_LEVEL);
     esp_sleep_enable_gpio_wakeup();
@@ -1368,6 +1379,7 @@ bool render() {
     snprintf(name, sizeof(name), T(S_NAME_FMT), pet.shiny ? "*" : "", base, pet.level());
     drawHeader(name, gNight ? UI_INK_NIGHT : d.accent, statusMsg());
     drawStreakBadge();
+    drawNeighbors();
     drawPet();
     drawBath();
     drawPoops();
@@ -2583,6 +2595,49 @@ void drawEvolveFX(uint32_t now) {
   }
   // fogonazo final antes de revelar la forma nueva
   if (t > 0.9f) gfx->fillCircle(cx, cy, (int)(U(300) * (t - 0.9f) / 0.1f), UI_WHITE);
+}
+
+// Carga el sprite de un vecino por pase (cada lectura de la SD tarda); suelta los huecos que
+// se vaciaron o cambiaron de bicho.
+void ensureNeighbors() {
+  const NbEntry *sh[NB_MAX_SHOWN];
+  int n = nearbyShown(sh);
+  for (int i = 0; i < NB_MAX_SHOWN; i++) {
+    NbSlot want = i < n ? NbSlot{ sh[i]->id, sh[i]->species, sh[i]->shiny } : NbSlot{ 0, 0, false };
+    NbSlot &have = nbSlot[i];
+    if (want.id == have.id && want.species == have.species && want.shiny == have.shiny) continue;
+    if (want.id) {  // como mucho una carga por segundo: un desconocido que se invente ids no satura la SD
+      static uint32_t lastLoad = 0;
+      uint32_t now = millis();
+      if (!sdReady || (lastLoad && now - lastLoad < 1000)) continue;
+      lastLoad = now;
+    }
+    nbPmd[i].unload();
+    have = want;
+    if (want.id) {
+      nbPmd[i].load(want.species, want.shiny);
+      return;  // uno por pase
+    }
+  }
+}
+
+// Los vecinos se quedan quietos detras y a los lados del bicho, mas pequenos y mas arriba, como
+// un grupo: dos delante (a los lados) y dos al fondo (entre medias, mas altos y chicos).
+void drawNeighbors() {
+  const NbEntry *sh[NB_MAX_SHOWN];
+  int n = nearbyShown(sh);
+  struct Pos { int16_t dx, up; uint8_t s; };
+  const Pos pos[NB_MAX_SHOWN] = { { -135, 14, 3 }, { 135, 14, 3 }, { -70, 34, 2 }, { 70, 34, 2 } };
+  const uint8_t order[NB_MAX_SHOWN] = { 2, 3, 0, 1 };  // primero el fondo
+  uint32_t now = millis();
+  for (uint8_t i : order) {
+    if (i >= n) continue;
+    PmdMon &m = nbPmd[i];
+    if (!m.loaded || nbSlot[i].id != sh[i]->id) continue;
+    uint8_t act = sh[i]->sleeping && m.has(PMD_SLEEP) ? PMD_SLEEP : PMD_IDLE;
+    uint32_t t = now + (sh[i]->id % 997) * 13;  // cada uno en su momento de la animacion
+    drawPmdActM(m, act, CX + U(pos[i].dx), PET_GROUND - UY(pos[i].up), t, true, false, SC(pos[i].s));
+  }
 }
 
 void drawPet() {

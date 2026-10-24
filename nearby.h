@@ -17,7 +17,7 @@
 #define NB_BEACON_LEN 11
 #define NB_TABLE_SIZE 8       // vecinos recordados
 #define NB_MAX_SHOWN 4        // vecinos que se dibujan junto al bicho
-#define NB_TTL_MS 300000UL    // un vecino sin senales durante 5 min se olvida
+#define NB_TTL_MS 900000UL    // un vecino sin senales durante 15 min se olvida (dos aparatos con ventanas de 0,8 s se oyen cada pocos minutos)
 #define NB_MAX_PPS 30         // paquetes aceptados por segundo (el resto se descarta)
 #define NB_REPEAT_MS 500      // dos senales del mismo vecino con menos de esto de diferencia no cuentan
 

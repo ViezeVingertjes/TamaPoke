@@ -59,6 +59,22 @@ static int dexInBiome(int b) {
   return 1;
 }
 
+// vecino de mentira para la escena (id distinto de 0)
+extern NbEntry gHostNb[NB_TABLE_SIZE];
+extern int gHostNbN;
+// una carga de sprite por segundo, como en el juego
+static void settleNeighbors() {
+  uint32_t t = millis();
+  for (int i = 0; i < NB_MAX_SHOWN + 1; i++) { mockSetMillis(t + 1100 * (i + 1)); ensureNeighbors(); }
+  mockSetMillis(t);
+}
+static void nb(uint32_t id, int species, bool shiny = false, bool sleeping = false) {
+  NbEntry &e = gHostNb[gHostNbN++];
+  e = NbEntry{};
+  e.used = true; e.id = id; e.species = species; e.shiny = shiny; e.sleeping = sleeping;
+  e.level = 30; e.lastSeen = e.lastCount = 100000;
+}
+
 static void atHour(int h) { pet.lastSeenEpoch = 1767225600UL + h * 3600UL; }
 
 struct Scene {
@@ -87,6 +103,12 @@ static const Scene SCENES[] = {
 // pantallas adicionales (solo en ingles): dialogos, botones de final, efectos,
 // paginas de la ficha, sprites de respaldo...
 static const Scene EXTRA[] = {
+  { "nearby_1", [] { closeAll(); adult(6); nb(1, 25); }, false, false },
+  { "nearby_2", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); }, false, false },
+  { "nearby_3", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); nb(3, 39); }, false, false },
+  { "nearby_4", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); nb(3, 39); nb(4, 94, true); }, false, false },
+  { "nearby_big", [] { closeAll(); adult(143); nb(1, 25); nb(2, 95); nb(3, 131); nb(4, 1); }, false, false },
+  { "nearby_night", [] { closeAll(); adult(6); pet.sleeping = true; nb(1, 25, false, true); nb(2, 7, false, true); nb(3, 39); nb(4, 94, true, true); }, false, false },
   { "feed_menu", [] { closeAll(); adult(6); feedMenuUntil = millis() + 6000; }, false, false },
   { "release_dialog", [] { closeAll(); adult(6); confirmUntil = millis() + 10000; }, true, false },
   { "evolve_dialog", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; choiceKind = 1; choiceUntil = millis() + 12000; }, true, false },
@@ -139,9 +161,12 @@ static void prepare(const Scene &sc) {
   monFor = -2;
   beh.mode = 0; beh.act = PMD_IDLE; beh.t0 = 0; beh.until = 0; beh.x = beh.targetX = CX;
   mockSetMillis(100000);
+  gHostNbN = 0;
+  for (int i = 0; i < NB_MAX_SHOWN; i++) { nbPmd[i].unload(); nbSlot[i] = NbSlot{}; }
   if (std::string(sc.name) != "starter") pet.chooseStarter(1);
   sc.setup();
   ensureMon();
+  settleNeighbors();
   if (sc.noPmd) pmd.unload();  // fuerza el sprite de flash / el aviso de "faltan sprites"
   mockSetMillis(100000);
 }
@@ -164,6 +189,15 @@ static void tapAt(int x, int y) {
 }
 
 static int runTapTests() {
+  // vecinos: cada hueco carga su sprite y lo suelta cuando el vecino se va
+  begin("nearby_4");
+  for (int i = 0; i < NB_MAX_SHOWN; i++) EXPECT(nbPmd[i].loaded && nbSlot[i].id == (uint32_t)i + 1, "cada vecino tiene su sprite");
+  gHostNbN = 2;  // se van dos
+  settleNeighbors();
+  EXPECT(nbPmd[0].loaded && nbPmd[1].loaded && !nbPmd[2].loaded && !nbPmd[3].loaded && !nbSlot[3].id, "al irse un vecino se suelta su sprite");
+  gHostNbN = 0;
+  settleNeighbors();
+  EXPECT(!nbPmd[0].loaded && !nbPmd[1].loaded, "sin vecinos no queda ningun sprite cargado");
   // selector de comida: el centro de cada icono elige su casilla
   for (int i = 0; i < 4; i++) {
     begin("feed_menu");

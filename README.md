@@ -350,6 +350,23 @@ What the firmware does to save power (the policy is in `power.h`, covered by `te
 - **Battery reads over I2C** every 10 s instead of 2 s when the screen is off or almost off.
 - The pet walks by real time, so lower frame rates do not slow it down.
 
+## Nearby TamaPokes
+
+Other TamaPokes within radio range show up on the main screen, up to four, standing next to your pet: two at
+the sides and two further back, smaller and a bit higher. A sleeping neighbour sleeps, a shiny one is shiny.
+It is always on, there is nothing to set up.
+
+- **What is sent:** species, level, shiny, sleeping and an id picked at random on every boot (the radio address too, so a device cannot be tracked across days), 11 bytes with a CRC, over ESP-NOW
+  broadcast on channel 1. No name, no pairing, no access point. Received packets are validated before use and
+  rate limited (`nearby.h`, covered by `test/test_nearby.cpp`).
+- **Radio mostly off:** it is on for 0.8 s every ~15 s while the screen is in use, every ~45 s when the screen
+  is dimmed or the pet sleeps and every ~2 min with the screen off (about 5 %, 2 % and 0.7 % of the time).
+  Windows are jittered so two devices do not stay out of sync. For the first minute after boot it listens
+  continuously, so two devices side by side find each other within seconds. With battery under 20 % it is off.
+- **Light sleep:** the CPU does not sleep while a window is open, and sleep never runs past the next window.
+- A neighbour that has not been heard for 15 minutes disappears (two devices with short windows only hear each
+  other every few minutes).
+
 ## Serial console (115200, debug)
 
 `STATS` (full state) · `SPEC <dex>` (change species) · `LVL <n>` · `HATCH` ·
