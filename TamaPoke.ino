@@ -116,13 +116,13 @@ struct Btn {
   const char *const *icon;
 };
 Btn buttons[4] = {
-  { 140, 390, SPR_ICON_FOOD },   // comer
-  { 202, 404, SPR_ICON_PLAY },   // jugar
-  { 264, 404, SPR_ICON_LIGHT },  // luz
-  { 326, 390, SPR_ICON_CLEAN },  // bano
+  { U(140), UY(390), SPR_ICON_FOOD },   // comer
+  { U(202), UY(404), SPR_ICON_PLAY },   // jugar
+  { U(264), UY(404), SPR_ICON_LIGHT },  // luz
+  { U(326), UY(390), SPR_ICON_CLEAN },  // bano
 };
-#define BTN_HALF 26  // boton de 52x52
-#define BTN_HIT 36   // radio tactil (un poco mas generoso)
+#define BTN_HALF U(26)  // boton de 52x52
+#define BTN_HIT U(36)   // radio tactil (un poco mas generoso)
 
 // grietas del huevo (pixeles 'k' sobre el sprite)
 static const uint8_t CRACK1[][2] = { {15,8},{16,9},{15,10} };
@@ -133,19 +133,19 @@ static const uint16_t STARS[][2] = { {120,140},{330,120},{370,210},{95,230},{280
 bool wasPressed = false;
 // eleccion de inicial (primera partida): Bulbasaur / Charmander / Squirtle, 3 filas
 static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
-#define STARTER_ROW_Y 110
-#define STARTER_ROW_H 70
-#define STARTER_ROW_GAP 8
+#define STARTER_ROW_Y UY(110)
+#define STARTER_ROW_H UY(70)
+#define STARTER_ROW_GAP UY(8)
 // boton-CTA de evolucion (centrado, mitad de pantalla)
-#define EVO_BTN_W 256
-#define EVO_BTN_H 64
+#define EVO_BTN_W U(256)
+#define EVO_BTN_H UY(64)
 #define EVO_BTN_X (CX - EVO_BTN_W / 2)
-#define EVO_BTN_Y 172
+#define EVO_BTN_Y UY(172)
 // boton-CTA de despedida (mas ancho: lleva el nombre + frase)
-#define FAR_BTN_W 408
-#define FAR_BTN_H 58
+#define FAR_BTN_W U(408)
+#define FAR_BTN_H UY(58)
 #define FAR_BTN_X (CX - FAR_BTN_W / 2)
-#define FAR_BTN_Y 176
+#define FAR_BTN_Y UY(176)
 // el CST9217 avisa por el pin INT cuando hay datos tactiles; lo usamos para no
 // leer el bus I2C mientras el chip esta dormido (esa lectura se colgaba ~1s)
 volatile bool gTouchIrq = false;
@@ -1059,7 +1059,7 @@ void render() {
   if (pet.sleeping) {
     gfx->setTextColor(UI_INK_NIGHT);
     setSize(SC(3));
-    setCur(320, 130);
+    setCur(U(320), UY(130));
     printT("Zz");
   }
 
@@ -1068,12 +1068,12 @@ void render() {
     if (!timeLeft(feedMenuUntil)) {
       feedMenuUntil = 0;
     } else {
-      gfx->fillRoundRect(101, 288, 264, 64, 14, UI_WHITE);
-      gfx->drawRoundRect(101, 288, 264, 64, 14, inkColor());
-      drawMap(SPR_ICON_FOOD, 16, 110, 296, 3, false);
-      drawMap(SPR_ICON_BERRY_B, 16, 176, 296, 3, false);
-      drawMap(SPR_ICON_BERRY_G, 16, 242, 296, 3, false);
-      drawMap(SPR_ICON_CANDY, 16, 308, 296, 3, false);
+      gfx->fillRoundRect(U(101), UY(288), U(264), UY(64), U(14), UI_WHITE);
+      gfx->drawRoundRect(U(101), UY(288), U(264), UY(64), U(14), inkColor());
+      drawMap(SPR_ICON_FOOD, 16, U(110), UY(296), SC(3), false);
+      drawMap(SPR_ICON_BERRY_B, 16, U(176), UY(296), SC(3), false);
+      drawMap(SPR_ICON_BERRY_G, 16, U(242), UY(296), SC(3), false);
+      drawMap(SPR_ICON_CANDY, 16, U(308), UY(296), SC(3), false);
     }
   }
 
@@ -1082,8 +1082,8 @@ void render() {
     if (!timeLeft(confirmUntil)) {
       confirmUntil = 0;
     } else {
-      gfx->fillRoundRect(94, 168, 278, 152, 16, UI_WHITE);
-      gfx->drawRoundRect(94, 168, 278, 152, 16, UI_INK);
+      gfx->fillRoundRect(U(94), UY(168), U(278), UY(152), U(16), UI_WHITE);
+      gfx->drawRoundRect(U(94), UY(168), U(278), UY(152), U(16), UI_INK);
       // 48 y no 28: el buffer se dimensiono cuando toda cadena era de un byte
       // por caracter. Con una fila UTF-8, "%s 놓아줄까요?" mas el nombre pasa
       // de 28 y snprintf corta a mitad de una secuencia de 3 bytes, que la
@@ -1092,14 +1092,14 @@ void render() {
       snprintf(q, sizeof(q), T(S_RELEASE_FMT), dexName(pet.speciesId));
       gfx->setTextColor(UI_INK);
       setSize(SC(2));
-      setCur(centerX(q, SC(2)), 196);
+      setCur(centerX(q, SC(2)), UY(196));
       printT(q);
-      gfx->fillRoundRect(118, 252, 100, 52, 12, UI_BAR_OK);
+      gfx->fillRoundRect(U(118), UY(252), U(100), UY(52), U(12), UI_BAR_OK);
       gfx->setTextColor(UI_WHITE);
-      setCur(118 + (100 - textW(T(S_YES), SC(2))) / 2, 270);
+      setCur(U(118) + (U(100) - textW(T(S_YES), SC(2))) / 2, UY(270));
       printT(T(S_YES));
-      gfx->fillRoundRect(248, 252, 100, 52, 12, UI_BAR_BAD);
-      setCur(248 + (100 - textW(T(S_NO), SC(2))) / 2, 270);
+      gfx->fillRoundRect(U(248), UY(252), U(100), UY(52), U(12), UI_BAR_BAD);
+      setCur(U(248) + (U(100) - textW(T(S_NO), SC(2))) / 2, UY(270));
       printT(T(S_NO));
     }
   }
@@ -1583,14 +1583,14 @@ void clockTap(int16_t x, int16_t y) {
 // llama + numero de racha arriba a la izquierda
 void drawStreakBadge() {
   if (pet.streak < 1) return;
-  int x = 26, y = 16;
-  gfx->fillTriangle(x + 8, y, x + 1, y + 17, x + 15, y + 17, UI_BAR_BAD);
-  gfx->fillTriangle(x + 8, y + 7, x + 4, y + 17, x + 12, y + 17, UI_BAR_WARN);
+  int x = U(26), y = UY(16);
+  gfx->fillTriangle(x + U(8), y, x + U(1), y + UY(17), x + U(15), y + UY(17), UI_BAR_BAD);
+  gfx->fillTriangle(x + U(8), y + UY(7), x + U(4), y + UY(17), x + U(12), y + UY(17), UI_BAR_WARN);
   char s[6];
   snprintf(s, sizeof(s), "%u", pet.streak);
   gfx->setTextColor(inkColor());
   setSize(SC(2));
-  setCur(x + 22, y + 2);
+  setCur(x + U(22), y + UY(2));
   printT(s);
 }
 
@@ -1610,14 +1610,14 @@ void drawCelebration() {
     l2 = buf;
   }
   if (!l1) return;
-  gfx->fillRoundRect(73, 150, 320, 96, 16, UI_BAR_WARN);
-  gfx->drawRoundRect(73, 150, 320, 96, 16, UI_INK);
+  gfx->fillRoundRect(U(73), UY(150), U(320), UY(96), U(16), UI_BAR_WARN);
+  gfx->drawRoundRect(U(73), UY(150), U(320), UY(96), U(16), UI_INK);
   gfx->setTextColor(UI_INK);
   setSize(SC(3));
-  setCur(centerX(l1, SC(3)), 176);
+  setCur(centerX(l1, SC(3)), UY(176));
   printT(l1);
   setSize(SC(2));
-  setCur(centerX(l2, SC(2)), 212);
+  setCur(centerX(l2, SC(2)), UY(212));
   printT(l2);
 }
 
@@ -2019,23 +2019,23 @@ void galleryTap(int16_t x, int16_t y) {
 void drawBattery() {
   int pc = batPercent();
   if (pc < 0) return;  // sin bateria conectada
-  int x = CX - 14, y = 12, w = 24, h = 11;
+  int x = CX - U(14), y = UY(12), w = U(24), h = UY(11);
   bool charging = batCharging();
   uint16_t col = charging ? UI_BAR_OK
                  : (pc >= 40) ? inkColor()
                  : (pc >= 15) ? UI_BAR_WARN
                               : UI_BAR_BAD;
-  gfx->drawRoundRect(x, y, w, h, 2, col);
-  gfx->fillRect(x + w, y + 3, 3, 5, col);  // borne
+  gfx->drawRoundRect(x, y, w, h, U(2), col);
+  gfx->fillRect(x + w, y + UY(3), SC(3), UY(5), col);  // borne
   if (charging) {
     // rayo de carga (zigzag) en vez de la barra de nivel
     uint16_t bolt = C565(0xff, 0xd9, 0x4a);
     int bx = x + w / 2;
-    gfx->fillTriangle(bx + 3, y + 1, bx - 4, y + 6, bx + 1, y + 6, bolt);
-    gfx->fillTriangle(bx - 1, y + 5, bx + 4, y + 5, bx - 3, y + 10, bolt);
+    gfx->fillTriangle(bx + U(3), y + UY(1), bx - U(4), y + UY(6), bx + U(1), y + UY(6), bolt);
+    gfx->fillTriangle(bx - U(1), y + UY(5), bx + U(4), y + UY(5), bx - U(3), y + UY(10), bolt);
   } else {
-    int fw = (w - 4) * pc / 100;
-    if (fw > 0) gfx->fillRect(x + 2, y + 2, fw, h - 4, col);
+    int fw = (w - U(4)) * pc / 100;
+    if (fw > 0) gfx->fillRect(x + U(2), y + UY(2), fw, h - UY(4), col);
   }
 }
 
@@ -2043,11 +2043,11 @@ void drawHeader(const char *name, uint16_t nameColor, const char *msg) {
   drawBattery();
   gfx->setTextColor(nameColor);
   setSize(SC(3));
-  setCur(centerX(name, SC(3)), 52);
+  setCur(centerX(name, SC(3)), UY(52));
   printT(name);
   gfx->setTextColor(inkColor());
   setSize(SC(2));
-  setCur(centerX(msg, SC(2)), 90);
+  setCur(centerX(msg, SC(2)), UY(90));
   printT(msg);
 }
 
@@ -2122,50 +2122,50 @@ void drawChoiceDialog() {
     q = T(S_FAR_Q); o1 = T(S_FAR_GO); o2 = T(S_FAR_STAY);
     c1 = UI_BAR_WARN; t1 = UI_INK; c2 = UI_BAR_OK; t2 = UI_WHITE;
   }
-  gfx->fillRoundRect(73, 156, 320, 188, 16, UI_WHITE);
-  gfx->drawRoundRect(73, 156, 320, 188, 16, UI_INK);
+  gfx->fillRoundRect(U(73), UY(156), U(320), UY(188), U(16), UI_WHITE);
+  gfx->drawRoundRect(U(73), UY(156), U(320), UY(188), U(16), UI_INK);
   gfx->setTextColor(UI_INK);
   setSize(SC(2));
-  setCur(centerX(q, SC(2)), 176);
+  setCur(centerX(q, SC(2)), UY(176));
   printT(q);
-  gfx->fillRoundRect(93, 206, 280, 52, 12, c1);     // boton accion
+  gfx->fillRoundRect(U(93), UY(206), U(280), UY(52), U(12), c1);     // boton accion
   gfx->setTextColor(t1);
-  setCur(centerX(o1, SC(2)), 224);
+  setCur(centerX(o1, SC(2)), UY(224));
   printT(o1);
-  gfx->fillRoundRect(93, 268, 280, 52, 12, c2);     // boton mantener/quedaros
+  gfx->fillRoundRect(U(93), UY(268), U(280), UY(52), U(12), c2);     // boton mantener/quedaros
   gfx->setTextColor(t2);
-  setCur(centerX(o2, SC(2)), 286);
+  setCur(centerX(o2, SC(2)), UY(286));
   printT(o2);
 }
 
 // boton-CTA rojo y grande para evolucionar (pulsa para llamar la atencion)
 void drawEvolveButton() {
   uint32_t now = millis();
-  int p = (int)(5 * sinf(now * 0.006f));  // late: -5..5
+  int p = (int)(U(5) * sinf(now * 0.006f));  // late: -5..5
   int x = EVO_BTN_X - p, y = EVO_BTN_Y - p, w = EVO_BTN_W + 2 * p, h = EVO_BTN_H + 2 * p;
-  gfx->fillRoundRect(x, y, w, h, 18, UI_BAR_BAD);
-  gfx->drawRoundRect(x, y, w, h, 18, UI_WHITE);
-  gfx->drawRoundRect(x + 2, y + 2, w - 4, h - 4, 16, UI_WHITE);
+  gfx->fillRoundRect(x, y, w, h, U(18), UI_BAR_BAD);
+  gfx->drawRoundRect(x, y, w, h, U(18), UI_WHITE);
+  gfx->drawRoundRect(x + U(2), y + UY(2), w - U(4), h - UY(4), U(16), UI_WHITE);
   gfx->setTextColor(UI_WHITE);
   setSize(SC(3));
   const char *t = T(S_EVO_TAP);
-  setCur(centerX(t, SC(3)), y + h / 2 - 11);
+  setCur(centerX(t, SC(3)), y + h / 2 - UY(11));
   printT(t);
 }
 
 // boton-CTA dorado de despedida: "<nombre> quiere decirte algo..."
 void drawFarewellButton() {
   uint32_t now = millis();
-  int p = (int)(4 * sinf(now * 0.005f));
+  int p = (int)(U(4) * sinf(now * 0.005f));
   int x = FAR_BTN_X - p, y = FAR_BTN_Y - p, w = FAR_BTN_W + 2 * p, h = FAR_BTN_H + 2 * p;
-  gfx->fillRoundRect(x, y, w, h, 16, UI_BAR_WARN);
-  gfx->drawRoundRect(x, y, w, h, 16, UI_INK);
+  gfx->fillRoundRect(x, y, w, h, U(16), UI_BAR_WARN);
+  gfx->drawRoundRect(x, y, w, h, U(16), UI_INK);
   char buf[52];
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
   gfx->setTextColor(UI_INK);
   setSize(SC(2));
-  setCur(centerX(buf, SC(2)), y + h / 2 - 8);
+  setCur(centerX(buf, SC(2)), y + h / 2 - UY(8));
   printT(buf);
 }
 
@@ -2173,16 +2173,16 @@ void drawFarewellButton() {
 // (final triste: azul-gris oscuro, latido lento y apagado)
 void drawRunawayButton() {
   uint32_t now = millis();
-  int p = (int)(3 * sinf(now * 0.003f));
+  int p = (int)(U(3) * sinf(now * 0.003f));
   int x = FAR_BTN_X - p, y = FAR_BTN_Y - p, w = FAR_BTN_W + 2 * p, h = FAR_BTN_H + 2 * p;
-  gfx->fillRoundRect(x, y, w, h, 16, C565(0x3a, 0x44, 0x5a));
-  gfx->drawRoundRect(x, y, w, h, 16, C565(0x70, 0x80, 0x98));
+  gfx->fillRoundRect(x, y, w, h, U(16), C565(0x3a, 0x44, 0x5a));
+  gfx->drawRoundRect(x, y, w, h, U(16), C565(0x70, 0x80, 0x98));
   char buf[52];
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_RUNAWAY_BTN), nm);
   gfx->setTextColor(C565(0xc8, 0xd2, 0xe0));
   setSize(SC(2));
-  setCur(centerX(buf, SC(2)), y + h / 2 - 8);
+  setCur(centerX(buf, SC(2)), y + h / 2 - UY(8));
   printT(buf);
 }
 
@@ -2511,15 +2511,15 @@ void overlayMouth(const Species &sp, int x, int y, int s, bool open) {
 
 void drawPoops() {
   for (int i = 0; i < pet.poops; i++) {
-    drawMap(SPR_POOP, 32, 36 + i * 46, 244, 2, false);
+    drawMap(SPR_POOP, 32, U(36 + i * 46), UY(244), SC(2), false);
   }
 }
 
 void drawBars() {
-  drawBar(78, 318, T(S_BAR_FOOD), pet.fullness);
-  drawBar(244, 318, T(S_BAR_JOY), pet.joy);
-  drawBar(78, 346, T(S_BAR_ENE), pet.energy);
-  drawBar(244, 346, T(S_BAR_HYG), pet.hygiene);
+  drawBar(U(78), UY(318), T(S_BAR_FOOD), pet.fullness);
+  drawBar(U(244), UY(318), T(S_BAR_JOY), pet.joy);
+  drawBar(U(78), UY(346), T(S_BAR_ENE), pet.energy);
+  drawBar(U(244), UY(346), T(S_BAR_HYG), pet.hygiene);
 }
 
 // Separacion entre la etiqueta y su barra en la fila de necesidades. Estaba fija
@@ -2537,7 +2537,8 @@ static int barLabelGap() {
   }
   // por debajo del umbral original se deja EXACTAMENTE 48, para no mover nada en
   // los idiomas latinos; por encima se anade aire para que la etiqueta respire
-  return ancho <= 48 ? 48 : ancho + 8;
+  // el ancho medido sale a escala SC(2): se normaliza a px de diseno para compararlo con 48
+  return ancho * 2 <= 48 * SC(2) ? U(48) : ancho + U(8);
 }
 
 void drawBar(int x, int y, const char *label, uint8_t val) {
@@ -2548,22 +2549,25 @@ void drawBar(int x, int y, const char *label, uint8_t val) {
   int gap = barLabelGap();
   // las dos columnas empiezan en 78 y 244: la barra de la primera tiene que
   // acabar antes de la etiqueta de la segunda, y ambas se pintan igual de anchas
-  int bw = 232 - (78 + gap);
-  if (bw > 100) bw = 100;   // con etiquetas latinas sale 100, como estaba
-  int bx = x + gap, bh = 15;
+  int bw = U(232) - (U(78) + gap);
+  if (bw > U(100)) bw = U(100);   // con etiquetas latinas sale 100, como estaba
+  int bx = x + gap, bh = UY(15);
   uint16_t fill = (val >= 50) ? UI_BAR_OK : (val >= 25) ? UI_BAR_WARN : UI_BAR_BAD;
-  gfx->fillRoundRect(bx, y, bw, bh, 4, UI_TRACK);
-  int fw = (bw - 4) * val / 100;
-  if (fw > 0) gfx->fillRoundRect(bx + 2, y + 2, fw, bh - 4, 3, fill);
+  gfx->fillRoundRect(bx, y, bw, bh, U(4), UI_TRACK);
+  int fw = (bw - U(4)) * val / 100;
+  if (fw > 0) gfx->fillRoundRect(bx + U(2), y + UY(2), fw, bh - UY(4), U(3), fill);
 }
 
 void drawButtons() {
   for (int i = 0; i < 4; i++) {
     bool off = pet.sleeping && i != 2;  // durmiendo solo funciona LUZ
     int bx = buttons[i].cx - BTN_HALF, by = buttons[i].cy - BTN_HALF;
-    if (!pet.sleeping) gfx->fillRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, 14, UI_WHITE);
-    gfx->drawRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, 14, inkColor());
-    if (!off) drawMap(buttons[i].icon, 16, buttons[i].cx - 16, buttons[i].cy - 16, 2, false);
+    if (!pet.sleeping) gfx->fillRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, U(14), UI_WHITE);
+    gfx->drawRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, U(14), inkColor());
+    if (!off) {
+      int is = SC(2);  // icono 16x16 a escala entera, centrado en el boton
+      drawMap(buttons[i].icon, 16, buttons[i].cx - 8 * is, buttons[i].cy - 8 * is, is, false);
+    }
   }
 }
 
