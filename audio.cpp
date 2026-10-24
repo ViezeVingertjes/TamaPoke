@@ -20,6 +20,10 @@ static I2SClass i2s;
 static bool gReady = false;
 static bool gOn = true;
 static bool gSleeping = false;
+static bool gIdle = false;          // sin interaccion reciente (ver power.h): el amplificador consume en reposo
+static uint32_t gAmpHoldUntil = 0;  // un efecto pedido en reposo mantiene el amplificador encendido hasta aqui
+static bool gAmpHold = false;       // (indicador aparte: asi la comparacion no falla al dar la vuelta millis())
+static uint32_t gAmpOnAt = 0;       // cuando se encendio el amplificador
 static QueueHandle_t gQ = nullptr;
 
 // El NS4150B tarda bastante mas de 8 ms en estabilizarse tras cada apagado, asi
@@ -30,7 +34,15 @@ static QueueHandle_t gQ = nullptr;
 static void updateAmplifierPower() {
   // gReady evita encenderlo en una placa donde el codec no arranco: ahi el
   // amplificador solo aportaria siseo, porque no va a sonar nada.
-  digitalWrite(PA, (gReady && gOn && !gSleeping) ? HIGH : LOW);
+  if (gAmpHold && (int32_t)(gAmpHoldUntil - millis()) <= 0) gAmpHold = false;
+  bool idleOff = gIdle && !gAmpHold;
+  static int last = -1;  // solo se escribe el pin si cambia
+  int want = (gReady && gOn && !gSleeping && !idleOff) ? HIGH : LOW;
+  if (want != last) {
+    last = want;
+    if (want == HIGH) gAmpOnAt = millis();
+    digitalWrite(PA, want);
+  }
 }
 
 // ---- I2C del códec ----
@@ -140,6 +152,9 @@ static void audioTask(void *) {
     if (xQueueReceive(gQ, &id, portMAX_DELAY) && gOn && !gSleeping && gReady &&
         id < SFX_COUNT) {
       const SfxDef &d = SFX[id];
+      // el NS4150B tarda mas de 8 ms en estabilizarse: si se acaba de encender, el efecto espera
+      int32_t since = (int32_t)(millis() - gAmpOnAt);
+      if (since >= 0 && since < 50) vTaskDelay(pdMS_TO_TICKS(50 - since));
       for (uint8_t i = 0; i < d.len; i++) playTone(d.n[i].f, d.n[i].ms);
     }
   }
@@ -170,8 +185,17 @@ void audioBegin() {
   sfxPlay(SFX_HATCH);  // jingle de arranque (confirma que suena)
 }
 
+bool audioBusy() { return gAmpHold && (int32_t)(gAmpHoldUntil - millis()) > 0; }
+
 void sfxPlay(uint8_t id) {
-  if (gReady && gOn && gQ) xQueueSend(gQ, &id, 0);  // descarta si la cola esta llena
+  if (gReady && gOn && gQ) {
+    if (gIdle) {  // un aviso en reposo (p. ej. "listo para evolucionar") tiene que oirse
+      gAmpHoldUntil = millis() + 4000;
+      gAmpHold = true;
+      updateAmplifierPower();
+    }
+    xQueueSend(gQ, &id, 0);  // descarta si la cola esta llena
+  }
 }
 
 void audioSetEnabled(bool on) {
@@ -188,4 +212,9 @@ void audioSetSleeping(bool sleeping) {
   if (gSleeping == sleeping) return;
   gSleeping = sleeping;
   updateAmplifierPower();  // durmiendo no hay efectos: amp apagado, sin consumo
+}
+
+void audioSetIdle(bool idle) {
+  gIdle = idle;
+  updateAmplifierPower();  // tambien cuando vence el mantenimiento de un aviso
 }

@@ -22,3 +22,5 @@ void sfxPlay(uint8_t id);   // encola un efecto (no bloquea el loop)
 void audioSetEnabled(bool on);
 bool audioEnabled();
 void audioSetSleeping(bool sleeping);  // dormida: amplificador apagado
+bool audioBusy();                      // un efecto pedido en reposo aun puede estar sonando: no dormir la CPU
+void audioSetIdle(bool idle);          // sin uso reciente: amplificador apagado (un efecto lo enciende 4 s)

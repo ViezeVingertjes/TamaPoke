@@ -16,6 +16,35 @@ TOOLS = os.path.join(ROOT, 'tools')
 sys.path.insert(0, TOOLS)
 
 
+class TestLayoutConventions(unittest.TestCase):
+    """TS() es para tamanos de texto y SC() para escalas de sprite. Hoy hacen lo mismo,
+    pero se mantienen separados (ver layout.h): esto vigila que cada uno se use donde toca."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, 'TamaPoke.ino'), encoding='utf-8') as fh:
+            cls.src = fh.read()
+
+    def llamadas(self, nombre):
+        """Argumentos completos (parentesis equilibrados) de cada llamada a `nombre(`."""
+        for m in re.finditer(r'\b' + nombre + r'\(', self.src):
+            i, depth = m.end(), 1
+            while depth and i < len(self.src):
+                depth += {'(': 1, ')': -1}.get(self.src[i], 0)
+                i += 1
+            yield self.src[m.end():i - 1]
+
+    def test_el_texto_usa_ts(self):
+        for nombre in ('setSize', 'textW', 'centerX'):
+            for args in self.llamadas(nombre):
+                self.assertNotIn('SC(', args, f'{nombre}({args[:60]}): el texto usa TS(), no SC()')
+
+    def test_los_sprites_usan_sc(self):
+        for nombre in ('drawMap', 'drawThumb', 'drawPmdAct', 'drawPmdActM'):
+            for args in self.llamadas(nombre):
+                self.assertNotIn('TS(', args, f'{nombre}({args[:60]}): los sprites usan SC(), no TS()')
+
+
 class TestToolsCompile(unittest.TestCase):
     def test_todos_los_scripts_compilan(self):
         scripts = sorted(f for f in os.listdir(TOOLS) if f.endswith('.py'))

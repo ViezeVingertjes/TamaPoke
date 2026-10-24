@@ -129,6 +129,7 @@ SPEED ← minigame, DEFENSE ← 12 h of unbroken good care). *(Battles: on the r
   - **Where to buy**: [Waveshare store](https://www.waveshare.com/esp32-s3-touch-amoled-1.75.htm) (often on backorder), or the **-G** on Amazon — TamaPoke leaves the GPS unused, the board is otherwise identical: 🇺🇸 [.com](https://www.amazon.com/dp/B0F7XWWMJW?tag=capsuleradar-20) · 🇪🇸 [.es](https://www.amazon.es/dp/B0F7XWWMJW?tag=capsuleradar-21) · 🇩🇪 [.de](https://www.amazon.de/dp/B0F7XWWMJW?tag=capsulerada03-21) · 🇬🇧 [.co.uk](https://www.amazon.co.uk/dp/B0F7XWWMJW?tag=capsulerada0d-21) · 🇮🇹 [.it](https://www.amazon.it/dp/B0F7XWWMJW?tag=capsulerada08-21) · 🇫🇷 [.fr](https://www.amazon.fr/dp/B0F7XWWMJW?tag=capsulerada0e-21) · 🇯🇵 [.co.jp](https://www.amazon.co.jp/dp/B0F7XWWMJW?tag=capsuleradar-22) · 🇨🇦 [.ca](https://www.amazon.ca/dp/B0F7XWWMJW?tag=capsulerada09-20). Optional battery — 1100 mAh protected LiPo, MX1.25 plug: 🇪🇸 [.es](https://www.amazon.es/dp/B0F1FGZQS5?tag=capsuleradar-21) · 🇺🇸 [.com](https://www.amazon.com/dp/B0F1FGZQS5?tag=capsuleradar-20) · 🇮🇹 [.it](https://www.amazon.it/dp/B0F1FGZQS5?tag=capsulerada08-21) · 🇫🇷 [.fr](https://www.amazon.fr/dp/B0F1FGZQS5?tag=capsulerada0e-21) (DE/UK: that exact pack is not listed — search for a *protected* 3.7 V LiPo, ~1100 mAh, size **102540**, 1.25 mm micro-JST plug) — check plug polarity against the board first. <sub>Amazon links are affiliate links; as an Amazon Associate I earn from qualifying purchases.</sub>
   - **MicroSD card** (holds the sprite set — any small, class-10 card works): 🇪🇸 [.es](https://www.amazon.es/s?k=microsd+32gb&tag=capsuleradar-21) · 🇺🇸 [.com](https://www.amazon.com/s?k=microsd+32gb&tag=capsuleradar-20) · 🇩🇪 [.de](https://www.amazon.de/s?k=microsd+32gb&tag=capsulerada03-21) · 🇬🇧 [.co.uk](https://www.amazon.co.uk/s?k=microsd+32gb&tag=capsulerada0d-21) · 🇮🇹 [.it](https://www.amazon.it/s?k=microsd+32gb&tag=capsulerada08-21) · 🇫🇷 [.fr](https://www.amazon.fr/s?k=microsd+32gb&tag=capsulerada0e-21) · 🇯🇵 [.co.jp](https://www.amazon.co.jp/s?k=microsd+32gb&tag=capsuleradar-22) · 🇨🇦 [.ca](https://www.amazon.ca/s?k=microsd+32gb&tag=capsulerada09-20)
 - Round 466×466 AMOLED, **CO5300** driver (QSPI, 80 MHz)
+- **Waveshare ESP32-S3-Touch-AMOLED-2.16** ([repo](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.16)) as an opt-in build: square 480×480 panel, same pin map, CST9220 touch. Uncomment `#define BOARD_AMOLED_216` in `pin_config.h` and build as usual. The UI scales to the panel and still needs the microSD sprite pack. The prebuilt web-installer image is 1.75 only.
 - Capacitive touch **CST9217** (I2C, address 0x5A)
 - **AXP2101** (power management + battery + PWR button), **PCF85063** (RTC),
   microSD slot, **ES8311** audio codec (→ amplifier → external speaker on the
@@ -329,6 +330,47 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
   (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload), `touch_log.py`
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
 - `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)
+
+## Battery
+
+What the firmware does to save power (the policy is in `power.h`, covered by `test/test_power.cpp`):
+
+- **Frame rate follows activity.** 10 fps while you interact; 6.7 fps after 1 min without touching;
+  4 fps when the screen dims (90 s); 1 fps when it is almost off (5 min); 2 fps while the pet sleeps and
+  nobody touches it. The ball minigame keeps its 85 ms step. Over 10 idle minutes this sends about 68 % fewer
+  frames to the panel (each one is a full redraw plus a 434 KB QSPI transfer).
+- **Static screens are not redrawn.** Keyboard, clock, card pages 2-4 and the starter choice are painted once
+  and again only when something on them changes.
+- **Light sleep when nobody is looking.** With the screen off, or almost off (5 min), and on battery, the CPU
+  sleeps until the next frame or 200 ms; a touch wakes it at once. With USB connected it never sleeps (the
+  serial port for the SD card stays available), and USB is checked right before each sleep.
+- **Speaker amplifier only when it can be used.** It is off while the pet sleeps and while the screen is dimmed
+  or off; a sound requested meanwhile (e.g. "ready to evolve") switches it on for 4 s, and sounds wait 50 ms
+  after a power-up so the start is not cut.
+- **Low battery (< 20 %, not charging):** brightness capped (100, then 60 under 10 %) and frames twice as slow.
+- **Battery reads over I2C** every 10 s instead of 2 s when the screen is off or almost off.
+- **Battery gauge from the voltage.** On battery the percentage comes from a typical single-cell LiPo
+  discharge curve (`batcurve.h`) over a smoothed voltage and only goes down while discharging; on USB or while
+  charging the PMU's own gauge is used. When the smoothed voltage stays under 3.30 V for 30 s the pet is saved
+  and the PMU powers off (not in the first 30 s after boot); the PMU itself is set to cut at 3.1 V as a backstop.
+- The pet walks by real time, so lower frame rates do not slow it down.
+
+## Nearby TamaPokes
+
+Other TamaPokes within radio range show up on the main screen, up to four, standing next to your pet: two at
+the sides and two further back, smaller and a bit higher. A sleeping neighbour sleeps, a shiny one is shiny.
+It is always on, there is nothing to set up.
+
+- **What is sent:** species, level, shiny, sleeping and an id picked at random on every boot (the radio address too, so a device cannot be tracked across days), 11 bytes with a CRC, over ESP-NOW
+  broadcast on channel 1. No name, no pairing, no access point. Received packets are validated before use and
+  rate limited (`nearby.h`, covered by `test/test_nearby.cpp`).
+- **Radio mostly off:** it is on for 0.8 s every ~15 s while the screen is in use, every ~45 s when the screen
+  is dimmed or the pet sleeps and every ~2 min with the screen off (about 5 %, 2 % and 0.7 % of the time).
+  Windows are jittered so two devices do not stay out of sync. For the first minute after boot it listens
+  continuously, so two devices side by side find each other within seconds. With battery under 20 % it is off.
+- **Light sleep:** the CPU does not sleep while a window is open, and sleep never runs past the next window.
+- A neighbour that has not been heard for 15 minutes disappears (two devices with short windows only hear each
+  other every few minutes).
 
 ## Serial console (115200, debug)
 
