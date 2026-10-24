@@ -29,9 +29,12 @@ constexpr int uiScale(int n, int panel) {
 //  - TS: tamano de texto (setSize/textW/centerX). Medido con las cadenas reales de los 8
 //    idiomas: redondear al mas cercano desbordaba cajas en paneles de 360 y 240 px.
 //  - SC: escala de sprite o pixel-art (drawMap, drawPmdAct...).
-// Son iguales; se mantienen dos nombres para que el uso quede claro y un test vigile
-// que no se crucen. El minimo de 1 hace que en paneles de menos de ~350 px el dibujo
-// pueda ser mas grande que su caja.
+// Hoy son iguales; se mantienen dos nombres para que el uso quede claro (y test_tools.py
+// vigila que no se crucen) por si el redondeo del texto vuelve a separarse del de los
+// sprites. Contrapartida de redondear hacia abajo: en paneles de 233 a 465 px el texto de
+// tamano 2 pasa a 1 (la UI de 466 deja las cajas justas, y con el redondeo al mas cercano
+// el texto desbordaba a partir de ~440 px). Los objetivos reales son 466 y 480 px.
+// El minimo de 1 hace que, por debajo de ~233 px, el dibujo pueda ser mas grande que su caja.
 constexpr int uiAtLeast1(int v) { return v < 1 ? 1 : v; }
 constexpr int uiScaleFit(int n, int panel) { return uiAtLeast1((int)((int64_t)n * panel / UI_DESIGN)); }
 #define TS(n) uiScaleFit((n), UI_W)

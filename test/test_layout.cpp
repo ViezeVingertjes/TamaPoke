@@ -28,11 +28,14 @@ TEST(layout, la_escala_de_sprites_nunca_pasa_de_la_caja) {
   CHECK_EQ(uiScaleFit(3, 932), 6);   // 6,0 -> 6
 }
 
-TEST(layout, texto_y_sprites_son_la_identidad_en_el_tamano_de_diseno) {
+TEST(layout, texto_y_sprites_en_los_tamanos_de_diseno_y_de_la_2_16) {
   for (int n = 1; n <= 8; n++) {
-    CHECK_EQ(uiScaleFit(n, UI_DESIGN), n);
-    CHECK_EQ(TS(n) * 1, uiScaleFit(n, UI_W));  // TS y SC usan el mismo redondeo
+    CHECK_EQ(uiScaleFit(n, UI_DESIGN), n);  // identidad en 466
+    CHECK_EQ(uiScaleFit(n, 480), n);        // y en 480 para todos los factores en uso
   }
+  CHECK_EQ(uiScaleFit(2, 410), 1);          // texto de tamano 2 en un panel de 410: baja a 1 (cabe en su caja)
+  CHECK_EQ(uiScaleFit(3, 410), 2);
+  CHECK_EQ(uiScaleFit(7, 360), 5);
 }
 TEST(layout, valores_calculados_a_mano) {
   CHECK_EQ(uiScale(1, 240), 1);      // 0,52 -> 1

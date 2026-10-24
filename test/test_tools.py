@@ -17,24 +17,32 @@ sys.path.insert(0, TOOLS)
 
 
 class TestLayoutConventions(unittest.TestCase):
-    """TS() es para tamanos de texto y SC() para escalas de sprite: a 466 son
-    iguales y no se nota si se cruzan, asi que se vigila aqui."""
+    """TS() es para tamanos de texto y SC() para escalas de sprite. Hoy hacen lo mismo,
+    pero se mantienen separados (ver layout.h): esto vigila que cada uno se use donde toca."""
 
     @classmethod
     def setUpClass(cls):
         with open(os.path.join(ROOT, 'TamaPoke.ino'), encoding='utf-8') as fh:
             cls.src = fh.read()
 
+    def llamadas(self, nombre):
+        """Argumentos completos (parentesis equilibrados) de cada llamada a `nombre(`."""
+        for m in re.finditer(r'\b' + nombre + r'\(', self.src):
+            i, depth = m.end(), 1
+            while depth and i < len(self.src):
+                depth += {'(': 1, ')': -1}.get(self.src[i], 0)
+                i += 1
+            yield self.src[m.end():i - 1]
+
     def test_el_texto_usa_ts(self):
-        for m in re.finditer(r'\b(setSize|textW|centerX)\(([^;]*)', self.src):
-            if m.group(1) == 'setSize' and m.group(0).startswith('setSize(int'):
-                continue
-            self.assertNotIn('SC(', m.group(2).split(';')[0].split(' printT')[0][:60],
-                             f'{m.group(0)[:60]!r}: el texto usa TS(), no SC()')
+        for nombre in ('setSize', 'textW', 'centerX'):
+            for args in self.llamadas(nombre):
+                self.assertNotIn('SC(', args, f'{nombre}({args[:60]}): el texto usa TS(), no SC()')
 
     def test_los_sprites_usan_sc(self):
-        for m in re.finditer(r'\b(drawMap|drawThumb|drawPmdAct|drawPmdActM)\(([^;]*);', self.src):
-            self.assertNotIn('TS(', m.group(2), f'{m.group(0)[:70]!r}: los sprites usan SC(), no TS()')
+        for nombre in ('drawMap', 'drawThumb', 'drawPmdAct', 'drawPmdActM'):
+            for args in self.llamadas(nombre):
+                self.assertNotIn('TS(', args, f'{nombre}({args[:60]}): los sprites usan SC(), no TS()')
 
 
 class TestToolsCompile(unittest.TestCase):
