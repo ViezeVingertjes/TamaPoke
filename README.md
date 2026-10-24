@@ -19,6 +19,18 @@ and complete them all (shinies included).
 
 🔴 **3D-printed Pokéball case + print profiles → [on MakerWorld](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)** · flash it in your browser → **[web installer](https://socquique.github.io/TamaPoke/web/)**
 
+## Screens
+
+Rendered from the firmware code itself (`make -C test/render shots`), not mock-ups.
+The four circles at the bottom are the four needs and the care buttons at once: each
+fills with its level and turns red when it runs low.
+
+<p align="center"><img src="docs/screens/round.png" alt="Home by day, hungry, food picker, ready to evolve, profile and medals on the 466 px round panel" width="760"></p>
+
+The same screens fit the 480 px square panel (2.16"):
+
+<p align="center"><img src="docs/screens/square.png" alt="Night, battle stats and set time on the 480 px square panel" width="760"></p>
+
 ## Status
 
 Running on hardware. Implemented: the 151 + shinies animated from microSD, full
