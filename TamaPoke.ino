@@ -100,6 +100,7 @@ bool clockOpen = false;       // clock-setting screen (swipe down)
 int clockH = 12, clockM = 0;  // hour being edited
 int32_t clockDate = 0;        // date being edited (days since 1970-01-01)
 bool clockDateMode = false;   // the +/- buttons step day and month instead of hour and minutes
+bool clockDatePicked = false; // the date was changed: Done sets exactly that day
 static const char *const MONTHS[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
@@ -1863,12 +1864,12 @@ void openClock() {
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
   clockDate = e / 86400;
-  clockDateMode = false;
+  clockDateMode = clockDatePicked = false;
   clockOpen = true;
 }
 
 void applyClock() {
-  uint32_t e = clockSet(clockBase(rtcEpoch(), pet.lastSeenEpoch), clockDate, clockH, clockM);
+  uint32_t e = clockSet(clockBase(rtcEpoch(), pet.lastSeenEpoch), clockDatePicked, clockDate, clockH, clockM);
   rtcSetEpoch(e);
   pet.setClock(e);
   clockOpen = false;
@@ -1942,6 +1943,7 @@ void renderClock() {
 void clockTap(const Press &p) {
   if (p.id == P_CLK && clockDateMode) {  // day -, day +, month -, month +
     clockDate = clockClampDay(p.idx < 2 ? clockDate + (p.idx ? 1 : -1) : clockAddMonths(clockDate, p.idx == 3 ? 1 : -1));
+    clockDatePicked = true;
   } else if (p.id == P_CLK) {  // row of +/- buttons: hour -, hour +, min -, min +
     if (p.idx == 0) clockH = (clockH + 23) % 24;
     else if (p.idx == 1) clockH = (clockH + 1) % 24;

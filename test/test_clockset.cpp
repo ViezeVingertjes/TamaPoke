@@ -63,12 +63,15 @@ TEST(clockset, los_meses_se_recortan_y_cruzan_el_ano) {
   CHECK_EQ((int)clockAddMonths(clockDay(2026, 12, 15), 1), (int)clockDay(2027, 1, 15));
   CHECK_EQ((int)clockAddMonths(clockDay(2026, 1, 15), -1), (int)clockDay(2025, 12, 15));
   CHECK_EQ((int)clockClampDay(clockDay(2024, 12, 31)), (int)clockDay(2025, 1, 1));  // rtcEpoch() rejects < 2025
-  CHECK_EQ((int)clockClampDay(clockDay(2121, 1, 1)), (int)clockDay(2120, 12, 31));
+  CHECK_EQ((int)clockClampDay(clockDay(2110, 1, 1)), (int)clockDay(2105, 12, 31));  // uint32_t epoch ends in 2106
+  CHECK((uint64_t)clockClampDay(clockDay(2110, 1, 1)) * 86400 + 86399 <= 0xFFFFFFFFULL);
 }
 
 TEST(clockset, una_fecha_elegida_se_respeta_y_sin_tocarla_sigue_la_hora_cercana) {
   uint32_t now = at(20000, 0, 30);
-  CHECK_EQ((int)clockSet(now, 20000, 23, 30), (int)at(19999, 23, 30));  // date untouched: nearest
-  CHECK_EQ((int)clockSet(now, 20037, 23, 30), (int)at(20037, 23, 30));  // date picked: that day
-  CHECK_EQ((int)clockSet(now, 19963, 9, 0), (int)at(19963, 9, 0));       // also backwards
+  CHECK_EQ((int)clockSet(now, false, 20000, 23, 30), (int)at(19999, 23, 30));  // date untouched: nearest
+  CHECK_EQ((int)clockSet(at(20001, 0, 1), false, 20000, 0, 5), (int)at(20001, 0, 5));  // midnight passed while open
+  CHECK_EQ((int)clockSet(now, true, 20037, 23, 30), (int)at(20037, 23, 30));   // date picked: that day
+  CHECK_EQ((int)clockSet(now, true, 20000, 23, 30), (int)at(20000, 23, 30));   // even today, as shown
+  CHECK_EQ((int)clockSet(now, true, 19963, 9, 0), (int)at(19963, 9, 0));       // also backwards
 }

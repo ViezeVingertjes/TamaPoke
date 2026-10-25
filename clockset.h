@@ -46,15 +46,17 @@ inline int32_t clockAddMonths(int32_t day, int n) {
   return clockDay(y, m, d < len ? d : len);
 }
 
-// The dates the clock screen offers: the years rtcEpoch() accepts as a valid time.
+// The dates the clock screen offers: from 2025 (rtcEpoch() rejects earlier years) to the end of
+// 2105, the last whole year a uint32_t epoch holds.
 inline int32_t clockClampDay(int32_t day) {
-  int32_t lo = clockDay(2025, 1, 1), hi = clockDay(2120, 12, 31);
+  int32_t lo = clockDay(2025, 1, 1), hi = clockDay(2105, 12, 31);
   return day < lo ? lo : day > hi ? hi : day;
 }
 
-// Epoch for the date and hh:mm on the clock screen: with the date left on now's day, the nearest
-// hh:mm (clockEpoch); with another date picked, exactly that day.
-inline uint32_t clockSet(uint32_t now, int32_t day, int h, int m) {
-  if (day == (int32_t)(now / 86400)) return clockEpoch(now, h, m);
+// Epoch for the date and hh:mm on the clock screen: with the date untouched, the nearest hh:mm
+// (clockEpoch, also right if midnight passed while the screen was open); with a date picked,
+// exactly that day.
+inline uint32_t clockSet(uint32_t now, bool picked, int32_t day, int h, int m) {
+  if (!picked) return clockEpoch(now, h, m);
   return (uint32_t)day * 86400 + h * 3600 + m * 60;
 }
