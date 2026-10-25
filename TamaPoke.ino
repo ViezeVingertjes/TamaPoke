@@ -2590,15 +2590,19 @@ void ensureNeighbors() {
 
 // A neighbor on screen next to an awake pet is greeted once: both nod, hearts, a little joy and
 // bond (Pet::greet() keeps the daily cap). One per pass.
-uint32_t greetId = 0, greetUntil = 0;
+uint32_t greetId = 0, greetStart = 0, greetUntil = 0;
 void greetNeighbors() {
+  // only where it can be seen: the main screen, lit, with no dialog or evolution on top
+  if (galleryOpen || gameOpen || sackOpen || cardOpen || clockOpen || kbOpen || choiceKind || confirmUntil || dimStage ||
+      pet.evolving()) return;
   const NbEntry *sh[NB_MAX_SHOWN];
   int n = nearbyShown(sh);
   for (int i = 0; i < n; i++) {
     if (sh[i]->sleeping || nbSlot[i].id != sh[i]->id || !nbPmd[i].loaded) continue;  // only one that is drawn and awake
     if (!pet.greet(sh[i]->id)) continue;
     greetId = sh[i]->id;
-    greetUntil = millis() + 4500;
+    greetStart = millis();
+    greetUntil = greetStart + 4500;
     sfxPlay(SFX_HEART);
     if (pmd.has(PMD_NOD)) {
       beh.mode = 2;
@@ -2624,9 +2628,14 @@ void drawNeighbors() {
     PmdMon &m = nbPmd[i];
     if (!m.loaded || nbSlot[i].id != sh[i]->id) continue;
     uint8_t act = sh[i]->sleeping && m.has(PMD_SLEEP) ? PMD_SLEEP : PMD_IDLE;
-    if (sh[i]->id == greetId && timeLeft(greetUntil) && m.has(PMD_NOD)) act = PMD_NOD;  // nods back
     uint32_t t = now + (sh[i]->id % 997) * 13;  // each at its own moment of the animation
-    drawPmdActM(m, act, CX + U(pos[i].dx), PET_GROUND - UY(pos[i].up), t, true, false, SC(pos[i].s));
+    bool loop = true;
+    if (sh[i]->id == greetId && timeLeft(greetUntil) && m.has(PMD_NOD) && now - greetStart < pmdActTotalMs(m.acts[PMD_NOD])) {
+      act = PMD_NOD;  // nods back once, from the greeting on
+      t = now - greetStart;
+      loop = false;
+    }
+    drawPmdActM(m, act, CX + U(pos[i].dx), PET_GROUND - UY(pos[i].up), t, loop, false, SC(pos[i].s));
   }
 }
 

@@ -1648,11 +1648,13 @@ TEST(finds, una_copia_de_antes_de_los_hallazgos_conserva_el_tope_de_vinculo) {
   memcpy(blob + m, &sum, 4);
   Pet b;
   makePet(b, 7);
-  b.hasStone = true;                   // this device's own Stone and finds...
+  b.hasStone = true;                   // this device's own Stone, finds and greetings...
   b.findsToday = 3;
+  b.greetsToday = 3;
   CHECK(b.importBackup(blob, m + 4));
   CHECK(!b.hasStone);                  // ...do not pass to the restored pet
   CHECK_EQ((int)b.findsToday, 0);
+  CHECK_EQ((int)b.greetsToday, 0);
   int bond = b.bond;
   setDay(b, 20000);
   b.playResult(10);

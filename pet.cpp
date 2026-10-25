@@ -264,7 +264,7 @@ void Pet::markSeen(int16_t dex) {
 }
 
 bool Pet::greet(uint32_t id) {
-  if (!id || isEgg() || sleeping || ceremony != CER_NONE) return false;
+  if (!id || isEgg() || sleeping || ceremony != CER_NONE || evolving()) return false;
   for (uint32_t g : greeted)
     if (g == id) return false;
   ensureStepDay();
@@ -738,11 +738,13 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   BackupReader r{ data + sizeof(BACKUP_MAGIC), data + length - 4 };
   bondDay = UINT32_MAX;  // no real day: still there after the read = a layout from before the bond cap
   findsToday = UINT8_MAX;  // the same for the walk finds (findsToday and hasStone come together)
+  greetsToday = UINT8_MAX;  // and the greetings
   backupFields(r);
   if (findsToday == UINT8_MAX) {  // the device's own finds and Stone must not pass to the restored pet
     findsToday = 0;
     hasStone = false;
   }
+  if (greetsToday == UINT8_MAX) greetsToday = 0;  // nor today's greetings
   nick[sizeof(nick) - 1] = 0;
   bool nickOk = true;
   for (const char *c = nick; *c; c++) nickOk = nickOk && *c >= 32 && *c < 127;
@@ -909,7 +911,7 @@ void Pet::load() {
   stepRewardMask = prefs.getUChar("stmask", 0);
   findsToday = min(prefs.getUChar("stfind", 0), FINDS_PER_DAY);
   hasStone = prefs.getBool("stone", false);
-  greetsToday = prefs.getUChar("greet", 0);
+  greetsToday = min(prefs.getUChar("greet", 0), GREETS_PER_DAY);
   // seeding: the current pet counts as raised (old saves)
   if (speciesId >= 1) registerSpecies(speciesId);
 }

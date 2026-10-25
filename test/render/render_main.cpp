@@ -222,6 +222,21 @@ static int runTapTests() {
   EXPECT(greetId == 7 && timeLeft(greetUntil) && pet.greetsToday == 1, "un vecino despierto se saluda");
   greetNeighbors();
   EXPECT(pet.greetsToday == 1, "el mismo vecino solo una vez");
+  begin("main_day");
+  nb(8, 7);
+  settleNeighbors();
+  gameOpen = true;
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 0, "no se saluda con otra pantalla encima");
+  gameOpen = false;
+  dimStage = 1;
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 0, "ni con la pantalla atenuada");
+  dimStage = 0;
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 1, "en la pantalla principal si");
+  begin("evolving");
+  EXPECT(!pet.greet(99), "durante la evolucion no se saluda");
   // food selector: the center of each icon picks its slot
   for (int i = 0; i < 4; i++) {
     begin("feed_menu");
