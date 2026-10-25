@@ -12,6 +12,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "..", "docs", "screens")
 ROUND = ["main_day", "poops_hungry", "feed_menu", "cta_evolve", "card_profile", "card_medals"]
 SQUARE = ["main_night", "card_stats", "clock"]
+# feature strips for the "Highlights" part of the README (round panel)
+STRIPS = {
+    "life": ["starter", "evolving", "cta_farewell"],
+    "nearby": ["nearby_big", "nearby_greet", "nearby_night"],
+    "walks": ["walk_find_stone", "card_steps", "biome_snow"],
+    "play": ["game", "sack", "gallery"],
+}
 CELL, GAP = 320, 24
 
 
@@ -35,3 +42,5 @@ def sheet(names, folder, radius, cols):
 os.makedirs(OUT, exist_ok=True)
 sheet(ROUND, "en", 233, 3).save(os.path.join(OUT, "round.png"), optimize=True)
 sheet(SQUARE, "sq480", 44, 3).save(os.path.join(OUT, "square.png"), optimize=True)
+for name, shots in STRIPS.items():
+    sheet(shots, "en", 233, 3).save(os.path.join(OUT, name + ".png"), optimize=True)
