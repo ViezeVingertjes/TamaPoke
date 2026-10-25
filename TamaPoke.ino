@@ -1265,8 +1265,7 @@ uint32_t lastScreenKey = 0;
 
 // Draws a frame and returns true if it flushed it to the panel.
 bool render() {
-  int h = sceneHour();
-  gNight = pet.sleeping || h < 6 || h >= 20;  // theme: dark at night or while sleeping, light by day
+  gNight = pet.sleeping || pet.isNight();  // theme: dark at night or while sleeping, light by day
   if (staticScreen()) {
     uint32_t k = screenKey();
     if (screenKeyValid && k == lastScreenKey) return false;
@@ -1532,7 +1531,7 @@ void drawGameScene();  // prototype (defined further down)
 void renderSack() {
   uint32_t now = millis();
   drawGameScene();  // habitat background
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  bool night = pet.isNight();
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
   // result screen
@@ -1608,8 +1607,7 @@ void renderSack() {
 
 // minigame background: the pet's habitat (sky by hour + biome ground)
 void drawGameScene() {
-  int hh = sceneHour();
-  bool night = hh < 6 || hh >= 20;
+  bool night = pet.isNight();
   uint16_t top, bot;
   skyColors(night, top, bot);
   int hor = UY(376);
@@ -1626,7 +1624,7 @@ void renderGame() {
   // no fillScreen(BLACK): drawScene covers the whole canvas. If the
   // previous flush's DMA is still reading the buffer, it will see valid content (not
   // half-painted black), which was the flicker at 25 fps.
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  bool night = pet.isNight();
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
 
   if (gameOverUntil) {

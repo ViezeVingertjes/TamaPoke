@@ -242,16 +242,16 @@ int16_t Pet::pickEggSpecies() {
   bool night = isNight();
   for (int pass = 0; pass < 2; pass++) {
     for (int t = tier; t >= R_COMUN; t--) {
-      auto weight = [&](int16_t d) -> int {
+      auto odds = [&](int16_t d) -> int {
         if (DEX_TBL[d].rarity != t || (pass == 0 && !lineHasUnregistered(d))) return 0;
         return night && (DEX_TBL[d].flags & DEX_NIGHT) ? NIGHT_WEIGHT : 1;
       };
       int total = 0;
-      for (int16_t d = 1; d <= 151; d++) total += weight(d);
+      for (int16_t d = 1; d <= 151; d++) total += odds(d);
       if (total == 0) continue;
       int r = random(total);
       for (int16_t d = 1; d <= 151; d++)
-        if ((r -= weight(d)) < 0) return d;
+        if ((r -= odds(d)) < 0) return d;
     }
   }
   return CLASSIC_DEX[random(NUM_CLASSIC_DEX)];  // unreachable, just in case

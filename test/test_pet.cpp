@@ -625,6 +625,16 @@ TEST(egg, sin_reloj_o_de_dia_el_sorteo_no_cambia) {
   Pet p;
   makePet(p, 4);
   CHECK(!p.isNight());                 // no clock yet
+  int16_t noClock[200];
+  for (int seed = 1; seed <= 200; seed++) { randomSeed(seed); noClock[seed - 1] = p.pickEggSpecies(); }
+  atHourOf(p, 13);
+  bool same = true;
+  for (int seed = 1; seed <= 200; seed++) { randomSeed(seed); same = same && p.pickEggSpecies() == noClock[seed - 1]; }
+  CHECK_MSG(same, "by day the roll is the same as without a clock");
+  atHourOf(p, 2);
+  bool differs = false;
+  for (int seed = 1; seed <= 200; seed++) { randomSeed(seed); differs = differs || p.pickEggSpecies() != noClock[seed - 1]; }
+  CHECK_MSG(differs, "at night it is not");
   atHourOf(p, 5);
   CHECK(p.isNight());
   atHourOf(p, 6);

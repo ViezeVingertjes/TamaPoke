@@ -166,17 +166,6 @@ TEST(dex, hay_al_menos_una_especie_de_cada_rareza) {
     CHECK_MSG(count[r] > 0, "hay una rareza sin especies: el sorteo del huevo se quedaria sin candidatos");
 }
 
-// pickEggSpecies puts a tier's candidates in an array of 80: if any
-// tier had more, the draw would only cover the first 80
-TEST(dex, ningun_tier_desborda_el_array_de_candidatos) {
-  for (int r = R_COMUN; r <= R_LEGENDARIO; r++) {
-    int n = 0;
-    for (int d = 1; d <= N; d++)
-      if (DEX_TBL[d].rarity == r) n++;
-    CHECK_MSG(n <= 80, "mas de 80 candidatos en un tier: pickEggSpecies los recorta");
-  }
-}
-
 TEST(dex, dexName_devuelve_el_nombre_de_la_tabla) {
   for (int d = 1; d <= N; d++) CHECK_STREQ(dexName(d), DEX_TBL[d].name);
 }
