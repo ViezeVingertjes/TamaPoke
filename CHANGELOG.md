@@ -23,6 +23,12 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
   "sprites missing" notice for every species. The `mon=` field of the serial
   `STATS` and `HEALTH` lines now reports the PMD sprite.
 
+### Fixed
+- No more boot loop right after the charger setup when built against
+  SensorLib 0.5.1: the step counter used the library's legacy QMI8658 header,
+  whose class clashes with the new driver of the same name, so starting the
+  IMU jumped to a bad address. It now uses the new driver.
+
 ## [1.19] - 2026-10-25
 
 ### Added
