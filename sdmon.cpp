@@ -1,5 +1,6 @@
 #include "sdmon.h"
 #include "pin_config.h"
+#include "pmdzoom.h"
 #include "thumb_format.h"
 #include <FS.h>
 #include <SD_MMC.h>
@@ -69,6 +70,7 @@ bool PmdMon::load(uint8_t dexNum, bool shiny) {
     }
     a.base = base;
   }
+  zoom = dexNum < sizeof(PMD_ZOOM) ? PMD_ZOOM[dexNum] : 0;
   loaded = true;
   Serial.printf("cargado %s (%u KB)\n", path, size / 1024);
   return true;
@@ -83,6 +85,7 @@ void PmdMon::unload() {
     a.w = a.h = a.frames = a.base = 0;
     a.data = nullptr;
   }
+  zoom = 0;
   loaded = false;
 }
 
@@ -160,81 +163,9 @@ bool sdBegin() {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
     SD_MMC.mkdir("/mons");
   } else {
-    Serial.println("SD no detectada (el juego usa los sprites de flash)");
+    Serial.println("SD no detectada (sin SD no hay sprites)");
   }
   return sdReady;
-}
-
-bool SdMon::load(uint8_t dexNum, bool shiny) {
-  unload();
-  if (!sdReady) return false;
-
-  char path[24];
-  snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
-  if (!f && shiny) {  // no shiny variant: use the normal one
-    snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
-  }
-  if (!f) {
-    Serial.printf("no existe %s\n", path);
-    return false;
-  }
-
-  char magic[4];
-  uint16_t header[4];
-  if (f.read((uint8_t *)magic, 4) != 4 || memcmp(magic, "TPK1", 4) != 0 ||
-      f.read((uint8_t *)header, 8) != 8) {
-    f.close();
-    return false;
-  }
-  w = header[0];
-  h = header[1];
-  frames = header[2];
-  frameMs = header[3];
-  // bound dimensions: avoids an overflowing or absurd size with a corrupt file
-  if (f.read((uint8_t *)&palCount, 2) != 2 || palCount > 256 ||
-      w == 0 || w > 256 || h == 0 || h > 256 || frames == 0 || frames > 64) {
-    f.close();
-    return false;
-  }
-  if (f.read((uint8_t *)pal, palCount * 2) != palCount * 2) {
-    f.close();
-    return false;
-  }
-
-  uint32_t size = (uint32_t)w * h * frames;
-  data = (uint8_t *)ps_malloc(size);
-  if (!data) {
-    Serial.println("sin PSRAM para el sprite");
-    f.close();
-    return false;
-  }
-  uint32_t got = f.read(data, size);
-  f.close();
-  if (got != size) {
-    Serial.printf("%s truncado (%u de %u)\n", path, got, size);
-    unload();
-    return false;
-  }
-
-  // integer zoom so the critter is ~200 px tall on screen
-  scale = 200 / h;
-  if (scale < 2) scale = 2;
-  if (scale > 5) scale = 5;
-
-  Serial.printf("cargado %s: %ux%u x%u frames @%ums, escala %u\n",
-                path, w, h, frames, frameMs, scale);
-  loaded = true;
-  return true;
-}
-
-void SdMon::unload() {
-  if (data) {
-    free(data);
-    data = nullptr;
-  }
-  loaded = false;
 }
 
 // ---------------------------------------------------------------------------

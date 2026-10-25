@@ -1,21 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-// TPK1 animated sprite (legacy format, fallback path). The project uses
-// PMD/TPK2 (PmdMon) for everything; this path stays inactive if there is no NNN.bin on the SD.
-// The indexed data lives in PSRAM; the palette is RGB565.
-struct SdMon {
-  bool loaded = false;
-  uint16_t w = 0, h = 0, frames = 0, frameMs = 100;
-  uint8_t scale = 2;       // integer zoom factor when drawing
-  uint16_t palCount = 0;
-  uint16_t pal[256];
-  uint8_t *data = nullptr;  // frames * w * h indices (0xFF = transparent)
-
-  bool load(uint8_t dexNum, bool shiny = false);
-  void unload();
-};
-
 // actions of the PMD sprites (TPK2 format)
 enum : uint8_t {
   PMD_IDLE = 0, PMD_WALKL, PMD_WALKR, PMD_SLEEP, PMD_EAT, PMD_HURT,
@@ -36,6 +21,7 @@ struct PmdMon {
   uint16_t palCount = 0;
   uint16_t pal[256];
   uint8_t *blob = nullptr;
+  uint8_t zoom = 0;  // integer zoom from pmdzoom.h, 0 = unknown (picked from the frame height)
   PmdAct acts[PMD_NACTS];
 
   bool load(uint8_t dexNum, bool shiny = false);

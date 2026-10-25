@@ -163,3 +163,4 @@ if __name__ == '__main__':
                 print(f"  FALLO: {e}")
                 fallos.append((n, sh))
     print(f"FALLOS: {fallos}" if fallos else "TODOS EMPAQUETADOS")
+    print("sprites changed: rerun tools/pmd_zoom.py to refresh pmdzoom.h")

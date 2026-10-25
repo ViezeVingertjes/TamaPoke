@@ -6,8 +6,6 @@ tools/downloads/
 tools/__pycache__/
 __pycache__/
 tools/sheet.png
-tools/import_sheet.png
-tools/emitted_sprites.js
 tools/demo_anim.js
 tools/demo_compare.js
 
