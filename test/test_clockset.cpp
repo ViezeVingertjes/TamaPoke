@@ -42,3 +42,33 @@ TEST(clockset, la_base_prefiere_el_rtc_luego_lo_guardado_y_luego_una_fecha_razon
   // so that any hh:mm set then is a real date, never day 0 (which means "no clock")
   CHECK(clockEpoch(clockBase(0, 0), 0, 0) / 86400 > 0);
 }
+
+TEST(clockset, fechas_de_ida_y_vuelta) {
+  int y, m, d;
+  clockYmd(0, y, m, d);
+  CHECK(y == 1970 && m == 1 && d == 1);
+  clockYmd(1792943027 / 86400, y, m, d);
+  CHECK(y == 2026 && m == 10 && d == 25);
+  CHECK_EQ((int)clockDay(2028, 2, 29), (int)clockDay(2028, 2, 28) + 1);  // leap day
+  CHECK_EQ((int)clockDay(2026, 3, 1), (int)clockDay(2026, 2, 28) + 1);   // no leap day
+  for (int32_t day = clockDay(2025, 1, 1); day <= clockDay(2121, 1, 1); day++) {
+    clockYmd(day, y, m, d);
+    if (clockDay(y, m, d) != day) { CHECK_EQ((int)clockDay(y, m, d), (int)day); break; }
+  }
+}
+
+TEST(clockset, los_meses_se_recortan_y_cruzan_el_ano) {
+  CHECK_EQ((int)clockAddMonths(clockDay(2026, 1, 31), 1), (int)clockDay(2026, 2, 28));
+  CHECK_EQ((int)clockAddMonths(clockDay(2028, 1, 31), 1), (int)clockDay(2028, 2, 29));
+  CHECK_EQ((int)clockAddMonths(clockDay(2026, 12, 15), 1), (int)clockDay(2027, 1, 15));
+  CHECK_EQ((int)clockAddMonths(clockDay(2026, 1, 15), -1), (int)clockDay(2025, 12, 15));
+  CHECK_EQ((int)clockClampDay(clockDay(2024, 12, 31)), (int)clockDay(2025, 1, 1));  // rtcEpoch() rejects < 2025
+  CHECK_EQ((int)clockClampDay(clockDay(2121, 1, 1)), (int)clockDay(2120, 12, 31));
+}
+
+TEST(clockset, una_fecha_elegida_se_respeta_y_sin_tocarla_sigue_la_hora_cercana) {
+  uint32_t now = at(20000, 0, 30);
+  CHECK_EQ((int)clockSet(now, 20000, 23, 30), (int)at(19999, 23, 30));  // date untouched: nearest
+  CHECK_EQ((int)clockSet(now, 20037, 23, 30), (int)at(20037, 23, 30));  // date picked: that day
+  CHECK_EQ((int)clockSet(now, 19963, 9, 0), (int)at(19963, 9, 0));       // also backwards
+}

@@ -72,7 +72,7 @@ uint32_t walkLast = 0;  // time of the last walk step (0 = none yet)
 enum PressId : uint8_t {
   P_NONE, P_PET, P_EGG,  // the pet and the egg give their own feedback (hearts, cracks)
   P_STARTER, P_DECK, P_FEED, P_CTA, P_CHOICE, P_REL_NO, P_REL_YES,
-  P_CARD_NAME, P_TRAIN, P_BACK, P_CLK, P_SND, P_CLK_CANCEL, P_CLK_OK, P_KEY, P_CELL, P_CLOSE,
+  P_CARD_NAME, P_TRAIN, P_BACK, P_CLK, P_SND, P_CLK_DATE, P_CLK_CANCEL, P_CLK_OK, P_KEY, P_CELL, P_CLOSE,
 };
 struct Press {
   uint8_t id = P_NONE;
@@ -98,6 +98,10 @@ uint8_t nameLen = 0;
 uint8_t cardPage = 0;         // 0 profile, 1 battle, 2 medals, 3 progress, 4 steps
 bool clockOpen = false;       // clock-setting screen (swipe down)
 int clockH = 12, clockM = 0;  // hour being edited
+int32_t clockDate = 0;        // date being edited (days since 1970-01-01)
+bool clockDateMode = false;   // the +/- buttons step day and month instead of hour and minutes
+static const char *const MONTHS[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
 // bath scene: foam over the pet and cleanup when it pops
 uint32_t bathUntil = 0;
@@ -206,14 +210,16 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define CLK_X1 (CX - U(84))
 #define CLK_X2 (CX + U(12))
 #define CLK_X3 (CX + U(92))
-#define SND_PILL_X (CX - SND_PILL_W / 2)
-#define SND_PILL_W U(240)
+// sound switch and date pill share a row, wider than Cancel/Done so "Sound off" keeps the big text
+#define SND_PILL_W U(196)
+#define SND_PILL_X (CX - U(4) - SND_PILL_W)
+#define DATE_PILL_X (CX + U(4))
 #define CLOCK_OK_X (CX + U(4))
 #define CLOCK_OK_Y UY(344)
 #define CLOCK_OK_W U(140)
 #define CLOCK_OK_H UY(68)
 #define CLOCK_CANCEL_X (CX - U(4) - CLOCK_OK_W)
-// sound switch: full width, in accent when active
+// sound switch: in accent when active
 #define SND_PILL_Y UY(256)
 #define SND_PILL_H UY(68)
 // top touch zone: the header exits (gallery grid, minigame, sack)
@@ -743,6 +749,7 @@ Press pressTarget(int16_t x, int16_t y) {
     for (int i = 0; i < 4; i++)
       if (inBox(x, y, cx[i], CLOCK_BTN_Y, CLOCK_BTN_W, CLOCK_BTN_H)) return target(P_CLK, i, true);
     if (inBox(x, y, SND_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H)) return target(P_SND, 0, true);
+    if (inBox(x, y, DATE_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H)) return target(P_CLK_DATE, 0, true);
     if (inBox(x, y, CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H)) return target(P_CLK_OK, 0, true);
     if (inBox(x, y, CLOCK_CANCEL_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H)) return target(P_CLK_CANCEL, 0, true);
     return Press();
@@ -1848,17 +1855,20 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar) {
 
 // ---------- on-screen clock setting (swipe down) ----------
 // The user sets their LOCAL time by eye; the firmware uses it as is, so
-// there is no timezone to manage. Preserves the day (does not break streak/age).
+// there is no timezone to manage. Keeps the day unless the date is changed on its own page;
+// setting the clock never ages the pet (only the boot catch-up does).
 
 void openClock() {
   uint32_t e = clockBase(rtcEpoch(), pet.lastSeenEpoch);  // the RTC first: the cached time lags up to 30 s
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
+  clockDate = e / 86400;
+  clockDateMode = false;
   clockOpen = true;
 }
 
 void applyClock() {
-  uint32_t e = clockEpoch(clockBase(rtcEpoch(), pet.lastSeenEpoch), clockH, clockM);
+  uint32_t e = clockSet(clockBase(rtcEpoch(), pet.lastSeenEpoch), clockDate, clockH, clockM);
   rtcSetEpoch(e);
   pet.setClock(e);
   clockOpen = false;
@@ -1875,23 +1885,33 @@ void drawClockBtn(int x, int y, const char *l, bool down) {
 void renderClock() {
   drawScreenBg();
 
+  int y, mo, d;
+  clockYmd(clockDate, y, mo, d);
+  char title[16], hh[4], mm[4], pill[12];
+  snprintf(title, sizeof(title), "%d %s %d", d, MONTHS[mo - 1], y);  // date page: the full date, day first
   gfx->setTextColor(inkColor());
   setSize(TS(3));
-  gfx->setCursor(centerX(T(S_SET_TIME), TS(3)), UY(40));
-  gfx->print(T(S_SET_TIME));
+  const char *tl = clockDateMode ? title : T(S_SET_TIME);
+  gfx->setCursor(centerX(tl, TS(3)), UY(40));
+  gfx->print(tl);
 
-  // hour and minutes, each above its pair of buttons
-  char hh[4], mm[4];
-  snprintf(hh, sizeof(hh), "%02d", clockH);
-  snprintf(mm, sizeof(mm), "%02d", clockM);
+  // hour and minutes (or day and month), each above its pair of buttons
+  snprintf(hh, sizeof(hh), "%02d", clockDateMode ? d : clockH);
+  if (clockDateMode) {
+    for (int i = 0; i < 3; i++) mm[i] = toupper(MONTHS[mo - 1][i]);
+    mm[3] = 0;
+  } else {
+    snprintf(mm, sizeof(mm), "%02d", clockM);
+  }
+  const char *sep = clockDateMode ? "" : ":";
   setSize(TS(7));
   int ty = UY(86);
   gfx->setCursor(CLK_X0 + CLOCK_BTN_W + U(4) - textW(hh, TS(7)) / 2, ty);
   gfx->print(hh);
   gfx->setCursor(CLK_X2 + CLOCK_BTN_W + U(4) - textW(mm, TS(7)) / 2, ty);
   gfx->print(mm);
-  gfx->setCursor(CX - textW(":", TS(7)) / 2, ty);
-  gfx->print(":");
+  gfx->setCursor(CX - textW(sep, TS(7)) / 2, ty);
+  gfx->print(sep);
 
   drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-", isPressed(P_CLK, 0));  // hour -
   drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+", isPressed(P_CLK, 1));  // hour +
@@ -1900,6 +1920,10 @@ void renderClock() {
 
   bool snd = audioEnabled();  // the sound switch: a pill in accent when on
   uiPill(SND_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H, snd ? T(S_SND_ON) : T(S_SND_OFF), snd, isPressed(P_SND, 0));
+  // the other half of the clock: tapping it switches the buttons over to it
+  if (clockDateMode) snprintf(pill, sizeof(pill), "%02d:%02d", clockH, clockM);
+  else snprintf(pill, sizeof(pill), "%d %s", d, MONTHS[mo - 1]);
+  uiPill(DATE_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H, pill, false, isPressed(P_CLK_DATE, 0));
 
   uiPill(CLOCK_CANCEL_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, T(S_CLOCK_CANCEL), false, isPressed(P_CLK_CANCEL, 0));
   uiPill(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, T(S_CLOCK_DONE), true, isPressed(P_CLK_OK, 0));
@@ -1916,7 +1940,9 @@ void renderClock() {
 }
 
 void clockTap(const Press &p) {
-  if (p.id == P_CLK) {  // row of +/- buttons: hour -, hour +, min -, min +
+  if (p.id == P_CLK && clockDateMode) {  // day -, day +, month -, month +
+    clockDate = clockClampDay(p.idx < 2 ? clockDate + (p.idx ? 1 : -1) : clockAddMonths(clockDate, p.idx == 3 ? 1 : -1));
+  } else if (p.id == P_CLK) {  // row of +/- buttons: hour -, hour +, min -, min +
     if (p.idx == 0) clockH = (clockH + 23) % 24;
     else if (p.idx == 1) clockH = (clockH + 1) % 24;
     else if (p.idx == 2) clockM = (clockM + 59) % 60;
@@ -1924,6 +1950,8 @@ void clockTap(const Press &p) {
   } else if (p.id == P_SND) {  // sound switch
     audioSetEnabled(!audioEnabled());
     if (audioEnabled()) sfxPlay(SFX_TAP);    // confirms when turning on (the touch-down was silent)
+  } else if (p.id == P_CLK_DATE) {
+    clockDateMode = !clockDateMode;
   } else if (p.id == P_CLK_OK) {
     applyClock();
   } else if (p.id == P_CLK_CANCEL) {

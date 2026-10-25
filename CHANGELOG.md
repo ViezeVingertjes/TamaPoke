@@ -8,6 +8,13 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Added
+- The clock screen shows the date and can set it: the date pill next to Sound
+  switches the buttons to day and month (months carry into the year). The RTC
+  date was invisible before, so a wrong one could not be seen or fixed, and the
+  next boot's catch-up then aged the pet by up to two weeks at once. Setting the
+  clock never ages the pet.
+
 ### Changed
 - The clock screen title now reads SET TIME, in capitals like every other
   menu title.
