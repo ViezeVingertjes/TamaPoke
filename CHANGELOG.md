@@ -17,6 +17,8 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
   evolve. Both are part of the save backup.
 - **Night eggs.** An egg rolled at night (20:00 to 06:00) makes Clefairy, Zubat, Oddish,
   Venonat, Gastly and Drowzee three times as likely within their tier. The tier odds do not change.
+- **Nearby TamaPokes greet each other.** An awake neighbour next to your awake pet gets a greeting
+  once: both nod, hearts, "Hi, friend!", +5 happiness and +1 bond. Up to three a day, nothing to tap.
 
 ### Changed
 

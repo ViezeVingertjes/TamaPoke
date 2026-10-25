@@ -79,6 +79,7 @@ public:
   uint8_t stepRewardMask = 0;   // bit i: daily goal i already rewarded today
   uint8_t findsToday = 0;       // walk finds given today (one every FIND_EVERY steps)
   bool hasStone = false;        // a Stone found on a walk: a stone species evolves early with it
+  uint8_t greetsToday = 0;      // nearby TamaPokes greeted today (GREETS_PER_DAY at most)
   // medals: the individual's + running count across all rearings
   uint16_t medals = 0, totalMedals = 0;
   uint16_t newMedal = 0;   // just earned, to celebrate
@@ -154,6 +155,10 @@ public:
   }
   bool isKnown(int16_t dex) const { return isRegistered(dex) || isSeen(dex); }  // shown in color, with its name
   void markSeen(int16_t dex);  // a creature met nearby: the Pokedex shows it, the raised count does not
+  // A nearby TamaPoke (by its beacon id) next to an awake pet: the first time it is seen since boot,
+  // a little joy and bond, a few times a day. Returns true when it greeted.
+  static constexpr uint8_t GREETS_PER_DAY = 3;
+  bool greet(uint32_t id);
   bool isShinyRegistered(int16_t dex) const {
     return dex >= 1 && dex <= 151 && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
@@ -238,6 +243,8 @@ private:
   uint32_t milestoneUntil = 0; // streak milestone celebration
   uint32_t stepRewardUntil = 0;
   int8_t stepRewardIdx = -1;
+  uint32_t greeted[8] = { 0 };  // neighbor ids already greeted (RAM: ids change on every boot)
+  uint8_t greetedPos = 0;
   void ensureStepDay();
 
   uint32_t today() const { return lastSeenEpoch ? lastSeenEpoch / 86400 : 0; }

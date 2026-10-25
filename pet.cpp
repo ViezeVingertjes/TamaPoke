@@ -263,6 +263,24 @@ void Pet::markSeen(int16_t dex) {
   pendingSave = true;  // flushed when the screen dims
 }
 
+bool Pet::greet(uint32_t id) {
+  if (!id || isEgg() || sleeping || ceremony != CER_NONE) return false;
+  for (uint32_t g : greeted)
+    if (g == id) return false;
+  ensureStepDay();
+  // beacons are not authenticated and ids change on every boot: the daily cap is what limits a fake
+  // or rebooting neighbor, the id list only stops greeting the same one twice
+  if (greetsToday >= GREETS_PER_DAY) return false;
+  greeted[greetedPos] = id;
+  greetedPos = (greetedPos + 1) % (sizeof(greeted) / sizeof(greeted[0]));
+  greetsToday++;
+  joy = clamp100(joy + 5);
+  addBond(1);
+  heartUntil = millis() + HEART_MS;
+  pendingSave = true;  // flushed when the screen dims
+  return true;
+}
+
 void Pet::registerSpecies(int16_t dex) {
   if (dex < 1 || dex > 151) return;
   dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
@@ -642,6 +660,7 @@ void Pet::save() {
   prefs.putUChar("stmask", stepRewardMask);
   prefs.putUChar("stfind", findsToday);
   prefs.putBool("stone", hasStone);
+  prefs.putUChar("greet", greetsToday);
 }
 
 // The saved fields in one place: the same list writes and reads the backup, so the two
@@ -661,6 +680,7 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(dexSeen);
   io(bondDay); io(bondToday);
   io(findsToday); io(hasStone);
+  io(greetsToday);
 }
 
 namespace {
@@ -731,7 +751,8 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
               nickOk && geneOk && weight <= 100 && !(starterPick && !isEgg()) && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
               fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
               bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE &&
-              stepRewardMask < (1 << STEP_GOALS) && findsToday <= FINDS_PER_DAY;
+              stepRewardMask < (1 << STEP_GOALS) && findsToday <= FINDS_PER_DAY &&
+              greetsToday <= GREETS_PER_DAY;
   if (!sane) {
     BackupReader back{ prev + sizeof(BACKUP_MAGIC), prev + want - 4 };
     backupFields(back);
@@ -759,6 +780,7 @@ void Pet::ensureStepDay() {
   stepsToday = 0;
   stepRewardMask = 0;
   findsToday = 0;
+  greetsToday = 0;
 }
 
 uint32_t Pet::stepGoal(uint8_t i) {
@@ -887,6 +909,7 @@ void Pet::load() {
   stepRewardMask = prefs.getUChar("stmask", 0);
   findsToday = min(prefs.getUChar("stfind", 0), FINDS_PER_DAY);
   hasStone = prefs.getBool("stone", false);
+  greetsToday = prefs.getUChar("greet", 0);
   // seeding: the current pet counts as raised (old saves)
   if (speciesId >= 1) registerSpecies(speciesId);
 }

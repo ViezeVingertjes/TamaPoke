@@ -1307,6 +1307,65 @@ TEST(steps, los_pasos_de_antes_de_tener_reloj_cuentan_hoy) {
   CHECK_EQ((int)p.stepsTotal, 400);
 }
 
+// ---------------------------------------------------------------- nearby greetings
+TEST(greet, saluda_una_vez_por_vecino_y_tres_al_dia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  setStats(p, 50, 50, 50, 50);
+  p.bond = 0;
+  CHECK(p.greet(11));
+  CHECK_EQ((int)p.joy, 55);
+  CHECK_EQ((int)p.bond, 1);
+  CHECK(p.showHeart());
+  CHECK(!p.greet(11));                 // the same one, again: nothing
+  CHECK_EQ((int)p.joy, 55);
+  CHECK(p.greet(12));
+  CHECK(p.greet(13));
+  CHECK(!p.greet(14));                 // the fourth of the day: nothing
+  CHECK_EQ((int)p.joy, 65);
+  CHECK_EQ((int)p.greetsToday, 3);
+  setDay(p, 20001);
+  CHECK(p.greet(14));                  // a new day
+  CHECK(!p.greet(11));                 // one greeted this boot stays greeted
+}
+
+TEST(greet, nada_dormido_huevo_o_ceremonia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.sleeping = true;
+  CHECK(!p.greet(21));
+  p.sleeping = false;
+  CHECK(p.greet(21));                  // it was not marked while asleep
+  p.startFarewell();
+  CHECK(!p.greet(22));
+  Pet e;
+  mockNvsReset();
+  e.begin();
+  e.chooseStarter(4);
+  CHECK(!e.greet(23));                 // an egg
+  CHECK(!p.greet(0));
+}
+
+TEST(greet, el_tope_se_guarda_y_va_en_la_copia) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.greet(31);
+  a.greet(32);
+  a.saveNow();
+  Pet l;
+  l.begin();
+  CHECK_EQ((int)l.greetsToday, 2);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.greetsToday, 2);
+}
+
 // ---------------------------------------------------------------- console saves
 TEST(save, saveNow_escribe_aunque_nada_este_pendiente) {
   Pet a;
@@ -1369,10 +1428,10 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(b.importBackup(blob, n));
   CHECK(b.isSeen(94));
 
-  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday, findsToday, hasStone at
-  // the end): cut those 26 bytes off and re-sign; the restore must work and leave the missing fields
-  // as they were
-  size_t m = n - 4 - 26;
+  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday, findsToday, hasStone,
+  // greetsToday at the end): cut those 27 bytes off and re-sign; the restore must work and leave the
+  // missing fields as they were
+  size_t m = n - 4 - 27;
   uint8_t old[Pet::BACKUP_MAX_BYTES];
   memcpy(old, blob, m);
   uint32_t sum = fnv(old, m);
@@ -1387,7 +1446,7 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(!c.isSeen(94));
 
   // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
-  size_t mid = n - 4 - 26 - 1 - 2;
+  size_t mid = n - 4 - 27 - 1 - 2;
   memcpy(old, blob, mid);
   uint32_t s3 = fnv(old, mid);
   memcpy(old + mid, &s3, 4);
@@ -1584,7 +1643,7 @@ TEST(finds, una_copia_de_antes_de_los_hallazgos_conserva_el_tope_de_vinculo) {
   for (int i = 0; i < 12; i++) a.playResult(10);   // today's cap is used up
   uint8_t blob[Pet::BACKUP_MAX_BYTES];
   size_t n = a.exportBackup(blob, sizeof(blob));
-  size_t m = n - 4 - 2;                // the layout of 1.18: bond cap, no finds
+  size_t m = n - 4 - 3;                // the layout of 1.18: bond cap, no finds or greetings
   uint32_t sum = fnv(blob, m);
   memcpy(blob + m, &sum, 4);
   Pet b;
@@ -1605,7 +1664,7 @@ TEST(hardening, restaurar_una_copia_empieza_con_un_tope_de_vinculo_nuevo) {
   makePet(a, 4);
   uint8_t blob[Pet::BACKUP_MAX_BYTES];
   size_t n = a.exportBackup(blob, sizeof(blob));
-  size_t m = n - 4 - 7;                // a layout from before bondDay/bondToday (and the walk finds), re-signed
+  size_t m = n - 4 - 8;                // a layout from before bondDay/bondToday (and finds, greetings), re-signed
   uint32_t sum = fnv(blob, m);
   memcpy(blob + m, &sum, 4);
   Pet b;

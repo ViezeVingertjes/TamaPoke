@@ -105,6 +105,7 @@ static const Scene SCENES[] = {
   { "nearby_4", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); nb(3, 39); nb(4, 94, true); }, false },
   { "nearby_big", [] { closeAll(); adult(143); nb(1, 25); nb(2, 95); nb(3, 131); nb(4, 1); }, false },
   { "nearby_night", [] { closeAll(); adult(6); pet.sleeping = true; nb(1, 25, false, true); nb(2, 7, false, true); nb(3, 39); nb(4, 94, true, true); }, false },
+  { "nearby_greet", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); settleNeighbors(); greetNeighbors(); mockSetMillis(millis() + 600); }, false },
   { "feed_menu", [] { closeAll(); adult(6); feedMenuUntil = millis() + 6000; }, false },
   { "release_dialog", [] { closeAll(); adult(6); confirmUntil = millis() + 10000; }, false },
   { "evolve_dialog", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; choiceKind = 1; choiceUntil = millis() + 12000; }, false },
@@ -154,6 +155,7 @@ static Pet gPristinePet;  // the critter right after setup()
 static void prepare(const Scene &sc) {
   gBatPercent = 80; gBatCharging = false; pet.lastSeenEpoch = 0;
   feedMenuUntil = confirmUntil = bathUntil = 0; bathPending = false; choiceKind = 0;
+  greetId = greetUntil = 0;
   pet = gPristinePet;  // the whole critter (timers, pokedex, medals...) as after boot
   screenKeyValid = false;  // a static screen is always painted the first time
   gameOverUntil = sackOverUntil = 0; gameNewHi = sackNewHi = false; sackGain = 0;
@@ -209,6 +211,17 @@ static int runTapTests() {
   gHostNbN = 0;
   settleNeighbors();
   EXPECT(!nbPmd[0].loaded && !nbPmd[1].loaded, "sin vecinos no queda ningun sprite cargado");
+  // greetings: an awake neighbor on screen is greeted once, a sleeping one is not
+  begin("main_day");
+  nb(7, 25, false, true);
+  settleNeighbors();
+  greetNeighbors();
+  EXPECT(!greetUntil && pet.greetsToday == 0, "un vecino dormido no se saluda");
+  gHostNb[0].sleeping = false;
+  greetNeighbors();
+  EXPECT(greetId == 7 && timeLeft(greetUntil) && pet.greetsToday == 1, "un vecino despierto se saluda");
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 1, "el mismo vecino solo una vez");
   // food selector: the center of each icon picks its slot
   for (int i = 0; i < 4; i++) {
     begin("feed_menu");

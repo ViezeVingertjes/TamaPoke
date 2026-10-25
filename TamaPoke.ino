@@ -417,7 +417,10 @@ void loop() {
   PowerCtx pc = powerCtx(millis());
   NbSelf nbSelf = { !pet.isEgg() && pet.speciesId >= 1, (uint8_t)pet.speciesId, pet.shiny, pet.sleeping, pet.level() };
   nearbyPoll(now, pc, nbSelf);
-  if (!screenOff) ensureNeighbors();
+  if (!screenOff) {
+    ensureNeighbors();
+    greetNeighbors();
+  }
   audioSetIdle(!amplifierWanted(pc));  // the amplifier draws power at idle
   batSetPollMs(powerCacheMs(pc));
   uint32_t interval = frameIntervalMs(pc);
@@ -2585,6 +2588,28 @@ void ensureNeighbors() {
   }
 }
 
+// A neighbor on screen next to an awake pet is greeted once: both nod, hearts, a little joy and
+// bond (Pet::greet() keeps the daily cap). One per pass.
+uint32_t greetId = 0, greetUntil = 0;
+void greetNeighbors() {
+  const NbEntry *sh[NB_MAX_SHOWN];
+  int n = nearbyShown(sh);
+  for (int i = 0; i < n; i++) {
+    if (sh[i]->sleeping || nbSlot[i].id != sh[i]->id || !nbPmd[i].loaded) continue;  // only one that is drawn and awake
+    if (!pet.greet(sh[i]->id)) continue;
+    greetId = sh[i]->id;
+    greetUntil = millis() + 4500;
+    sfxPlay(SFX_HEART);
+    if (pmd.has(PMD_NOD)) {
+      beh.mode = 2;
+      beh.act = PMD_NOD;
+      beh.t0 = millis();
+      beh.until = beh.t0 + pmdActTotalMs(pmd.acts[PMD_NOD]);
+    }
+    return;
+  }
+}
+
 // Neighbors stay still behind and beside the pet, smaller and higher up, like
 // a group: two in front (at the sides) and two at the back (between them, higher and smaller).
 void drawNeighbors() {
@@ -2599,6 +2624,7 @@ void drawNeighbors() {
     PmdMon &m = nbPmd[i];
     if (!m.loaded || nbSlot[i].id != sh[i]->id) continue;
     uint8_t act = sh[i]->sleeping && m.has(PMD_SLEEP) ? PMD_SLEEP : PMD_IDLE;
+    if (sh[i]->id == greetId && timeLeft(greetUntil) && m.has(PMD_NOD)) act = PMD_NOD;  // nods back
     uint32_t t = now + (sh[i]->id % 997) * 13;  // each at its own moment of the animation
     drawPmdActM(m, act, CX + U(pos[i].dx), PET_GROUND - UY(pos[i].up), t, true, false, SC(pos[i].s));
   }
@@ -2915,6 +2941,7 @@ const char *eggMsg() {
 const char *statusMsg() {
   if (pet.evolving()) return T(S_EVOLVING);
   if (pet.stepRewardShown() >= 0) return T((StrId)(S_STEP_REWARD_1 + pet.stepRewardShown()));
+  if (timeLeft(greetUntil)) return T(S_GREET);
   if (bathUntil) return "Splish splash!";  // universal onomatopoeia
   if (pet.sleeping) return "Zzz...";
   if (pet.eating()) return T(S_EATING);

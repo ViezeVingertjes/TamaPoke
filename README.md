@@ -386,6 +386,10 @@ the sides and two further back, smaller and a bit higher. A sleeping neighbour s
 It is always on, there is nothing to set up.
 Every species shown next to your pet is remembered in the Pokédex (met, not raised).
 
+**Greetings:** when an awake neighbour appears next to your awake pet, they greet each other:
+both nod, hearts, "Hi, friend!", **+5 happiness** and **+1 bond** (inside the normal daily bond
+cap). Up to **3 greetings a day**, each neighbour once per boot. Nothing to tap.
+
 - **What is sent:** species, level, shiny, sleeping and an id picked at random on every boot (the radio address too, so a device cannot be tracked across days), 11 bytes with a CRC, over ESP-NOW
   broadcast on channel 1. No name, no pairing, no access point. Received packets are validated before use and
   rate limited (`nearby.h`, covered by `test/test_nearby.cpp`).

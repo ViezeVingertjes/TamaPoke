@@ -32,6 +32,7 @@ static const char *const STRINGS[] = {
   "STEPS", "Next goal: %lu", "All goals done!", "TOTAL %lu",
   "500 steps! Snack!", "2000 steps! Energy!", "5000 steps! Workout!",
   "Found a snack!", "Found a Stone!",
+  "Hi, friend!",
 };
 
 // Medal name (banner) and long description [medal].
