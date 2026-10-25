@@ -449,7 +449,7 @@ void Pet::evolve() {
   if (!canEvolveNow()) return;
   const DexEntry &d = DEX_TBL[speciesId];
   // the Stone is only used up when it was what let it evolve now
-  if (hasStone && (d.flags & DEX_STONE) && level() < (uint16_t)d.evolveLevel + careMistakes) hasStone = false;
+  if (hasStone && (d.flags & DEX_STONE) && level() < evolveLevelNeeded() + STONE_LEVELS) hasStone = false;
   prevSpeciesId = speciesId;
   int16_t next = d.evolvesTo;
   if (speciesId == DEX_EEVEE) {
@@ -713,7 +713,12 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   if (sum != backupChecksum(data, length - 4)) return false;
   BackupReader r{ data + sizeof(BACKUP_MAGIC), data + length - 4 };
   bondDay = UINT32_MAX;  // no real day: still there after the read = a layout from before the bond cap
+  findsToday = UINT8_MAX;  // the same for the walk finds (findsToday and hasStone come together)
   backupFields(r);
+  if (findsToday == UINT8_MAX) {  // the device's own finds and Stone must not pass to the restored pet
+    findsToday = 0;
+    hasStone = false;
+  }
   nick[sizeof(nick) - 1] = 0;
   bool nickOk = true;
   for (const char *c = nick; *c; c++) nickOk = nickOk && *c >= 32 && *c < 127;
@@ -785,31 +790,36 @@ void Pet::applyWalk(uint16_t steps) {
   // walking cheers it up and bonds a little, only for the first 2000 steps of a day
   joy = clamp100(joy + crossings(before, stepsToday, 100, 2000));
   addBond(crossings(before, stepsToday, 500, 2000));
+  // a batch of steps can reach several goals and finds at once (after sleeping, or a long IMU
+  // batch): one announcement for the batch, a Stone before a goal before a snack
+  int8_t shown = -1;
+  auto rank = [](int8_t i) { return i == STEP_FIND_STONE ? 3 : i == STEP_FIND_SNACK ? 1 : 2; };
+  auto announce = [&](int8_t i) { if (shown < 0 || rank(i) >= rank(shown)) shown = i; };
   for (uint8_t i = 0; i < STEP_GOALS; i++) {
     if (stepsToday < stepGoal(i) || (stepRewardMask & (1 << i))) continue;
     stepRewardMask |= 1 << i;
     if (i == 0) fullness = clamp100(fullness + 15);       // a snack
     else if (i == 1) energy = clamp100(energy + 25);
     else trAtk = clamp100(trAtk + 5);                      // a workout
-    stepRewardIdx = i;
-    stepRewardUntil = millis() + 4500;
     heartUntil = millis() + HEART_MS;
-    if (!sleeping) sfxPlay(SFX_MEDAL);
+    announce(i);
   }
   // walk finds: one every FIND_EVERY steps, a few a day; a sleeping pet finds them on its next walk
   while (!sleeping && findsToday < FINDS_PER_DAY && stepsToday >= FIND_EVERY * (findsToday + 1)) {
     findsToday++;
     if (!hasStone && random(5) == 0) {
       hasStone = true;
-      stepRewardIdx = STEP_FIND_STONE;
-      sfxPlay(SFX_MEDAL);
+      announce(STEP_FIND_STONE);
     } else {
       fullness = clamp100(fullness + 5);
-      stepRewardIdx = STEP_FIND_SNACK;
-      sfxPlay(SFX_EAT);
+      announce(STEP_FIND_SNACK);
     }
-    stepRewardUntil = millis() + 4500;
     pendingSave = true;
+  }
+  if (shown >= 0) {
+    stepRewardIdx = shown;
+    stepRewardUntil = millis() + 4500;
+    if (!sleeping) sfxPlay(shown == STEP_FIND_SNACK ? SFX_EAT : SFX_MEDAL);
   }
   if (stepsToday / 100 != before / 100) pendingSave = true;  // flushed when the screen dims
 }
@@ -871,7 +881,7 @@ void Pet::load() {
   stepsToday = prefs.getUInt("stto", 0);
   stepsTotal = prefs.getUInt("stot", 0);
   stepRewardMask = prefs.getUChar("stmask", 0);
-  findsToday = prefs.getUChar("stfind", 0);
+  findsToday = min(prefs.getUChar("stfind", 0), FINDS_PER_DAY);
   hasStone = prefs.getBool("stone", false);
   // seeding: the current pet counts as raised (old saves)
   if (speciesId >= 1) registerSpecies(speciesId);

@@ -306,7 +306,7 @@ the Steps page of the stat card.
   for the first 2000 steps of the day.
 - **Walk finds:** every 1500 steps of the day it finds something, up to 3 a day: a snack
   (+5 food) or, one time in five, a **Stone** if you hold none. Nothing is found while it
-  sleeps; the find waits for the next walk.
+  sleeps or is still an egg; the find waits for the next walk.
 - **Stone:** a species that evolves with a stone in the real games (Pikachu, Clefairy, Vulpix,
   Eevee, Growlithe, Staryu...) evolves **10 levels earlier** while you hold one. Every need
   must still be ≥ 40, and the Stone is used up only when it was what made it evolve.

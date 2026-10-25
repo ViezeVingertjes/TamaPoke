@@ -1182,6 +1182,25 @@ TEST(finds, la_piedra_no_sirve_a_otras_especies_ni_se_gasta_sin_necesidad) {
   CHECK(q.hasStone);
 }
 
+TEST(finds, varios_a_la_vez_anuncian_la_piedra_antes_que_la_meta) {
+  bool sawStone = false;
+  for (int seed = 1; seed <= 60 && !sawStone; seed++) {
+    Pet p;
+    makePet(p, 4);
+    setDay(p, 20000);
+    randomSeed(seed);
+    p.hasStone = false;
+    p.applyWalk(4600);                 // the 500 and 2000 goals and three finds in one batch
+    if (!p.hasStone) {
+      CHECK_EQ((int)p.stepRewardShown(), 1);  // no Stone: the 2000 goal, not a snack
+      continue;
+    }
+    sawStone = true;
+    CHECK_EQ((int)p.stepRewardShown(), (int)Pet::STEP_FIND_STONE);
+  }
+  CHECK(sawStone);
+}
+
 TEST(finds, se_guardan_y_van_en_la_copia) {
   Pet a;
   makePet(a, 4);
@@ -1526,7 +1545,11 @@ TEST(finds, una_copia_de_antes_de_los_hallazgos_conserva_el_tope_de_vinculo) {
   memcpy(blob + m, &sum, 4);
   Pet b;
   makePet(b, 7);
+  b.hasStone = true;                   // this device's own Stone and finds...
+  b.findsToday = 3;
   CHECK(b.importBackup(blob, m + 4));
+  CHECK(!b.hasStone);                  // ...do not pass to the restored pet
+  CHECK_EQ((int)b.findsToday, 0);
   int bond = b.bond;
   setDay(b, 20000);
   b.playResult(10);
