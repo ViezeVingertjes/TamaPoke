@@ -31,6 +31,9 @@ static const char *const STRINGS[] = {
   "No sprites", "Load them onto the SD",
   "STEPS", "Next goal: %lu", "All goals done!", "TOTAL %lu",
   "500 steps! Snack!", "2000 steps! Energy!", "5000 steps! Workout!",
+  "Found a snack!", "Found a Stone!",
+  "Hi, friend!",
+  "Done",
 };
 
 // Medal name (banner) and long description [medal].
@@ -46,6 +49,9 @@ static const char *const TRAIL[] = { "ROOKIE", "WALKER", "HIKER", "TREKKER", "RA
 static_assert(COUNT_OF(STRINGS) == STR_COUNT, "STRINGS y StrId no coinciden");
 static_assert(COUNT_OF(MED_NAME) == MED_COUNT, "MED_NAME y MED_COUNT no coinciden");
 static_assert(COUNT_OF(TRAIL) == Pet::TRAIL_RANKS + 1, "TRAIL and Pet::TRAIL_RANKS do not match");
+// statusMsg() shows S_STEP_REWARD_1 + stepRewardShown(): the finds must follow the goals
+static_assert(S_FIND_SNACK == S_STEP_REWARD_1 + Pet::STEP_FIND_SNACK && S_FIND_STONE == S_STEP_REWARD_1 + Pet::STEP_FIND_STONE,
+              "walk find strings out of step with Pet::STEP_FIND_*");
 static_assert(COUNT_OF(MED_DSC) == MED_COUNT, "MED_DSC y MED_COUNT no coinciden");
 
 const char *T(StrId id) { return STRINGS[id]; }

@@ -97,13 +97,18 @@ While **awake**, per minute:
 - A clean **goodbye blesses** the next egg; a **run-away curses** it (forces Common).
 - Within a tier it favors species whose **evolution line you haven't finished** (so
   all 151 are completable).
+- **Night eggs:** an egg rolled at night (20:00–06:00 by the clock, i.e. when the previous
+  pet's ending happens) makes Clefairy, Zubat, Oddish, Venonat, Gastly and Drowzee **3× as
+  likely** within their tier. They still hatch by day, and the tier odds do not change.
 - **Shiny:** base **1 / 48** (→ **1 / 24** right after a goodbye), improved by
-  streak/bond down to a best of **1 / 8**. Tracked separately in the dex.
+  streak/bond and the trail rank (−1 per rank) down to a best of **1 / 8**. Tracked
+  separately in the dex.
 - Every hatch rolls unique **genes** (90–110 % per stat) — no two are identical.
 
 ### Evolution
 - Triggers when **level ≥ its evolution level** (16 for most base forms; ~30 for
   stone-style, ~40 for trade-style) **and every stat ≥ 40** at that moment.
+- A **Stone** found on a walk lets a stone species evolve 10 levels earlier (see Walking).
 - **Never automatic** — a button appears and **you tap to witness it** (with a
   flicker between the old and new form). Each **slip-up delays it by 1 level**.
 - You can **decline** ("keep form"); it re-offers at the next level.
@@ -123,7 +128,7 @@ After any ending, a **new egg** appears.
 - **Streak** (player-wide, survives across pets): first care each real day; milestones
   at **3 / 7 / 30 / 100** days; skipping a day breaks it.
 - **Bond** (per pet, resets on hatch): grows with affection (**cap about +20/day** from actions, plus a +4 daily care bonus), cools on
-  neglect. Both streak & bond improve egg/shiny odds.
+  neglect. Both streak & bond improve egg/shiny odds (the trail rank also helps the shiny roll).
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
 - **Pokédex:** raising a species registers it; **151 + shinies** to complete.
@@ -222,9 +227,14 @@ If one bottoms out it counts as a *slip-up*.
 - Horizontal swipe = open the **Pokédex / gallery**.
 - Vertical swipe up = open the **stat card** (5 pages: Profile / Battle / Medals /
   Progress / Steps; swipe between them; tap the name on Profile to rename; on Battle the
-  "Train strength" button opens the bag).
+  "Train strength" button opens the bag; **Back** or a swipe up closes it).
 - Swipe down = **set the clock** and toggle **sound** on/off.
 - Long press (3 s) on the creature = **release** dialog.
+- A tap at the top of the Pokédex, the minigame or the bag closes them.
+
+Every button reacts the moment your finger lands: it sinks and darkens, with a click. Slide off
+before lifting and it does not fire. A button that can't do anything right now (Feed, Play and
+Bath while asleep, a key with the name full) answers with a short "no" sound instead.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
 (the RTC stays alive, so time passes even while it's off).
@@ -302,8 +312,15 @@ the Steps page of the stat card.
   (+5 strength). Each is given once per day.
 - Walking cheers it up (+1 happiness per 100 steps) and bonds a little (+1 per 500),
   for the first 2000 steps of the day.
+- **Walk finds:** every 1500 steps of the day it finds something, up to 3 a day: a snack
+  (+5 food) or, one time in five, a **Stone** if you hold none. Nothing is found while it
+  sleeps or is still an egg; the find waits for the next walk.
+- **Stone:** a species that evolves with a stone in the real games (Pikachu, Clefairy, Vulpix,
+  Eevee, Growlithe, Staryu...) evolves **10 levels earlier** while you hold one. Every need
+  must still be ≥ 40, and the Stone is used up only when it was what made it evolve.
 - **Trail rank** from lifetime steps: Walker 10,000 / Hiker 50,000 / Trekker 100,000 /
-  Ranger 250,000. Steps and rank belong to the player and survive a new egg.
+  Ranger 250,000. Steps and rank belong to the player and survive a new egg. Each rank
+  improves the shiny roll by one (1 / 48 → 1 / 44 at Ranger), never past the 1 / 8 best.
 
 High streak and bond **improve the egg roll** (rarity and shiny): caring well
 always pays off.
@@ -318,7 +335,7 @@ bars at zero for 1 h). Each bred species is recorded in the **bred Pokédex**
 The egg rolls rarity over the ~79 base forms (47 common / 27 rare / 5 legendary),
 **biased towards the lines you're missing** (all 151 are completable), blessed by
 a farewell and punished by a runaway. Legendaries only with 25+ registered.
-**Shiny** 1/48 (better with streak/bond/farewell).
+**Shiny** 1/48 (better with streak/bond/farewell and the trail rank).
 
 ## Backgrounds: biome + real time
 
@@ -373,6 +390,10 @@ Other TamaPokes within radio range show up on the main screen, up to four, stand
 the sides and two further back, smaller and a bit higher. A sleeping neighbour sleeps, a shiny one is shiny.
 It is always on, there is nothing to set up.
 Every species shown next to your pet is remembered in the Pokédex (met, not raised).
+
+**Greetings:** when an awake neighbour appears next to your awake pet, they greet each other:
+both nod, hearts, "Hi, friend!", **+5 happiness** and **+1 bond** (inside the normal daily bond
+cap). Up to **3 greetings a day**, each neighbour once per boot. Nothing to tap.
 
 - **What is sent:** species, level, shiny, sleeping and an id picked at random on every boot (the radio address too, so a device cannot be tracked across days), 11 bytes with a CRC, over ESP-NOW
   broadcast on channel 1. No name, no pairing, no access point. Received packets are validated before use and
