@@ -8,6 +8,10 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Changed
+- The clock screen title now reads SET TIME, in capitals like every other
+  menu title.
+
 ## [1.19] - 2026-10-25
 
 ### Added
