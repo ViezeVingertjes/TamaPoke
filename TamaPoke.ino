@@ -170,7 +170,7 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define EVO_BTN_W U(176)
 #define EVO_BTN_H UY(72)
 #define EVO_BTN_X (CX - EVO_BTN_W / 2)
-#define EVO_BTN_Y UY(136)
+#define EVO_BTN_Y UY(122)
 // farewell CTA button (wider: holds the name + phrase)
 #define FAR_BTN_W U(408)
 #define FAR_BTN_H UY(72)
@@ -2904,11 +2904,11 @@ uint8_t pmdFrameAt(const PmdAct &a, uint32_t t, bool loop) {
 void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool sil, uint8_t maxS) {
   const PmdAct &a = m.acts[actId];
   if (!a.frames) return;
-  int sBase = m.acts[PMD_IDLE].h ? UY(170) / m.acts[PMD_IDLE].h : SC(5);
+  int sBase = m.zoom ? SC(m.zoom) : m.acts[PMD_IDLE].h ? UY(170) / m.acts[PMD_IDLE].h : SC(5);
   if (sBase < SC(2)) sBase = SC(2);
   if (sBase > maxS) sBase = maxS;
   int s = sBase;
-  while (s > SC(2) && a.h * s > UY(250)) s--;  // actions with a large frame (attack)
+  while (s > SC(2) && (a.base ? a.base : a.h) * s > UY(250)) s--;  // actions that reach high (attack); padding does not count
   uint8_t fi = pmdFrameAt(a, t, loop);
   const uint8_t *fr = a.data + (uint32_t)fi * a.w * a.h;
   // anchor by the feet (a.base), not by the canvas height: this way actions

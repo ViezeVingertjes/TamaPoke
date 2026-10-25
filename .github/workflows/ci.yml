@@ -60,16 +60,17 @@ jobs:
           python-version: "3.x"
       - run: pip install pillow
 
-      - name: Regenerate dex.h and species.h
+      - name: Regenerate dex.h, species.h and pmdzoom.h
         run: |
           python3 tools/gen_dex.py
           python3 tools/sprites.py emit
+          python3 tools/pmd_zoom.py
 
-      # dex.h and species.h carry "GENERADO - no editar" in their header; this catches
+      # dex.h, species.h and pmdzoom.h carry "GENERADO - no editar" in their header; this catches
       # anyone who edits the output instead of the generator, or forgets to regenerate
       # after touching the source data.
       - name: Fail if regenerating produced a diff
-        run: git diff --exit-code -- dex.h species.h
+        run: git diff --exit-code -- dex.h species.h pmdzoom.h
 
   tools-lint:
     name: Lint tools/ (ruff)

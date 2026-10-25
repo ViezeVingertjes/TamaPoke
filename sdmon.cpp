@@ -1,5 +1,6 @@
 #include "sdmon.h"
 #include "pin_config.h"
+#include "pmdzoom.h"
 #include "thumb_format.h"
 #include <FS.h>
 #include <SD_MMC.h>
@@ -69,6 +70,7 @@ bool PmdMon::load(uint8_t dexNum, bool shiny) {
     }
     a.base = base;
   }
+  zoom = dexNum < sizeof(PMD_ZOOM) ? PMD_ZOOM[dexNum] : 0;
   loaded = true;
   Serial.printf("cargado %s (%u KB)\n", path, size / 1024);
   return true;
@@ -83,6 +85,7 @@ void PmdMon::unload() {
     a.w = a.h = a.frames = a.base = 0;
     a.data = nullptr;
   }
+  zoom = 0;
   loaded = false;
 }
 

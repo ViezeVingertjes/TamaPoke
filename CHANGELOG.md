@@ -11,6 +11,10 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 ### Changed
 - The clock screen title now reads SET TIME, in capitals like every other
   menu title.
+- Pokémon now keep their relative size: sprites are zoomed from the drawn art
+  instead of the sheet's padding, and an evolution line shares one zoom, so
+  Charizard looks bigger than Charmander and Charmeleon no longer shrinks.
+  The EVOLVE! button sits a little higher so the bigger sprites stay clear of it.
 
 ## [1.19] - 2026-10-25
 

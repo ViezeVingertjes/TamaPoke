@@ -36,6 +36,7 @@ struct PmdMon {
   uint16_t palCount = 0;
   uint16_t pal[256];
   uint8_t *blob = nullptr;
+  uint8_t zoom = 0;  // integer zoom from pmdzoom.h, 0 = unknown (picked from the frame height)
   PmdAct acts[PMD_NACTS];
 
   bool load(uint8_t dexNum, bool shiny = false);
