@@ -94,7 +94,8 @@ static const Scene SCENES[] = {
   { "card_profile", [] { closeAll(); adult(6); cardOpen = true; cardPage = 0; }, false },
   { "card_stats", [] { closeAll(); adult(6); cardOpen = true; cardPage = 1; }, false },
   { "keyboard", [] { closeAll(); adult(6); kbOpen = true; strcpy(nameBuf, "ASH"); nameLen = 3; }, false },
-  { "clock", [] { closeAll(); adult(6); clockOpen = true; clockH = 14; clockM = 35; }, false },
+  { "clock", [] { closeAll(); adult(6); clockOpen = true; clockDateMode = false; clockH = 14; clockM = 35; clockDate = clockDay(2026, 10, 25); }, false },
+  { "clock_date", [] { closeAll(); adult(6); clockOpen = true; clockDateMode = true; clockH = 14; clockM = 35; clockDate = clockDay(2026, 10, 25); }, false },
   { "game", [] { closeAll(); adult(25); gameOpen = true; ballX = CX; ballY = 150; ballVX = ballVY = 0; gamePetX = CX; gameScore = 7; gameMisses = 1; }, false },
   { "sack", [] { closeAll(); adult(25); sackOpen = true; sackUntil = millis() + 8000; sackHits = 14; }, false },
   { "farewell", [] { closeAll(); adult(6); pet.startFarewell(); }, false },
@@ -449,6 +450,17 @@ static int runTapTests() {
   tapAt(SND_PILL_X + SND_PILL_W / 2, SND_PILL_Y + SND_PILL_H / 2);
   EXPECT(audioEnabled() != snd, "interruptor de sonido");
   audioSetEnabled(snd);
+  tapAt(DATE_PILL_X + SND_PILL_W / 2, SND_PILL_Y + SND_PILL_H / 2);
+  EXPECT(clockDateMode, "la pastilla de fecha cambia los botones a dia y mes");
+  tapAt(CLK_X3 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockDate == clockDay(2026, 11, 25), "mes +");
+  tapAt(CLK_X1 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockDate == clockDay(2026, 11, 26), "dia +");
+  tapAt(CLK_X0 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  tapAt(CLK_X2 + CLOCK_BTN_W / 2, CLOCK_BTN_Y + CLOCK_BTN_H / 2);
+  EXPECT(clockDate == clockDay(2026, 10, 25) && clockH == 14 && clockM == 35, "dia - y mes - vuelven, la hora no cambia");
+  tapAt(DATE_PILL_X + SND_PILL_W / 2, SND_PILL_Y + SND_PILL_H / 2);
+  EXPECT(!clockDateMode, "y la pastilla vuelve a la hora");
   tapAt(CLOCK_OK_X + CLOCK_OK_W / 2, CLOCK_OK_Y + CLOCK_OK_H / 2);
   EXPECT(!clockOpen, "OK cierra el reloj");
   // ball minigame: tapping the ball scores, outside does not, the header quits
@@ -773,6 +785,10 @@ static int runFitTests() {
   fitBox("MIN", T(S_MIN), TS(2), CLOCK_BTN_W * 2 + (CLK_X3 - CLK_X2 - CLOCK_BTN_W));
   fitBox("sonido activado", T(S_SND_ON), TS(2), SND_PILL_W - U(8));
   fitBox("sonido desactivado", T(S_SND_OFF), TS(2), SND_PILL_W - U(8));
+  fitBox("sonido desactivado (grande)", T(S_SND_OFF), TS(3), SND_PILL_W - U(32));  // uiPill's big size
+  fitBox("fecha del reloj", "28 Sep", TS(3), SND_PILL_W - U(32));
+  fitChord("fecha completa del reloj", "28 Sep 2026", TS(3), UY(44));
+  fitBox("mes del reloj", "MAY", TS(7), CLOCK_BTN_W * 2 + (CLK_X3 - CLK_X2 - CLOCK_BTN_W));
   // --- minigames ---
   snprintf(b, sizeof(b), T(S_SCORE_FMT), 999);
   fitBox("puntuacion", b, TS(4), UI_W - U(40));

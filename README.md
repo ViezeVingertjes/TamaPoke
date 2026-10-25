@@ -234,7 +234,8 @@ four need meters. See [Actions](#actions) for what each does.
 - Vertical swipe up = open the **stat card** (5 pages: Profile / Battle / Medals /
   Progress / Steps; swipe between them; tap the name on Profile to rename; on Battle the
   "Train strength" button opens the bag; **Back** or a swipe up closes it).
-- Swipe down = **set the clock** and toggle **sound** on/off.
+- Swipe down = **set the clock** and toggle **sound** on/off. The date pill (day first, e.g.
+  `25 Oct`) switches the buttons to day and month, so a wrong date can be fixed on the device.
 - Long press (3 s) on the creature = **release** dialog.
 - A tap at the top of the Pokédex, the minigame or the bag closes them.
 
