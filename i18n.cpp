@@ -12,7 +12,7 @@ static const char *const STRINGS[] = {
   "Release %s?", "Release", "Keep",
   "%u HITS", "STR +%u", "NEW RECORD!", "BEST: %u", "HIT FAST!",
   "SCORE: %u", "So much fun!", "+happiness",
-  "Set time", "HOUR", "MIN", "Cancel",
+  "SET TIME", "HOUR", "MIN", "Cancel",
   "MEDAL!", "AWESOME!", "%u DAY STREAK!",
   "STREAK %u  best %u", "BOND", "BERRY ???", "RED BERRY", "BLUE BERRY", "GREEN BERRY",
   "%s   AGE %lud", "tap name: rename",
