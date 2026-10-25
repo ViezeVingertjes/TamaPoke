@@ -52,6 +52,7 @@ enum StrId : uint8_t {
   S_STEP_REWARD_1, S_STEP_REWARD_2, S_STEP_REWARD_3,
   S_FIND_SNACK, S_FIND_STONE,  // walk finds (follow the goals: Pet::STEP_FIND_*)
   S_GREET,          // a nearby TamaPoke was greeted
+  S_CLOCK_DONE,     // the clock's confirm button
   STR_COUNT
 };
 

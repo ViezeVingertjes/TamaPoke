@@ -227,9 +227,14 @@ If one bottoms out it counts as a *slip-up*.
 - Horizontal swipe = open the **Pokédex / gallery**.
 - Vertical swipe up = open the **stat card** (5 pages: Profile / Battle / Medals /
   Progress / Steps; swipe between them; tap the name on Profile to rename; on Battle the
-  "Train strength" button opens the bag).
+  "Train strength" button opens the bag; **Back** or a swipe up closes it).
 - Swipe down = **set the clock** and toggle **sound** on/off.
 - Long press (3 s) on the creature = **release** dialog.
+- A tap at the top of the Pokédex, the minigame or the bag closes them.
+
+Every button reacts the moment your finger lands: it sinks and darkens, with a click. Slide off
+before lifting and it does not fire. A button that can't do anything right now (Feed, Play and
+Bath while asleep, a key with the name full) answers with a short "no" sound instead.
 
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
 (the RTC stays alive, so time passes even while it's off).

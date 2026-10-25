@@ -19,11 +19,16 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
   Venonat, Gastly and Drowzee three times as likely within their tier. The tier odds do not change.
 - **Nearby TamaPokes greet each other.** An awake neighbour next to your awake pet gets a greeting
   once: both nod, hearts, "Hi, friend!", +5 happiness and +1 bond. Up to three a day, nothing to tap.
+- **Touch feedback everywhere.** Every button sinks and darkens the moment the finger lands, with a
+  click; sliding off before lifting cancels it. A button that can't act right now (Feed, Play and
+  Bath while asleep, a full name on the keyboard) plays a short deny sound. The training bag sounds on
+  every hit.
 
 ### Changed
 
 - **The trail rank improves the shiny roll.** Each rank takes one off it (1 / 48 becomes 1 / 44
   at Ranger); the 1 / 8 best stays.
+- The stat card closes only from **Back** or a swipe up; a tap on a page no longer closes it.
 
 ## [1.18] - 2026-10-24
 

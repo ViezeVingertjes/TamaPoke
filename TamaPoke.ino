@@ -65,6 +65,22 @@ struct {
   float x = CX, targetX = CX;
 } beh;
 uint32_t walkLast = 0;  // time of the last walk step (0 = none yet)
+
+// ---------- what a touch is on ----------
+// One hit test for the whole game: the finger landing uses it for the pressed look and the sound,
+// the lift (onTap) uses it for the action, so what is drawn, what looks pressed and what fires
+// cannot drift apart. The minigame ball and the sack act on touch-down and are not targets.
+enum PressId : uint8_t {
+  P_NONE, P_PET, P_EGG,  // the pet and the egg give their own feedback (hearts, cracks)
+  P_STARTER, P_DECK, P_FEED, P_CTA, P_CHOICE, P_REL_NO, P_REL_YES,
+  P_CARD_NAME, P_TRAIN, P_BACK, P_CLK, P_SND, P_CLK_CANCEL, P_CLK_OK, P_KEY, P_CELL, P_CLOSE,
+};
+struct Press {
+  uint8_t id = P_NONE;
+  int8_t idx = 0;        // which one: starter row, button, key, cell...
+  bool enabled = false;  // false: it is drawn but does nothing right now (deny sound, no pressed look)
+};
+Press touchOn;  // what the finger is on now (P_NONE when it is up or slid off)
 #define PET_GROUND UY(304)  // pet ground line
 PmdMon galleryPmd;  // big sprite of the gallery detail view (PMD/TPK2, legal)
 
@@ -204,9 +220,31 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define CLOCK_OK_W U(140)
 #define CLOCK_OK_H UY(68)
 #define CLOCK_CANCEL_X (CX - U(4) - CLOCK_OK_W)
-// top touch zones: the header exits/abandons; the card name opens the keyboard
+// sound switch: full width, in accent when active
+#define SND_PILL_Y UY(256)
+#define SND_PILL_H UY(68)
+// top touch zone: the header exits (gallery grid, minigame, sack)
 #define HEADER_ZONE_H UY(72)
-#define CARD_NAME_ZONE_H UY(84)
+// card name pill (touching it opens the keyboard) and the Back pill of the card and gallery detail
+#define CARD_NAME_W U(250)
+#define CARD_NAME_H UY(52)
+#define CARD_NAME_X (CX - CARD_NAME_W / 2)
+#define CARD_NAME_Y UY(34)
+#define BACK_W U(150)
+#define BACK_H UY(68)
+#define BACK_X (CX - BACK_W / 2)
+#define BACK_Y UY(372)
+// rename keyboard: 6 columns x 5 rows, centered; the bottom row fits inside the circle
+#define KB_COLS 6
+#define KB_W U(58)
+#define KB_H UY(52)
+#define KB_X (CX - (KB_COLS * KB_W - U(6)) / 2)  // the last column has no 6 gap on the right
+#define KB_Y UY(108)
+// pokedex grid: 4 x 4 cells
+#define GAL_X U(73)
+#define GAL_Y UY(84)
+#define GAL_CELL U(80)    // cell width
+#define GAL_CELL_Y UY(80)  // cell height
 // the CST9217 signals touch data on the INT pin; we use it to avoid
 // reading the I2C bus while the chip is asleep (that read hung for ~1s)
 volatile bool gTouchIrq = false;
@@ -224,6 +262,7 @@ uint32_t choiceUntil = 0;   // closes by itself at this millis
 int16_t tX0, tY0, tXl, tYl; // gesture in progress (start and last position)
 uint32_t tStart = 0;
 bool holdFired = false;
+
 
 void setup() {
   Serial.setRxBufferSize(8192);  // SD transfer arrives in 2 KB blocks
@@ -679,6 +718,99 @@ bool inPetZone(int16_t x, int16_t y) {
   return x > U(110) && x < U(356) && y > UY(95) && y < UY(310);
 }
 
+// ---------- what a touch is on (see pressTarget) ----------
+
+static bool inBox(int x, int y, int bx, int by, int bw, int bh) { return x >= bx && x <= bx + bw && y >= by && y <= by + bh; }
+static bool inCircle(int x, int y, int cx, int cy, int r) { return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r; }
+static Press target(uint8_t id, int idx, bool en) { Press p; p.id = id; p.idx = (int8_t)idx; p.enabled = en; return p; }
+
+Press pressTarget(int16_t x, int16_t y) {
+  if (pet.awaitingStarter()) {
+    for (int i = 0; i < 3; i++)
+      if (inBox(x, y, STARTER_ROW_X, STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP), STARTER_ROW_W, STARTER_ROW_H)) return target(P_STARTER, i, true);
+    return Press();
+  }
+  if (galleryOpen) {
+    if (galleryDetail) return target(P_BACK, 0, true);  // anywhere goes back (the Back pill is what looks pressed)
+    if (y < HEADER_ZONE_H) return target(P_CLOSE, 0, true);  // the header exits
+    // filter BEFORE dividing: integer division truncates toward zero, so a point left of or
+    // above the grid would come out as column/row 0
+    if (x < GAL_X || y < GAL_Y) return Press();
+    int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL_Y;
+    if (c > 3 || r > 3 || galleryPage * 16 + r * 4 + c + 1 > 151) return Press();
+    return target(P_CELL, r * 4 + c, true);
+  }
+  if (kbOpen) {
+    if (x < KB_X || y < KB_Y) return Press();  // same reason as the gallery
+    int col = (x - KB_X) / KB_W, row = (y - KB_Y) / KB_H, i = row * KB_COLS + col;
+    if (col >= KB_COLS || i >= 30) return Press();
+    bool en = i == 29 || (i == 28 ? nameLen > 0 : nameLen < sizeof(nameBuf) - 1);  // OK / delete / a letter
+    return target(P_KEY, i, en);
+  }
+  if (clockOpen) {
+    const int cx[4] = { CLK_X0, CLK_X1, CLK_X2, CLK_X3 };
+    for (int i = 0; i < 4; i++)
+      if (inBox(x, y, cx[i], CLOCK_BTN_Y, CLOCK_BTN_W, CLOCK_BTN_H)) return target(P_CLK, i, true);
+    if (inBox(x, y, SND_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H)) return target(P_SND, 0, true);
+    if (inBox(x, y, CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H)) return target(P_CLK_OK, 0, true);
+    if (inBox(x, y, CLOCK_CANCEL_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H)) return target(P_CLK_CANCEL, 0, true);
+    return Press();
+  }
+  if (pet.ceremony) return Press();
+  if (cardOpen) {
+    if (inBox(x, y, BACK_X, BACK_Y, BACK_W, BACK_H)) return target(P_BACK, 0, true);
+    if (cardPage == 0 && inBox(x, y, CARD_NAME_X, CARD_NAME_Y, CARD_NAME_W, CARD_NAME_H)) return target(P_CARD_NAME, 0, true);
+    if (cardPage == 1 && inBox(x, y, TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H)) return target(P_TRAIN, 0, !pet.sleeping && !pet.evolving());
+    return Press();
+  }
+  if (gameOpen || sackOpen) return y < HEADER_ZONE_H ? target(P_CLOSE, 0, true) : Press();
+  if (choiceKind) {
+    if (inBox(x, y, CHOICE_X, CHOICE_B1_Y, CHOICE_W, CHOICE_BH))
+      return target(P_CHOICE, 0, choiceKind == 1 ? pet.canEvolveNow() : pet.canFarewellNow());
+    if (inBox(x, y, CHOICE_X, CHOICE_B2_Y, CHOICE_W, CHOICE_BH)) return target(P_CHOICE, 1, true);
+    return Press();  // outside: the dialog closes without deciding
+  }
+  if (confirmUntil) {
+    if (inBox(x, y, YES_X, YES_Y, YES_W, YES_H)) return target(P_REL_YES, 0, true);
+    if (inBox(x, y, NO_X, NO_Y, CHOICE_W, CHOICE_BH)) return target(P_REL_NO, 0, true);
+    return Press();  // outside: same as NO
+  }
+  if (feedMenuUntil) {
+    for (int i = 0; i < 4; i++)
+      if (inCircle(x, y, buttons[i].cx, buttons[i].cy, BTN_HIT)) return target(P_FEED, i, !pet.sleeping);
+    return Press();  // outside: the picker closes
+  }
+  if (pet.isEgg()) return target(P_EGG, 0, true);
+  if (pet.wantEvolveButton() && inBox(x, y, EVO_BTN_X, EVO_BTN_Y, EVO_BTN_W, EVO_BTN_H)) return target(P_CTA, 0, true);
+  if (inBox(x, y, FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H)) {
+    if (pet.canRunawayNow()) return target(P_CTA, 1, true);
+    if (pet.wantFarewellButton()) return target(P_CTA, 2, true);
+  }
+  for (int i = 0; i < 4; i++)
+    if (inCircle(x, y, buttons[i].cx, buttons[i].cy, BTN_HIT)) {
+      // while sleeping only LIGHT works (the others are drawn dimmed); play and bath also wait out an evolution
+      bool en = i == 2 || (!pet.sleeping && (i == 0 || !pet.evolving()));
+      return target(P_DECK, i, en);
+    }
+  if (inPetZone(x, y)) return target(P_PET, 0, true);
+  return Press();
+}
+
+// drawn pressed: what the finger is on, if it does something
+bool isPressed(uint8_t id, int idx) { return touchOn.id == id && touchOn.idx == idx && touchOn.enabled; }
+
+// the finger moved onto something else (or off it): the gallery grid is only repainted when dirty
+static void setPressed(const Press &p) {
+  if (p.id != touchOn.id || p.idx != touchOn.idx || p.enabled != touchOn.enabled) galleryDirty = true;
+  touchOn = p;
+}
+
+// the sound of a finger landing: tap on a button, deny on one that does nothing now
+static void pressSound(const Press &p) {
+  if (p.id == P_NONE || p.id == P_PET || p.id == P_EGG) return;
+  sfxPlay(p.enabled ? SFX_TAP : SFX_DENY);
+}
+
 // the touch is resolved on finger LIFT to tell a tap from a swipe
 void handleTouch() {
   static uint32_t lastPoll = 0;
@@ -749,6 +881,9 @@ void handleTouch() {
     holdFired = false;
     swallowGesture = dimStage > 0;  // if it was dark, it only wakes up (screenOff is handled above)
     wakeUI();
+    // feedback the moment the finger lands: the pressed look (wakeUI forces the frame) and the sound
+    setPressed(swallowGesture ? Press() : pressTarget(x, y));
+    pressSound(touchOn);
     // like the sack: a hit counts on touch, not when the finger lifts. The header (quit) still
     // waits for the lift so a swipe that starts there cannot end the game; no overlay is on top
     if (!swallowGesture && gameOpen && y >= HEADER_ZONE_H && !kbOpen && !clockOpen && !cardOpen && !galleryOpen) {
@@ -758,6 +893,8 @@ void handleTouch() {
   } else if (pressed) {  // still pressed
     tXl = x;
     tYl = y;
+    // slid off or held too long: the tap will not fire, so it no longer looks pressed
+    if (touchOn.id && (abs(tXl - tX0) >= U(40) || abs(tYl - tY0) >= UY(40) || millis() - tStart >= 1500)) setPressed(Press());
     // long press without moving on the pet -> release dialog
     if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < U(30) && abs(tYl - tY0) < UY(30) && inPetZone(tX0, tY0) &&
@@ -774,6 +911,7 @@ void handleTouch() {
       else if (abs(dy) > UY(80) && abs(dx) < U(70) && dt < 800) onSwipeV(dy > 0 ? 1 : -1);
       else if (dt < 1500 && abs(dx) < U(40) && abs(dy) < UY(40)) onTap(tX0, tY0);
     }
+    setPressed(Press());
   }
   wasPressed = pressed;
 }
@@ -839,38 +977,31 @@ void onSwipe(int dir) {
 
 void onTap(int16_t x, int16_t y) {
   // Serial.printf("TOUCH %d %d\n", x, y);  // diagnostic (silenced: floods the log)
+  expireDialogs();
+  Press p = pressTarget(x, y);
   if (pet.awaitingStarter()) {  // first game: pick a starter
-    for (int i = 0; i < 3; i++) {
-      int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-      if (x >= STARTER_ROW_X && x <= STARTER_ROW_X + STARTER_ROW_W && y >= ry && y <= ry + STARTER_ROW_H) {
-        pet.chooseStarter(STARTER_DEX[i]);
-        sfxPlay(SFX_TAP);
-        break;
-      }
-    }
+    if (p.id == P_STARTER) pet.chooseStarter(STARTER_DEX[p.idx]);
     return;
   }
   if (galleryOpen) {
-    galleryTap(x, y);
+    galleryTap(p);
     return;
   }
   if (kbOpen) {
-    keyboardTap(x, y);
+    keyboardTap(p);
     return;
   }
   if (clockOpen) {
-    clockTap(x, y);
+    clockTap(p);
     return;
   }
-  expireDialogs();
   if (pet.ceremony) return;  // no buttons during the farewell
-  if (cardOpen) {
-    if (cardPage == 0 && y < CARD_NAME_ZONE_H) openKeyboard();  // touching the name = rename
-    else if (cardPage == 1 && y >= TRAIN_Y && y <= TRAIN_Y + TRAIN_H && x >= TRAIN_X && x <= TRAIN_X + TRAIN_W) {
-      cardOpen = false;            // TRAIN STRENGTH button
+  if (cardOpen) {            // only its buttons do something: a tap on the page content does not close it
+    if (p.id == P_BACK) cardOpen = false;
+    else if (p.id == P_CARD_NAME) openKeyboard();  // touching the name = rename
+    else if (p.id == P_TRAIN && p.enabled) {
+      cardOpen = false;      // TRAIN STRENGTH button
       startSack();
-    } else {
-      cardOpen = false;
     }
     return;
   }
@@ -878,80 +1009,56 @@ void onTap(int16_t x, int16_t y) {
     gameTap(x, y);
     return;
   }
-  if (choiceKind) {          // decision dialog: action button (top) / keep (bottom)
-    bool b1 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B1_Y && y <= CHOICE_B1_Y + CHOICE_BH);  // action
-    bool b2 = (x >= CHOICE_X && x <= CHOICE_X + CHOICE_W && y >= CHOICE_B2_Y && y <= CHOICE_B2_Y + CHOICE_BH);  // keep / stay together
-    if (choiceKind == 1) {                 // evolution
-      if (b1 && pet.canEvolveNow()) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
-      else if (b2) pet.declineEvolve();
-    } else if (choiceKind == 2) {          // farewell
-      if (b1 && pet.canFarewellNow()) pet.startFarewell();
-      else if (b2) pet.declineFarewell();
+  if (choiceKind) {          // decision dialog: action button (top) / keep (bottom); outside closes it
+    if (p.id == P_CHOICE && p.idx == 0 && p.enabled) {
+      if (choiceKind == 1) { int16_t old = pet.speciesId; pet.evolve(); evoPmd.load(old, pet.shiny); }
+      else pet.startFarewell();
+    } else if (p.id == P_CHOICE && p.idx == 1) {
+      if (choiceKind == 1) pet.declineEvolve();
+      else pet.declineFarewell();
     }
     choiceKind = 0;
     return;
   }
-  if (confirmUntil) {        // "release?" dialog: YES / NO
-    if (x >= YES_X && x <= YES_X + YES_W && y >= YES_Y && y <= YES_Y + YES_H) {
-      pet.release();
-    }
+  if (confirmUntil) {        // "release?" dialog: YES / NO (or outside)
+    if (p.id == P_REL_YES) pet.release();
     confirmUntil = 0;
     return;
   }
   if (feedMenuUntil) {       // food picker
-    for (int item = 0; item < 4; item++) {
-      int dx = x - buttons[item].cx, dy = y - buttons[item].cy;
-      if (dx * dx + dy * dy <= BTN_HIT * BTN_HIT) {
-        if (item == 3) pet.feedCandy();
-        else pet.feedBerry(item);
-        sfxPlay(SFX_EAT);
-        break;
-      }
+    if (p.id == P_FEED && p.enabled) {
+      if (p.idx == 3) pet.feedCandy();
+      else pet.feedBerry(p.idx);
+      sfxPlay(SFX_EAT);
     }
     feedMenuUntil = 0;
     return;
   }
-  if (pet.isEgg()) {
+  if (p.id == P_EGG) {
     pet.eggTap();
     sfxPlay(SFX_TAP);
     return;
   }
-  // evolution button: opens the evolve/keep dialog
-  if (pet.wantEvolveButton() && x >= EVO_BTN_X && x <= EVO_BTN_X + EVO_BTN_W &&
-      y >= EVO_BTN_Y && y <= EVO_BTN_Y + EVO_BTN_H) {
-    choiceKind = 1; choiceUntil = millis() + 12000;
+  if (p.id == P_CTA) {       // evolve and farewell open their dialog; the run-away button acts directly
+    if (p.idx == 1) pet.startRunaway();
+    else { choiceKind = p.idx == 0 ? 1 : 2; choiceUntil = millis() + 12000; }
     return;
   }
-  // ending buttons (same box): direct run-away; farewell opens a dialog
-  if (x >= FAR_BTN_X && x <= FAR_BTN_X + FAR_BTN_W &&
-      y >= FAR_BTN_Y && y <= FAR_BTN_Y + FAR_BTN_H) {
-    if (pet.canRunawayNow()) { pet.startRunaway(); return; }
-    if (pet.wantFarewellButton()) { choiceKind = 2; choiceUntil = millis() + 12000; return; }
+  if (p.id == P_DECK) {
+    Serial.printf("BTN %d\n", p.idx);
+    if (!p.enabled) return;
+    if (p.idx == 0) feedMenuUntil = millis() + 6000;
+    else if (p.idx == 1) startGame();
+    else if (p.idx == 2) pet.toggleLight();
+    else startBath();
+    return;
   }
-  for (int i = 0; i < 4; i++) {
-    int dx = x - buttons[i].cx, dy = y - buttons[i].cy;
-    if (dx * dx + dy * dy <= BTN_HIT * BTN_HIT) {
-      Serial.printf("BTN %d\n", i);
-      sfxPlay(SFX_TAP);
-      if (i == 0) {
-        if (!pet.sleeping) feedMenuUntil = millis() + 6000;
-      } else if (i == 1) {
-        startGame();
-      } else if (i == 2) {
-        pet.toggleLight();
-      } else {
-        startBath();
-      }
-      return;
-    }
-  }
-  // touching the pet = caress
-  if (inPetZone(x, y)) {
+  if (p.id == P_PET) {       // touching the pet = caress
     Serial.println("PET");
     pet.caress();
     if (!pet.sleeping) {
       sfxPlay(SFX_HEART);
-      chirpPlay(pet.speciesId);  // nothing for an egg (dex -1)
+      chirpPlay(pet.speciesId);
     }
   }
 }
@@ -971,7 +1078,9 @@ static uint16_t uiFill();
 static uint16_t uiAlert();
 static uint16_t uiDim();
 static void uiTextIn(int x, int y, int w, int h, const char *t, int size, uint16_t col);
-static void uiPill(int x, int y, int w, int h, const char *t, bool primary);
+static void uiPill(int x, int y, int w, int h, const char *t, bool primary, bool down = false);
+static uint16_t pressCol(uint16_t c);
+#define PRESS_DY UY(2)  // a pressed button sinks this much
 static void drawPanelBase();
 static void drawRecordPill(int y);
 
@@ -1118,8 +1227,9 @@ void renderStarterSelect() {
   gfx->print(t);
   for (int i = 0; i < 3; i++) {
     int16_t d = STARTER_DEX[i];
-    int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-    gfx->fillRoundRect(STARTER_ROW_X, ry, STARTER_ROW_W, STARTER_ROW_H, STARTER_ROW_H / 2, uiSurf());
+    bool down = isPressed(P_STARTER, i);
+    int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP) + (down ? PRESS_DY : 0);
+    gfx->fillRoundRect(STARTER_ROW_X, ry, STARTER_ROW_W, STARTER_ROW_H, STARTER_ROW_H / 2, down ? pressCol(uiSurf()) : uiSurf());
     const uint8_t *th = thumbs.get(d);     // starter thumbnail (if the SD is ready)
     if (th) drawThumb(th, U(76), ry - UY(5), SC(3), false);
     gfx->setTextColor(inkColor());
@@ -1244,6 +1354,7 @@ static uint32_t screenKey() {
   uint32_t h = 2166136261u;
   h = mixKey(h, pet.awaitingStarter() ? 1 : kbOpen ? 2 : clockOpen ? 3 : 4 + cardPage);
   h = mixKey(h, sdEpoch);
+  h = mixKey(h, touchOn.id << 16 | (uint8_t)touchOn.idx << 8 | touchOn.enabled);  // the pressed look
   if (kbOpen) {
     h = mixKey(h, nameLen);
     for (int i = 0; i < nameLen; i++) h = mixKey(h, (uint8_t)nameBuf[i]);
@@ -1390,8 +1501,10 @@ bool render() {
     } else {
       const char *const *const items[4] = { SPR_ICON_FOOD, SPR_ICON_BERRY_B, SPR_ICON_BERRY_G, SPR_ICON_CANDY };
       for (int i = 0; i < 4; i++) {
-        gfx->fillCircle(buttons[i].cx, buttons[i].cy, BTN_R, uiSurf());
-        drawMap(items[i], 16, FEED_ICON_X(i), FEED_ICON_Y(i), SC(3), false);
+        bool down = isPressed(P_FEED, i);
+        int dy = down ? PRESS_DY : 0;
+        gfx->fillCircle(buttons[i].cx, buttons[i].cy + dy, BTN_R, down ? pressCol(uiSurf()) : uiSurf());
+        drawMap(items[i], 16, FEED_ICON_X(i), FEED_ICON_Y(i) + dy, SC(3), false);
       }
     }
   }
@@ -1519,12 +1632,17 @@ void startSack() {
 
 // touch with the sack open: the header quits, the rest hits
 void sackTouch(int16_t y) {
-  if (y < HEADER_ZONE_H) sackOpen = false;
-  else sackTap();
+  if (y < HEADER_ZONE_H) {
+    sfxPlay(SFX_TAP);
+    sackOpen = false;
+  } else {
+    sackTap();
+  }
 }
 
 void sackTap() {
   if (!timeLeft(sackUntil)) return;  // time is already up
+  sfxPlay(SFX_PLAY);                 // each hit sounds, like the minigame ball
   sackHits++;
   sackShake = 16 * UI_F;  // shakes the sack
 }
@@ -1760,16 +1878,12 @@ void applyClock() {
 }
 
 // round step button (- / +): a sign drawn with two rectangles
-void drawClockBtn(int x, int y, const char *l) {
-  int cx = x + CLOCK_BTN_W / 2, cy = y + CLOCK_BTN_H / 2, r = CLOCK_BTN_W / 2, a = U(14), t = U(3);
-  gfx->fillCircle(cx, cy, r, uiSurf());
+void drawClockBtn(int x, int y, const char *l, bool down) {
+  int cx = x + CLOCK_BTN_W / 2, cy = y + CLOCK_BTN_H / 2 + (down ? PRESS_DY : 0), r = CLOCK_BTN_W / 2, a = U(14), t = U(3);
+  gfx->fillCircle(cx, cy, r, down ? pressCol(uiSurf()) : uiSurf());
   gfx->fillRect(cx - a, cy - t / 2, 2 * a + 1, t, inkColor());
   if (l[0] == '+') gfx->fillRect(cx - t / 2, cy - a, t, 2 * a + 1, inkColor());
 }
-
-// sound switch: full width, in accent when active
-#define SND_PILL_Y UY(256)
-#define SND_PILL_H UY(68)
 
 void renderClock() {
   drawScreenBg();
@@ -1792,17 +1906,16 @@ void renderClock() {
   gfx->setCursor(CX - textW(":", TS(7)) / 2, ty);
   gfx->print(":");
 
-  drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-");  // hour -
-  drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+");  // hour +
-  drawClockBtn(CLK_X2, CLOCK_BTN_Y, "-");  // min -
-  drawClockBtn(CLK_X3, CLOCK_BTN_Y, "+");  // min +
+  drawClockBtn(CLK_X0, CLOCK_BTN_Y, "-", isPressed(P_CLK, 0));  // hour -
+  drawClockBtn(CLK_X1, CLOCK_BTN_Y, "+", isPressed(P_CLK, 1));  // hour +
+  drawClockBtn(CLK_X2, CLOCK_BTN_Y, "-", isPressed(P_CLK, 2));  // min -
+  drawClockBtn(CLK_X3, CLOCK_BTN_Y, "+", isPressed(P_CLK, 3));  // min +
 
-  bool snd = audioEnabled();
-  gfx->fillRoundRect(SND_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H, SND_PILL_H / 2, snd ? UI_ACC : uiSurf());
-  uiTextIn(SND_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H, snd ? T(S_SND_ON) : T(S_SND_OFF), TS(3), snd ? RGB565_BLACK : inkColor());
+  bool snd = audioEnabled();  // the sound switch: a pill in accent when on
+  uiPill(SND_PILL_X, SND_PILL_Y, SND_PILL_W, SND_PILL_H, snd ? T(S_SND_ON) : T(S_SND_OFF), snd, isPressed(P_SND, 0));
 
-  uiPill(CLOCK_CANCEL_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, T(S_CLOCK_CANCEL), false);
-  uiPill(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, "Done", true);
+  uiPill(CLOCK_CANCEL_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, T(S_CLOCK_CANCEL), false, isPressed(P_CLK_CANCEL, 0));
+  uiPill(CLOCK_OK_X, CLOCK_OK_Y, CLOCK_OK_W, CLOCK_OK_H, T(S_CLOCK_DONE), true, isPressed(P_CLK_OK, 0));
 
   // firmware version (discreet, at the very bottom)
   char ver[20];
@@ -1815,22 +1928,19 @@ void renderClock() {
   gfx->flush();
 }
 
-void clockTap(int16_t x, int16_t y) {
-  if (y >= CLOCK_BTN_Y && y <= CLOCK_BTN_Y + CLOCK_BTN_H) {  // row of +/- buttons
-    if (x >= CLK_X0 && x < CLK_X0 + CLOCK_BTN_W) clockH = (clockH + 23) % 24;
-    else if (x >= CLK_X1 && x < CLK_X1 + CLOCK_BTN_W) clockH = (clockH + 1) % 24;
-    else if (x >= CLK_X2 && x < CLK_X2 + CLOCK_BTN_W) clockM = (clockM + 59) % 60;
-    else if (x >= CLK_X3 && x < CLK_X3 + CLOCK_BTN_W) clockM = (clockM + 1) % 60;
-    return;
-  }
-  if (y >= SND_PILL_Y && y <= SND_PILL_Y + SND_PILL_H && x >= SND_PILL_X && x < SND_PILL_X + SND_PILL_W) {  // sound switch
+void clockTap(const Press &p) {
+  if (p.id == P_CLK) {  // row of +/- buttons: hour -, hour +, min -, min +
+    if (p.idx == 0) clockH = (clockH + 23) % 24;
+    else if (p.idx == 1) clockH = (clockH + 1) % 24;
+    else if (p.idx == 2) clockM = (clockM + 59) % 60;
+    else clockM = (clockM + 1) % 60;
+  } else if (p.id == P_SND) {  // sound switch
     audioSetEnabled(!audioEnabled());
-    if (audioEnabled()) sfxPlay(SFX_TAP);    // confirms when turning on
-    return;
-  }
-  if (y >= CLOCK_OK_Y && y <= CLOCK_OK_Y + CLOCK_OK_H) {
-    if (x >= CLOCK_OK_X && x <= CLOCK_OK_X + CLOCK_OK_W) applyClock();
-    else if (x >= CLOCK_CANCEL_X && x <= CLOCK_CANCEL_X + CLOCK_OK_W) clockOpen = false;
+    if (audioEnabled()) sfxPlay(SFX_TAP);    // confirms when turning on (the touch-down was silent)
+  } else if (p.id == P_CLK_OK) {
+    applyClock();
+  } else if (p.id == P_CLK_CANCEL) {
+    clockOpen = false;
   }
 }
 
@@ -1861,7 +1971,7 @@ static void drawCardNav() {
   int ds = U(12), gap = U(14), x0 = CX - ((CARD_PAGES - 1) * (ds + gap)) / 2 - ds / 2;
   for (int i = 0; i < CARD_PAGES; i++)
     gfx->fillCircle(x0 + i * (ds + gap) + ds / 2, UY(348), ds / 2, i == cardPage ? inkColor() : uiSurf());
-  uiPill(CX - U(75), UY(372), U(150), UY(68), T(S_BACK), false);
+  uiPill(BACK_X, BACK_Y, BACK_W, BACK_H, T(S_BACK), false, isPressed(P_BACK, 0));
 }
 
 static void drawPencil(int x, int y, int s, uint16_t col) {  // 20x20 design pencil: body + tip
@@ -1876,8 +1986,9 @@ void renderCardProfile() {
   char head[40];
   snprintf(head, sizeof(head), "%s%s", pet.shiny ? "*" : "", nm);
   // the name is a button: pill with a pencil (touching it opens the keyboard)
-  int pw = U(250), ph = UY(52), px = CX - pw / 2, py = UY(34);
-  gfx->fillRoundRect(px, py, pw, ph, ph / 2, uiSurf());
+  bool down = isPressed(P_CARD_NAME, 0);
+  int pw = CARD_NAME_W, ph = CARD_NAME_H, px = CARD_NAME_X, py = CARD_NAME_Y + (down ? PRESS_DY : 0);
+  gfx->fillRoundRect(px, py, pw, ph, ph / 2, down ? pressCol(uiSurf()) : uiSurf());
   setSize(TS(3));
   int hs = (textW(head, TS(3)) <= pw - U(64)) ? TS(3) : TS(2);
   int pen = U(20);
@@ -1943,7 +2054,7 @@ void renderCardStats() {
   drawCardStat(UY(192), T(S_STAT_SPE), pet.speStat(), 260);
   drawCardStat(UY(236), T(S_STAT_WGT), pet.weight, 100);
 
-  uiPill(TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H, T(S_TRAIN_STR), true);  // strength training sack
+  uiPill(TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H, T(S_TRAIN_STR), true, isPressed(P_TRAIN, 0));  // strength training sack
 }
 
 // medal: circle with its mark (level in digits, or a drawing) and its name below
@@ -2118,12 +2229,6 @@ void renderCard() {
 // ---------- keyboard to rename ----------
 
 static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK = 30
-#define KB_COLS 6
-// 6 columns x 5 rows, centered; the bottom row fits inside the circle
-#define KB_W U(58)
-#define KB_H UY(52)
-#define KB_X (CX - (KB_COLS * KB_W - U(6)) / 2)  // the last column has no 6 gap on the right
-#define KB_Y UY(108)
 
 void openKeyboard() {
   kbOpen = true;
@@ -2147,10 +2252,12 @@ void renderKeyboard() {
   gfx->fillRect(tx + tw + U(6), fy + U(12), cw, fh - U(24), UI_ACC);
 
   for (int i = 0; i < 30; i++) {
-    int x = KB_X + (i % KB_COLS) * KB_W, y = KB_Y + (i / KB_COLS) * KB_H;
+    bool down = isPressed(P_KEY, i);
+    int x = KB_X + (i % KB_COLS) * KB_W, y = KB_Y + (i / KB_COLS) * KB_H + (down ? PRESS_DY : 0);
     int kw = KB_W - U(6), kh = KB_H - UY(6);  // key: the cell minus 6 design px of spacing
     bool ok = (i == 29);
-    gfx->fillRoundRect(x, y, kw, kh, U(14), ok ? UI_ACC : uiSurf());
+    uint16_t fill = ok ? UI_ACC : uiSurf();
+    gfx->fillRoundRect(x, y, kw, kh, U(14), down ? pressCol(fill) : fill);
     gfx->setTextColor(ok ? RGB565_BLACK : inkColor());
     if (i < 28) {
       char c[2] = { KB_KEYS[i], 0 };
@@ -2162,32 +2269,20 @@ void renderKeyboard() {
   gfx->flush();
 }
 
-void keyboardTap(int16_t x, int16_t y) {
-  // filter BEFORE dividing: with x/y below KB_X/KB_Y the subtraction is negative
-  // and integer division truncates toward zero (not toward -inf), so col/row
-  // would come out 0 instead of negative and the filter below would not catch it
-  if (x < KB_X || y < KB_Y) return;
-  int col = (x - KB_X) / KB_W, row = (y - KB_Y) / KB_H;
-  if (col >= KB_COLS || row >= 5) return;
-  int i = row * KB_COLS + col;
-  if (i >= 30) return;
-  if (i == 28) {  // delete
-    if (nameLen) nameBuf[--nameLen] = 0;
-  } else if (i == 29) {  // OK
+void keyboardTap(const Press &p) {
+  if (p.id != P_KEY || !p.enabled) return;  // a full name or an empty one to delete: the deny sound said so
+  if (p.idx == 28) {  // delete
+    nameBuf[--nameLen] = 0;
+  } else if (p.idx == 29) {  // OK
     pet.rename(nameBuf);
     kbOpen = false;
-  } else if (nameLen < sizeof(nameBuf) - 1) {
-    nameBuf[nameLen++] = KB_KEYS[i];
+  } else {
+    nameBuf[nameLen++] = KB_KEYS[p.idx];
     nameBuf[nameLen] = 0;
   }
 }
 
 // ---------- pokedex gallery ----------
-
-#define GAL_X U(73)
-#define GAL_Y UY(84)
-#define GAL_CELL U(80)    // cell width
-#define GAL_CELL_Y UY(80)  // cell height
 
 // draws a thumbnail centered in its cell; sil=true paints it in ink
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
@@ -2230,7 +2325,7 @@ void renderGallery() {
       const uint8_t *t = thumbs.get(galleryDetail);
       if (t) drawThumb(t, CX - GAL_CELL / 2, UY(135), SC(4), !known);  // drawThumb centers in its cell
     }
-    uiPill(CX - U(75), UY(372), U(150), UY(68), T(S_DETAIL_BACK), false);
+    uiPill(BACK_X, BACK_Y, BACK_W, BACK_H, T(S_DETAIL_BACK), false, isPressed(P_BACK, 0));
     gfx->flush();
     return;
   }
@@ -2251,6 +2346,10 @@ void renderGallery() {
       int16_t dex = galleryPage * 16 + r * 4 + c + 1;
       if (dex > 151) break;
       int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL_Y;
+      if (isPressed(P_CELL, r * 4 + c)) {  // the cells have no background: a pressed one gets one, and sinks
+        y += PRESS_DY;
+        gfx->fillRoundRect(x + U(3), y + UY(3), GAL_CELL - U(6), GAL_CELL_Y - UY(6), U(14), pressCol(uiSurf()));
+      }
       const uint8_t *t = thumbs.get(dex);
       if (t) {
         drawThumb(t, x, y, SC(2), !pet.isKnown(dex));
@@ -2281,24 +2380,20 @@ void renderGallery() {
   gfx->flush();
 }
 
-void galleryTap(int16_t x, int16_t y) {
+void galleryTap(const Press &p) {
   if (galleryDetail) {  // back to the grid
     galleryDetail = 0;
     galleryPmd.unload();
     galleryDirty = true;
     return;
   }
-  if (y < HEADER_ZONE_H) {  // touching the header = exit
+  if (p.id == P_CLOSE) {  // the header exits
     galleryOpen = false;
     galleryPmd.unload();
     return;
   }
-  // same reason as in the keyboard: filter before dividing
-  if (x < GAL_X || y < GAL_Y) return;
-  int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL_Y;
-  if (c > 3 || r > 3) return;
-  int16_t dex = galleryPage * 16 + r * 4 + c + 1;
-  if (dex > 151) return;
+  if (p.id != P_CELL) return;
+  int16_t dex = galleryPage * 16 + p.idx + 1;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
   if (pet.isKnown(dex)) chirpPlay(dex);  // a known species calls out
@@ -2349,9 +2444,14 @@ static void drawRecordPill(int y) {
   gfx->fillRoundRect(CX - w / 2, y, w, h, h / 2, UI_ACC);
   uiTextIn(CX - w / 2, y, w, h, T(S_NEW_RECORD), TS(2), RGB565_BLACK);
 }
-// button pill: primary (accent) or secondary (surface)
-static void uiPill(int x, int y, int w, int h, const char *t, bool primary) {
-  gfx->fillRoundRect(x, y, w, h, h / 2, primary ? UI_ACC : uiSurf());
+// the fill of a pressed button: a quarter of the way to the ink (darker by day, lighter at night)
+static uint16_t pressCol(uint16_t c) { return lerp565(c, inkColor(), 1, 4); }
+
+// button pill: primary (accent) or secondary (surface); down = pressed
+static void uiPill(int x, int y, int w, int h, const char *t, bool primary, bool down) {
+  if (down) y += PRESS_DY;
+  uint16_t fill = primary ? UI_ACC : uiSurf();
+  gfx->fillRoundRect(x, y, w, h, h / 2, down ? pressCol(fill) : fill);
   setSize(TS(3));
   int sz = (textW(t, TS(3)) <= w - U(32)) ? TS(3) : TS(2);
   uiTextIn(x, y, w, h, t, sz, primary ? RGB565_BLACK : inkColor());
@@ -2375,12 +2475,14 @@ static void drawNeed(int i, int level) {
   int cx = buttons[i].cx, cy = buttons[i].cy, r = BTN_R;
   bool off = pet.sleeping && i != 2;  // while sleeping only LIGHT works
   bool low = level < 25 && !pet.sleeping;
+  bool down = isPressed(P_DECK, i);
+  if (down) cy += PRESS_DY;
   if (i == 2 && pet.sleeping) {
-    gfx->fillCircle(cx, cy, r, UI_ACC);
+    gfx->fillCircle(cx, cy, r, down ? pressCol(UI_ACC) : UI_ACC);
   } else if (off) {
     gfx->fillCircle(cx, cy, r, lerp565(uiSurf(), uiBg(), 1, 2));
   } else {
-    gfx->fillCircle(cx, cy, r, uiSurf());
+    gfx->fillCircle(cx, cy, r, down ? pressCol(uiSurf()) : uiSurf());
     int hh = 2 * r * level / 100;
     uint16_t fc = low ? uiAlert() : uiFill();
     for (int y = cy + r - hh; y <= cy + r; y++) {
@@ -2485,8 +2587,8 @@ void drawChoiceDialog() {
   if (pmd.loaded) drawPmdAct(PMD_IDLE, CX, UY(168), millis(), true, false, SC(3));
   gfx->setTextColor(inkColor());
   uiTextIn(0, UY(180), UI_W, UY(40), q, TS(3), inkColor());
-  uiPill(CHOICE_X, CHOICE_B1_Y, CHOICE_W, CHOICE_BH, o1, evo);
-  uiPill(CHOICE_X, CHOICE_B2_Y, CHOICE_W, CHOICE_BH, o2, !evo);
+  uiPill(CHOICE_X, CHOICE_B1_Y, CHOICE_W, CHOICE_BH, o1, evo, isPressed(P_CHOICE, 0));
+  uiPill(CHOICE_X, CHOICE_B2_Y, CHOICE_W, CHOICE_BH, o2, !evo, isPressed(P_CHOICE, 1));
 }
 
 // full-screen "release?" dialog: keep (accent) on top, release (red outline) below
@@ -2496,34 +2598,39 @@ void drawReleaseDialog() {
   snprintf(q, sizeof(q), T(S_RELEASE_FMT), dexName(pet.speciesId));
   gfx->setTextColor(inkColor());
   drawWrapped(q, TS(3), CX, UY(204), U(380), 2, false);
-  uiPill(NO_X, NO_Y, CHOICE_W, CHOICE_BH, T(S_NO), true);
+  uiPill(NO_X, NO_Y, CHOICE_W, CHOICE_BH, T(S_NO), true, isPressed(P_REL_NO, 0));
+  bool down = isPressed(P_REL_YES, 0);
+  int yy = YES_Y + (down ? PRESS_DY : 0);
+  if (down) gfx->fillRoundRect(YES_X, yy, YES_W, YES_H, YES_H / 2, pressCol(uiBg()));
   for (int k = 0; k < U(3); k++)
-    gfx->drawRoundRect(YES_X + k, YES_Y + k, YES_W - 2 * k, YES_H - 2 * k, (YES_H - 2 * k) / 2, uiAlert());
-  uiTextIn(YES_X, YES_Y, YES_W, YES_H, T(S_YES), TS(2), uiAlert());
+    gfx->drawRoundRect(YES_X + k, yy + k, YES_W - 2 * k, YES_H - 2 * k, (YES_H - 2 * k) / 2, uiAlert());
+  uiTextIn(YES_X, yy, YES_W, YES_H, T(S_YES), TS(2), uiAlert());
 }
 
 // CTA buttons: yellow pill that pulses gently (evolve, farewell) or muted (neglect)
-static void drawCta(int bx, int by, int bw, int bh, int amp, float rate, bool primary, const char *t, int size, bool wrapped) {
-  int p = (int)(amp * sinf(millis() * rate));
-  int x = bx - p, y = by - p, w = bw + 2 * p, h = bh + 2 * p;
-  gfx->fillRoundRect(x, y, w, h, h / 2, primary ? UI_ACC : uiSurf());
+// (pressed: the pulse stops and it sinks)
+static void drawCta(int bx, int by, int bw, int bh, int amp, float rate, bool primary, const char *t, int size, bool wrapped, bool down) {
+  int p = down ? 0 : (int)(amp * sinf(millis() * rate));
+  int x = bx - p, y = by - p + (down ? PRESS_DY : 0), w = bw + 2 * p, h = bh + 2 * p;
+  uint16_t fill = primary ? UI_ACC : uiSurf();
+  gfx->fillRoundRect(x, y, w, h, h / 2, down ? pressCol(fill) : fill);
   gfx->setTextColor(primary ? RGB565_BLACK : inkColor());
   if (wrapped) drawWrapped(t, size, CX, y + h / 2, w - U(48), 2, false);  // with long names it goes to two lines
   else uiTextIn(x, y, w, h, t, size, primary ? RGB565_BLACK : inkColor());
 }
-void drawEvolveButton() { drawCta(EVO_BTN_X, EVO_BTN_Y, EVO_BTN_W, EVO_BTN_H, U(3), 0.006f, true, T(S_EVO_TAP), TS(3), false); }
+void drawEvolveButton() { drawCta(EVO_BTN_X, EVO_BTN_Y, EVO_BTN_W, EVO_BTN_H, U(3), 0.006f, true, T(S_EVO_TAP), TS(3), false, isPressed(P_CTA, 0)); }
 void drawFarewellButton() {
   char buf[52];
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_FAREWELL_BTN), nm);
-  drawCta(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H, U(2), 0.005f, true, buf, TS(2), true);
+  drawCta(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H, U(2), 0.005f, true, buf, TS(2), true, isPressed(P_CTA, 2));
 }
 // sad ending: muted surface and slow pulse
 void drawRunawayButton() {
   char buf[52];
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   snprintf(buf, sizeof(buf), T(S_RUNAWAY_BTN), nm);
-  drawCta(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H, U(2), 0.003f, false, buf, TS(2), true);
+  drawCta(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H, U(2), 0.003f, false, buf, TS(2), true, isPressed(P_CTA, 1));
 }
 
 // epic evolution animation: radial halo + rotating rays + accelerating
