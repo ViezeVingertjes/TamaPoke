@@ -7,7 +7,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from dex_data import DEX, TYPE_ACCENTS, CLASSIC, RARE, LEGENDARY, STONE
+from dex_data import DEX, TYPE_ACCENTS, CLASSIC, RARE, LEGENDARY, STONE, NIGHT
 from dex_stats import BASE_STATS
 
 
@@ -35,7 +35,8 @@ def main():
     out.append("// GENERADO por tools/gen_dex.py desde tools/dex_data.py - no editar\n\n")
     out.append("#define DEX_COUNT 151\n")
     out.append("#define DEX_EEVEE 133  // random branch: 134/135/136\n")
-    out.append("#define DEX_STONE 1    // flags: evolves with a stone in the real games\n\n")
+    out.append("#define DEX_STONE 1    // flags: evolves with a stone in the real games\n")
+    out.append("#define DEX_NIGHT 2    // flags: more likely from an egg rolled at night\n\n")
     out.append(
         "// rarity: 0 = evolution only, 1 = common, 2 = rare, 3 = legendary\n"
         "enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO };\n\n"
@@ -47,7 +48,7 @@ def main():
         "  uint16_t accent;      // RGB565 type color for the UI\n"
         "  uint8_t bHp, bAtk, bDef, bSpe;  // real Gen 1 base stats\n"
         "  uint8_t biome;        // 0 meadow 1 beach 2 forest 3 volcano 4 mountain 5 snow\n"
-        "  uint8_t flags;        // DEX_STONE\n"
+        "  uint8_t flags;        // DEX_STONE | DEX_NIGHT\n"
         "};\n\n")
     # base forms = those that are nobody's evolution (Eevee's branches are)
     evolved = {evo for *_, evo, _lvl in [(d[4], d[5]) for d in DEX] for evo in [_[0] for _ in [(d[4],) for d in DEX]]}
@@ -68,7 +69,7 @@ def main():
         rarities.append(rar)
         hp, atk, df, spe = BASE_STATS[num]
         bio = BIOME_OVERRIDE.get(num, TYPE_BIOME[typ])
-        flags = 'DEX_STONE' if num in STONE else '0'
+        flags = ' | '.join(f for f, s in (('DEX_STONE', STONE), ('DEX_NIGHT', NIGHT)) if num in s) or '0'
         out.append(f'  {{ "{display}", {evo}, {lvl}, {rar}, 0x{acc:04X}, {hp}, {atk}, {df}, {spe}, {bio}, {flags} }},  // {num} {typ}\n')
     out.append("};\n\n")
 

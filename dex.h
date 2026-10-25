@@ -6,6 +6,7 @@
 #define DEX_COUNT 151
 #define DEX_EEVEE 133  // random branch: 134/135/136
 #define DEX_STONE 1    // flags: evolves with a stone in the real games
+#define DEX_NIGHT 2    // flags: more likely from an egg rolled at night
 
 // rarity: 0 = evolution only, 1 = common, 2 = rare, 3 = legendary
 enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO };
@@ -18,7 +19,7 @@ struct DexEntry {
   uint16_t accent;      // RGB565 type color for the UI
   uint8_t bHp, bAtk, bDef, bSpe;  // real Gen 1 base stats
   uint8_t biome;        // 0 meadow 1 beach 2 forest 3 volcano 4 mountain 5 snow
-  uint8_t flags;        // DEX_STONE
+  uint8_t flags;        // DEX_STONE | DEX_NIGHT
 };
 
 static const DexEntry DEX_TBL[DEX_COUNT + 1] = {
@@ -57,20 +58,20 @@ static const DexEntry DEX_TBL[DEX_COUNT + 1] = {
   { "NIDORAN M", 33, 16, R_COMUN, 0x8A73, 46, 57, 40, 50, 0, 0 },  // 32 veneno
   { "NIDORINO", 34, 30, R_EVO, 0x8A73, 61, 72, 57, 65, 0, DEX_STONE },  // 33 veneno
   { "NIDOKING", 0, 0, R_EVO, 0x8A73, 81, 102, 77, 85, 0, 0 },  // 34 veneno
-  { "CLEFAIRY", 36, 30, R_COMUN, 0x8C4D, 70, 45, 48, 35, 0, DEX_STONE },  // 35 normal
+  { "CLEFAIRY", 36, 30, R_COMUN, 0x8C4D, 70, 45, 48, 35, 0, DEX_STONE | DEX_NIGHT },  // 35 normal
   { "CLEFABLE", 0, 0, R_EVO, 0x8C4D, 95, 70, 73, 60, 0, 0 },  // 36 normal
   { "VULPIX", 38, 30, R_COMUN, 0xEA87, 38, 41, 40, 65, 3, DEX_STONE },  // 37 fuego
   { "NINETALES", 0, 0, R_EVO, 0xEA87, 73, 76, 75, 100, 3, 0 },  // 38 fuego
   { "JIGGLYPUFF", 40, 30, R_COMUN, 0x8C4D, 115, 45, 20, 20, 0, DEX_STONE },  // 39 normal
   { "WIGGLYTUFF", 0, 0, R_EVO, 0x8C4D, 140, 70, 45, 45, 0, 0 },  // 40 normal
-  { "ZUBAT", 42, 22, R_COMUN, 0x8A73, 40, 45, 35, 55, 0, 0 },  // 41 veneno
+  { "ZUBAT", 42, 22, R_COMUN, 0x8A73, 40, 45, 35, 55, 0, DEX_NIGHT },  // 41 veneno
   { "GOLBAT", 0, 0, R_EVO, 0x8A73, 75, 80, 70, 90, 0, 0 },  // 42 veneno
-  { "ODDISH", 44, 21, R_COMUN, 0x3C49, 45, 50, 55, 30, 2, 0 },  // 43 planta
+  { "ODDISH", 44, 21, R_COMUN, 0x3C49, 45, 50, 55, 30, 2, DEX_NIGHT },  // 43 planta
   { "GLOOM", 45, 36, R_EVO, 0x3C49, 60, 65, 70, 40, 2, DEX_STONE },  // 44 planta
   { "VILEPLUME", 0, 0, R_EVO, 0x3C49, 75, 80, 85, 50, 2, 0 },  // 45 planta
   { "PARAS", 47, 24, R_COMUN, 0x7CC4, 35, 70, 55, 25, 2, 0 },  // 46 bicho
   { "PARASECT", 0, 0, R_EVO, 0x7CC4, 60, 95, 80, 30, 2, 0 },  // 47 bicho
-  { "VENONAT", 49, 31, R_COMUN, 0x7CC4, 60, 55, 50, 45, 2, 0 },  // 48 bicho
+  { "VENONAT", 49, 31, R_COMUN, 0x7CC4, 60, 55, 50, 45, 2, DEX_NIGHT },  // 48 bicho
   { "VENOMOTH", 0, 0, R_EVO, 0x7CC4, 70, 65, 60, 90, 2, 0 },  // 49 bicho
   { "DIGLETT", 51, 26, R_COMUN, 0xB447, 10, 55, 25, 95, 4, 0 },  // 50 tierra
   { "DUGTRIO", 0, 0, R_EVO, 0xB447, 35, 100, 50, 120, 4, 0 },  // 51 tierra
@@ -114,11 +115,11 @@ static const DexEntry DEX_TBL[DEX_COUNT + 1] = {
   { "MUK", 0, 0, R_EVO, 0x8A73, 105, 105, 75, 50, 0, 0 },  // 89 veneno
   { "SHELLDER", 91, 30, R_COMUN, 0x4C98, 30, 65, 100, 40, 1, DEX_STONE },  // 90 agua
   { "CLOYSTER", 0, 0, R_EVO, 0x4C98, 50, 95, 180, 70, 1, 0 },  // 91 agua
-  { "GASTLY", 93, 25, R_COMUN, 0x6AD3, 30, 35, 30, 80, 0, 0 },  // 92 fantasma
+  { "GASTLY", 93, 25, R_COMUN, 0x6AD3, 30, 35, 30, 80, 0, DEX_NIGHT },  // 92 fantasma
   { "HAUNTER", 94, 40, R_EVO, 0x6AD3, 45, 50, 45, 95, 0, 0 },  // 93 fantasma
   { "GENGAR", 0, 0, R_EVO, 0x6AD3, 60, 65, 60, 110, 0, 0 },  // 94 fantasma
   { "ONIX", 0, 0, R_RARO, 0x9407, 35, 45, 160, 70, 4, 0 },  // 95 roca
-  { "DROWZEE", 97, 26, R_COMUN, 0xD28F, 60, 48, 45, 42, 0, 0 },  // 96 psiquico
+  { "DROWZEE", 97, 26, R_COMUN, 0xD28F, 60, 48, 45, 42, 0, DEX_NIGHT },  // 96 psiquico
   { "HYPNO", 0, 0, R_EVO, 0xD28F, 85, 73, 70, 67, 0, 0 },  // 97 psiquico
   { "KRABBY", 99, 28, R_COMUN, 0x4C98, 30, 105, 90, 50, 1, 0 },  // 98 agua
   { "KINGLER", 0, 0, R_EVO, 0x4C98, 55, 130, 115, 75, 1, 0 },  // 99 agua

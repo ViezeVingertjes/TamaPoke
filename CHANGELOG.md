@@ -15,6 +15,8 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
   with a stone in the real games (Pikachu, Clefairy, Vulpix, Eevee...) evolves 10 levels earlier;
   every need must still be 40 or more, and the Stone is used up only when it was what made it
   evolve. Both are part of the save backup.
+- **Night eggs.** An egg rolled at night (20:00 to 06:00) makes Clefairy, Zubat, Oddish,
+  Venonat, Gastly and Drowzee three times as likely within their tier. The tier odds do not change.
 
 ### Changed
 

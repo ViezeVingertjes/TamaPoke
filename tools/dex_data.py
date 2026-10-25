@@ -198,3 +198,7 @@ SLUGS = {n: s for n, s, *_ in DEX}
 # Vulpix, Jigglypuff, Gloom, Growlithe, Poliwhirl, Weepinbell, Shellder, Exeggcute, Staryu,
 # Eevee): with a Stone found on a walk they can evolve 10 levels early
 STONE = {25, 30, 33, 35, 37, 39, 44, 58, 61, 70, 90, 102, 120, 133}
+
+# night species (Clefairy, Zubat, Oddish, Venonat, Gastly, Drowzee): three times as likely
+# within their tier when the egg is rolled at night
+NIGHT = {35, 41, 43, 48, 92, 96}

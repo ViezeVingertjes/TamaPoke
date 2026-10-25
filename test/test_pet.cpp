@@ -599,6 +599,40 @@ TEST(egg, una_escapada_castiga_la_rareza) {
   }
 }
 
+// ---------------------------------------------------------------- night eggs
+static void atHourOf(Pet &p, int h) { p.setClock(20000UL * 86400 + h * 3600UL); }
+
+TEST(egg, de_noche_salen_mas_especies_nocturnas) {
+  Pet p;
+  makePet(p, 4);
+  int day = 0, night = 0;
+  for (int seed = 1; seed <= 3000; seed++) {
+    atHourOf(p, 13);
+    randomSeed(seed);
+    int16_t d = p.pickEggSpecies();
+    day += (DEX_TBL[d].flags & DEX_NIGHT) != 0;
+    atHourOf(p, 23);
+    randomSeed(seed);
+    int16_t n = p.pickEggSpecies();
+    night += (DEX_TBL[n].flags & DEX_NIGHT) != 0;
+    CHECK_EQ((int)DEX_TBL[n].rarity, (int)DEX_TBL[d].rarity);  // the tier roll does not change
+  }
+  CHECK(day > 100);
+  CHECK_RANGE(night * 10 / day, 20, 28);  // x3 weight among ~46 commons: about 2.4 times as many
+}
+
+TEST(egg, sin_reloj_o_de_dia_el_sorteo_no_cambia) {
+  Pet p;
+  makePet(p, 4);
+  CHECK(!p.isNight());                 // no clock yet
+  atHourOf(p, 5);
+  CHECK(p.isNight());
+  atHourOf(p, 6);
+  CHECK(!p.isNight());
+  atHourOf(p, 20);
+  CHECK(p.isNight());
+}
+
 // ---------------------------------------------------------------- streak
 TEST(streak, el_primer_cuidado_del_dia_suma) {
   Pet p;

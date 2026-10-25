@@ -97,6 +97,9 @@ While **awake**, per minute:
 - A clean **goodbye blesses** the next egg; a **run-away curses** it (forces Common).
 - Within a tier it favors species whose **evolution line you haven't finished** (so
   all 151 are completable).
+- **Night eggs:** an egg rolled at night (20:00–06:00 by the clock, i.e. when the previous
+  pet's ending happens) makes Clefairy, Zubat, Oddish, Venonat, Gastly and Drowzee **3× as
+  likely** within their tier. They still hatch by day, and the tier odds do not change.
 - **Shiny:** base **1 / 48** (→ **1 / 24** right after a goodbye), improved by
   streak/bond and the trail rank (−1 per rank) down to a best of **1 / 8**. Tracked
   separately in the dex.

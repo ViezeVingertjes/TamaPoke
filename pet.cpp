@@ -237,17 +237,21 @@ int16_t Pet::pickEggSpecies() {
   }
 
   // candidates of the tier with an incomplete line; if none, drop a tier;
-  // if the tier's pokedex is complete, any of the tier will do
+  // if the tier's pokedex is complete, any of the tier will do.
+  // At night the night species weigh NIGHT_WEIGHT times as much (by day all weigh 1)
+  bool night = isNight();
   for (int pass = 0; pass < 2; pass++) {
     for (int t = tier; t >= R_COMUN; t--) {
-      int16_t cand[80];
-      int n = 0;
-      for (int16_t d = 1; d <= 151 && n < 80; d++) {
-        if (DEX_TBL[d].rarity != t) continue;
-        if (pass == 0 && !lineHasUnregistered(d)) continue;
-        cand[n++] = d;
-      }
-      if (n > 0) return cand[random(n)];
+      auto weight = [&](int16_t d) -> int {
+        if (DEX_TBL[d].rarity != t || (pass == 0 && !lineHasUnregistered(d))) return 0;
+        return night && (DEX_TBL[d].flags & DEX_NIGHT) ? NIGHT_WEIGHT : 1;
+      };
+      int total = 0;
+      for (int16_t d = 1; d <= 151; d++) total += weight(d);
+      if (total == 0) continue;
+      int r = random(total);
+      for (int16_t d = 1; d <= 151; d++)
+        if ((r -= weight(d)) < 0) return d;
     }
   }
   return CLASSIC_DEX[random(NUM_CLASSIC_DEX)];  // unreachable, just in case

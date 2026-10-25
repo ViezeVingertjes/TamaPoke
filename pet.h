@@ -161,6 +161,12 @@ public:
   bool lineHasUnregistered(int16_t base) const;
   uint8_t eggRarity() const;       // rarity of the current egg (without revealing the species)
   int16_t pickEggSpecies();        // public so rolls can be simulated (EGGS)
+  static constexpr int NIGHT_WEIGHT = 3;  // night species at night, within their tier
+  // night by the real clock (20:00 to 06:00); false while there is no clock
+  bool isNight() const {
+    uint32_t h = (lastSeenEpoch / 3600) % 24;
+    return lastSeenEpoch && (h < 6 || h >= 20);
+  }
   uint8_t lowestStat() const { return min(min(fullness, joy), min(energy, hygiene)); }
   PetMood mood() const;
   // progress of the farewell/runaway ceremony, 0..1 (to animate it)
