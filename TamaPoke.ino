@@ -262,6 +262,7 @@ uint32_t choiceUntil = 0;   // closes by itself at this millis
 int16_t tX0, tY0, tXl, tYl; // gesture in progress (start and last position)
 uint32_t tStart = 0;
 bool holdFired = false;
+bool tapCancelled = false;  // the finger left the tap distance: lifting will not tap, even back on the button
 
 
 void setup() {
@@ -744,8 +745,7 @@ Press pressTarget(int16_t x, int16_t y) {
     if (x < KB_X || y < KB_Y) return Press();  // same reason as the gallery
     int col = (x - KB_X) / KB_W, row = (y - KB_Y) / KB_H, i = row * KB_COLS + col;
     if (col >= KB_COLS || i >= 30) return Press();
-    bool en = i == 29 || (i == 28 ? nameLen > 0 : nameLen < sizeof(nameBuf) - 1);  // OK / delete / a letter
-    return target(P_KEY, i, en);
+    return target(P_KEY, i, kbKeyWorks(i));
   }
   if (clockOpen) {
     const int cx[4] = { CLK_X0, CLK_X1, CLK_X2, CLK_X3 };
@@ -760,10 +760,10 @@ Press pressTarget(int16_t x, int16_t y) {
   if (cardOpen) {
     if (inBox(x, y, BACK_X, BACK_Y, BACK_W, BACK_H)) return target(P_BACK, 0, true);
     if (cardPage == 0 && inBox(x, y, CARD_NAME_X, CARD_NAME_Y, CARD_NAME_W, CARD_NAME_H)) return target(P_CARD_NAME, 0, true);
-    if (cardPage == 1 && inBox(x, y, TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H)) return target(P_TRAIN, 0, !pet.sleeping && !pet.evolving());
+    if (cardPage == 1 && inBox(x, y, TRAIN_X, TRAIN_Y, TRAIN_W, TRAIN_H)) return target(P_TRAIN, 0, canTrain());
     return Press();
   }
-  if (gameOpen || sackOpen) return y < HEADER_ZONE_H ? target(P_CLOSE, 0, true) : Press();
+  if (gameOpen) return y < HEADER_ZONE_H ? target(P_CLOSE, 0, true) : Press();  // (the sack acts on touch-down, in handleTouch)
   if (choiceKind) {
     if (inBox(x, y, CHOICE_X, CHOICE_B1_Y, CHOICE_W, CHOICE_BH))
       return target(P_CHOICE, 0, choiceKind == 1 ? pet.canEvolveNow() : pet.canFarewellNow());
@@ -787,11 +787,7 @@ Press pressTarget(int16_t x, int16_t y) {
     if (pet.wantFarewellButton()) return target(P_CTA, 2, true);
   }
   for (int i = 0; i < 4; i++)
-    if (inCircle(x, y, buttons[i].cx, buttons[i].cy, BTN_HIT)) {
-      // while sleeping only LIGHT works (the others are drawn dimmed); play and bath also wait out an evolution
-      bool en = i == 2 || (!pet.sleeping && (i == 0 || !pet.evolving()));
-      return target(P_DECK, i, en);
-    }
+    if (inCircle(x, y, buttons[i].cx, buttons[i].cy, BTN_HIT)) return target(P_DECK, i, deckWorks(i));
   if (inPetZone(x, y)) return target(P_PET, 0, true);
   return Press();
 }
@@ -808,6 +804,7 @@ static void setPressed(const Press &p) {
 // the sound of a finger landing: tap on a button, deny on one that does nothing now
 static void pressSound(const Press &p) {
   if (p.id == P_NONE || p.id == P_PET || p.id == P_EGG) return;
+  if (galleryOpen && p.id != P_CLOSE) return;  // pages are swiped from on top of the cells: those click on lift (galleryTap)
   sfxPlay(p.enabled ? SFX_TAP : SFX_DENY);
 }
 
@@ -879,6 +876,7 @@ void handleTouch() {
     tY0 = tYl = y;
     tStart = millis();
     holdFired = false;
+    tapCancelled = false;
     swallowGesture = dimStage > 0;  // if it was dark, it only wakes up (screenOff is handled above)
     wakeUI();
     // feedback the moment the finger lands: the pressed look (wakeUI forces the frame) and the sound
@@ -893,8 +891,11 @@ void handleTouch() {
   } else if (pressed) {  // still pressed
     tXl = x;
     tYl = y;
-    // slid off or held too long: the tap will not fire, so it no longer looks pressed
-    if (touchOn.id && (abs(tXl - tX0) >= U(40) || abs(tYl - tY0) >= UY(40) || millis() - tStart >= 1500)) setPressed(Press());
+    // slid off or held too long: the tap will not fire (not even back on the button), so it no longer looks pressed
+    if (abs(tXl - tX0) >= U(40) || abs(tYl - tY0) >= UY(40) || millis() - tStart >= 1500) {
+      tapCancelled = true;
+      setPressed(Press());
+    }
     // long press without moving on the pet -> release dialog
     if (!holdFired && !swallowGesture && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < U(30) && abs(tYl - tY0) < UY(30) && inPetZone(tX0, tY0) &&
@@ -909,7 +910,7 @@ void handleTouch() {
     if (!holdFired && !swallowGesture) {
       if (abs(dx) > U(80) && abs(dy) < UY(70) && dt < 800) onSwipe(dx > 0 ? 1 : -1);
       else if (abs(dy) > UY(80) && abs(dx) < U(70) && dt < 800) onSwipeV(dy > 0 ? 1 : -1);
-      else if (dt < 1500 && abs(dx) < U(40) && abs(dy) < UY(40)) onTap(tX0, tY0);
+      else if (!tapCancelled && dt < 1500 && abs(dx) < U(40) && abs(dy) < UY(40)) onTap(tX0, tY0);
     }
     setPressed(Press());
   }
@@ -1354,7 +1355,7 @@ static uint32_t screenKey() {
   uint32_t h = 2166136261u;
   h = mixKey(h, pet.awaitingStarter() ? 1 : kbOpen ? 2 : clockOpen ? 3 : 4 + cardPage);
   h = mixKey(h, sdEpoch);
-  h = mixKey(h, touchOn.id << 16 | (uint8_t)touchOn.idx << 8 | touchOn.enabled);  // the pressed look
+  if (touchOn.enabled) h = mixKey(h, touchOn.id << 8 | (uint8_t)touchOn.idx);  // the pressed look (a disabled one has none)
   if (kbOpen) {
     h = mixKey(h, nameLen);
     for (int i = 0; i < nameLen; i++) h = mixKey(h, (uint8_t)nameBuf[i]);
@@ -1515,8 +1516,15 @@ bool render() {
 
 // ---------- minigame: touches with the pokeball ----------
 
+// what the deck and card buttons can start right now: the start functions, the hit test and the
+// dimmed drawing all ask these, so the sound, the look and what happens agree
+bool canPlay() { return !pet.isEgg() && !pet.sleeping && !pet.ceremony && !pet.evolving(); }
+bool canTrain() { return canPlay(); }
+bool canBath() { return !pet.isEgg() && !pet.sleeping && !pet.ceremony && !bathUntil; }
+bool deckWorks(int i) { return i == 2 || (i == 0 ? !pet.sleeping : i == 1 ? canPlay() : canBath()); }  // LIGHT always
+
 void startGame() {
-  if (pet.isEgg() || pet.sleeping || pet.ceremony || pet.evolving()) return;
+  if (!canPlay()) return;
   gameOpen = true;
   gameOverUntil = 0;
   gameScore = 0;
@@ -1621,7 +1629,7 @@ void stepGame() {
 // ---------- training sack (trains strength) ----------
 
 void startSack() {
-  if (pet.isEgg() || pet.sleeping || pet.ceremony || pet.evolving()) return;
+  if (!canTrain()) return;
   sackOpen = true;
   sackUntil = millis() + 10000;
   sackOverUntil = 0;
@@ -2230,6 +2238,9 @@ void renderCard() {
 
 static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK = 30
 
+// OK always; delete needs a letter to delete; a letter needs room
+bool kbKeyWorks(int i) { return i == 29 || (i == 28 ? nameLen > 0 : nameLen < sizeof(nameBuf) - 1); }
+
 void openKeyboard() {
   kbOpen = true;
   strncpy(nameBuf, pet.nick, sizeof(nameBuf) - 1);
@@ -2270,7 +2281,7 @@ void renderKeyboard() {
 }
 
 void keyboardTap(const Press &p) {
-  if (p.id != P_KEY || !p.enabled) return;  // a full name or an empty one to delete: the deny sound said so
+  if (p.id != P_KEY || !kbKeyWorks(p.idx)) return;  // a full name or an empty one to delete: the deny sound said so
   if (p.idx == 28) {  // delete
     nameBuf[--nameLen] = 0;
   } else if (p.idx == 29) {  // OK
@@ -2382,6 +2393,7 @@ void renderGallery() {
 
 void galleryTap(const Press &p) {
   if (galleryDetail) {  // back to the grid
+    sfxPlay(SFX_TAP);
     galleryDetail = 0;
     galleryPmd.unload();
     galleryDirty = true;
@@ -2393,6 +2405,7 @@ void galleryTap(const Press &p) {
     return;
   }
   if (p.id != P_CELL) return;
+  sfxPlay(SFX_TAP);
   int16_t dex = galleryPage * 16 + p.idx + 1;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
@@ -2473,7 +2486,9 @@ static void drawPanelBase() {
 // a need: circle that fills from bottom to top; below 25% the ring and fill turn red
 static void drawNeed(int i, int level) {
   int cx = buttons[i].cx, cy = buttons[i].cy, r = BTN_R;
-  bool off = pet.sleeping && i != 2;  // while sleeping only LIGHT works
+  // dimmed while sleeping (only LIGHT works). During the short bath and evolution animations a
+  // button that can't act keeps its look, so its need gauge stays visible; it answers with the deny sound
+  bool off = pet.sleeping && i != 2;
   bool low = level < 25 && !pet.sleeping;
   bool down = isPressed(P_DECK, i);
   if (down) cy += PRESS_DY;
@@ -2809,7 +2824,7 @@ void drawPet() {
 // ---------- bath scene ----------
 
 void startBath() {
-  if (pet.isEgg() || pet.sleeping || pet.ceremony || bathUntil) return;
+  if (!canBath()) return;
   bathUntil = millis() + 3000;
   bathPending = true;
   int cx = (int)beh.x;

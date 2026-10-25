@@ -398,6 +398,23 @@ static int runTapTests() {
   fingerUp();
   EXPECT(gameOpen && touchOn.id == P_NONE, "al soltar dentro juega y deja de verse pulsado");
   touchReset();
+  begin("main_day");
+  touchStep(true, buttons[1].cx, buttons[1].cy, 40);
+  touchStep(true, buttons[1].cx + U(60), buttons[1].cy, 40);
+  touchStep(true, buttons[1].cx, buttons[1].cy, 40);  // and back onto the button
+  EXPECT(!isPressed(P_DECK, 1), "volver al boton no lo vuelve a pulsar");
+  fingerUp();
+  EXPECT(!gameOpen, "salirse y volver cancela el toque");
+  touchReset();
+  begin("bath");
+  EXPECT(!pressTarget(buttons[3].cx, buttons[3].cy).enabled, "BANO durante el bano no hace nada");
+  begin("evolving");
+  EXPECT(!pressTarget(buttons[1].cx, buttons[1].cy).enabled, "JUGAR durante la evolucion no hace nada");
+  begin("keyboard");
+  nameLen = 0; nameBuf[0] = 0;
+  keyboardTap(target(P_KEY, 28, true));  // a stale enabled flag must not underflow the name
+  EXPECT(nameLen == 0, "borrar con el nombre vacio no rompe nada");
+  touchReset();
   begin("gallery");
   render();
   touchStep(true, GAL_X + GAL_CELL / 2, GAL_Y + GAL_CELL_Y / 2, 40);
