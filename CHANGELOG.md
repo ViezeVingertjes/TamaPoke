@@ -8,6 +8,8 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+## [1.19] - 2026-10-25
+
 ### Added
 
 - **Walk finds and the Stone.** Every 1500 steps of the day the pet finds a snack (+5 food) or,
