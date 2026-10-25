@@ -7,7 +7,7 @@
 //
 // Board: ESP32S3 Dev Module | Flash 16MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
 //
-// The sprites and the species table are generated with tools/sprites.py (emit).
+// The UI icons and the egg are generated with tools/sprites.py (emit).
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -46,7 +46,6 @@ TouchDrvCST92xx touch;
 Pet pet;
 
 // animated sprite from the SD for the current species (if the file exists)
-SdMon mon;          // B/W sprite (fallback, and for the minigame when there is no PMD)
 PmdMon pmd;         // multi-action PMD sprite (main screen)
 // neighbors (nearby TamaPokes): one sprite per slot, loaded from the SD one at a time
 struct NbSlot { uint32_t id; uint8_t species; bool shiny; };
@@ -125,12 +124,6 @@ float sackShake = 0;
 uint8_t sackGain = 0;
 bool sackNewHi = false;
 
-// the 9 species with their own sprite in flash (fallback without SD): dex -> index
-int flashIdxForDex(int16_t dex) {
-  static const int8_t IDX[10] = { -1, 3, 4, 5, 0, 1, 2, 6, 7, 8 };
-  return (dex >= 1 && dex <= 9) ? IDX[dex] : -1;
-}
-
 #define PET_CY UY(202)  // vertical center of the sprite
 
 static const uint16_t INK_K = 0x18C4;  // spriteColor('k')
@@ -170,7 +163,7 @@ static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
 #define EVO_BTN_W U(176)
 #define EVO_BTN_H UY(72)
 #define EVO_BTN_X (CX - EVO_BTN_W / 2)
-#define EVO_BTN_Y UY(136)
+#define EVO_BTN_Y UY(122)
 // farewell CTA button (wider: holds the name + phrase)
 #define FAR_BTN_W U(408)
 #define FAR_BTN_H UY(72)
@@ -360,14 +353,12 @@ void ensureMon() {
   sdDirty = false;
   monFor = pet.speciesId;
   monShinyFor = pet.shiny;
-  mon.unload();
   pmd.unload();
   beh.x = beh.targetX = CX;
   beh.mode = 0;
   beh.until = 0;
   if (pet.speciesId >= 1 && pet.speciesId <= DEX_COUNT) {
-    pmd.load(pet.speciesId, pet.shiny);          // main: PMD
-    if (!pmd.loaded) mon.load(pet.speciesId, pet.shiny);  // fallback: B/W
+    pmd.load(pet.speciesId, pet.shiny);
   }
 }
 
@@ -687,12 +678,12 @@ void handleSerial() {
   } else if (line == "HEALTH") {
     Serial.printf("up=%lus heap=%u min=%u sd=%d mon=%d\n",
                   (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
-                  ESP.getMinFreeHeap(), sdReady, pmd.loaded || mon.loaded);
+                  ESP.getMinFreeHeap(), sdReady, pmd.loaded);
     Serial.println("DONE");
   } else if (line == "STATS") {
     Serial.printf("spec=%d nv=%u com=%u fel=%u ene=%u lim=%u desc=%u sd=%d mon=%d bat=%d usb=%d rtc=%u\n",
                   pet.speciesId, pet.level(), pet.fullness, pet.joy, pet.energy,
-                  pet.hygiene, pet.careMistakes, sdReady, mon.loaded,
+                  pet.hygiene, pet.careMistakes, sdReady, pmd.loaded,
                   batPercent(), usbPresent(), rtcEpoch());
     Serial.printf("peso=%u fue=%u def=%u vel=%u genes=%u/%u/%u tr=%u/%u/%u baya=%d\n",
                   pet.weight, pet.atkStat(), pet.defStat(), pet.speStat(),
@@ -1812,18 +1803,6 @@ void renderGame() {
     uint8_t act = (ballX > gamePetX + U(4)) ? PMD_WALKR : (ballX < gamePetX - U(4)) ? PMD_WALKL : PMD_IDLE;
     if (!pmd.has(act)) act = PMD_IDLE;
     drawPmdAct(act, (int)gamePetX, UY(394), millis(), true, false, SC(3));
-  } else if (mon.loaded) {
-    int s = SC((mon.h * 2 > UY(130)) ? 1 : 2);
-    int w = mon.w * s, h = mon.h * s;
-    uint16_t fm = mon.frameMs ? mon.frameMs : 100;
-    uint16_t fi = (millis() / fm) % mon.frames;
-    const uint8_t *fr = mon.data + (uint32_t)fi * mon.w * mon.h;
-    int px = (int)gamePetX - w / 2, py = UY(394) - h;
-    for (int r = 0; r < mon.h; r++) {
-      const uint8_t *row = fr + r * mon.w;
-      forRuns(mon.w, [&](int c) { return indexedKey(row[c], false); },
-              [&](int c0, int len, int k) { gfx->fillRect(px + c0 * s, py + r * s, len * s, s, mon.pal[k]); });
-    }
   }
 
   // impact ring that expands and fades (soft hit feedback)
@@ -2535,7 +2514,7 @@ void drawHeader(const char *name, const char *msg, bool alert) {
 // ceremony animation (10s): farewell = bow with hearts and it
 // walks away; run-away = gets scared and runs off. Replaces idle.
 void drawCeremony() {
-  if (!pmd.loaded) { drawPet(); return; }  // fallback if there is no PMD sprite
+  if (!pmd.loaded) { drawPet(); return; }  // no PMD sprite: drawPet() shows the "sprites missing" notice
   uint32_t now = millis();
   float t = pet.ceremonyT();               // 0..1 over the 10s
   bool panic = (pet.ceremony == CER_RUNAWAY);
@@ -2766,59 +2745,18 @@ void drawPet() {
     drawPetPMD();
     return;
   }
-  if (mon.loaded) {
-    drawPetSD();
-    return;
-  }
-  int fi = flashIdxForDex(pet.speciesId);
-  if (fi < 0) {
-    // no SD and no flash sprite: clear notice that sprites are missing
-    gfx->setTextColor(inkColor());
-    setSize(TS(6));
-    gfx->setCursor(CX - 3 * TS(6), PET_CY - UY(80));  // "?" is 6 px wide per scale: half is 3 * scale
-    gfx->print("?");
-    setSize(TS(2));
-    const char *l1 = T(S_NO_SPRITES);
-    gfx->setCursor(centerX(l1, TS(2)), PET_CY - UY(4));
-    gfx->print(l1);
-    const char *l2 = T(S_LOAD_SPRITES);
-    gfx->setCursor(centerX(l2, TS(2)), PET_CY + UY(20));
-    gfx->print(l2);
-    return;
-  }
-  const Species &sp = SPECIES[fi];
-  int s = SC(sp.scale);
-  int x = CX - 16 * s;
-  int y = PET_CY - 16 * s;
-
-  // evolution animation: alternates the silhouette of the previous and the new form
-  if (pet.evolving()) {
-    bool flash = (millis() / 300) % 2;
-    int16_t showDex = (flash && pet.prevSpeciesId >= 0) ? pet.prevSpeciesId : pet.speciesId;
-    int sfi = flashIdxForDex(showDex);
-    if (sfi >= 0) {
-      const Species &show = SPECIES[sfi];
-      int ss = SC(show.scale);
-      drawMap(show.sprite, SPRITE_H, CX - 16 * ss, PET_CY - 16 * ss, ss, flash);
-    }
-    return;
-  }
-
-  PetMood m = pet.mood();
-  if (m == MOOD_HAPPY && (millis() / 500) % 2) y -= UY(6);  // little hop
-
-  drawMap(sp.sprite, SPRITE_H, x, y, s, false);
-
-  // overlaid expressions using the species anchors
-  bool blink = (millis() % 3500 < 300);
-  if (m == MOOD_SLEEPING || blink) {
-    overlayEye(sp, x, y, s, sp.eyeColL);
-    overlayEye(sp, x, y, s, sp.eyeColR);
-  }
-  if (m == MOOD_EATING) overlayMouth(sp, x, y, s, true);
-  else if (m == MOOD_SAD) overlayMouth(sp, x, y, s, false);
-
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + 20 * s, y - 2 * s, SC(2), false);
+  // the SD card with the sprites is required: clear notice that they are missing
+  gfx->setTextColor(inkColor());
+  setSize(TS(6));
+  gfx->setCursor(CX - 3 * TS(6), PET_CY - UY(80));  // "?" is 6 px wide per scale: half is 3 * scale
+  gfx->print("?");
+  setSize(TS(2));
+  const char *l1 = T(S_NO_SPRITES);
+  gfx->setCursor(centerX(l1, TS(2)), PET_CY - UY(4));
+  gfx->print(l1);
+  const char *l2 = T(S_LOAD_SPRITES);
+  gfx->setCursor(centerX(l2, TS(2)), PET_CY + UY(20));
+  gfx->print(l2);
 }
 
 // ---------- bath scene ----------
@@ -2904,11 +2842,11 @@ uint8_t pmdFrameAt(const PmdAct &a, uint32_t t, bool loop) {
 void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool sil, uint8_t maxS) {
   const PmdAct &a = m.acts[actId];
   if (!a.frames) return;
-  int sBase = m.acts[PMD_IDLE].h ? UY(170) / m.acts[PMD_IDLE].h : SC(5);
+  int sBase = m.zoom ? SC(m.zoom) : m.acts[PMD_IDLE].h ? UY(170) / m.acts[PMD_IDLE].h : SC(5);
   if (sBase < SC(2)) sBase = SC(2);
   if (sBase > maxS) sBase = maxS;
   int s = sBase;
-  while (s > SC(2) && a.h * s > UY(250)) s--;  // actions with a large frame (attack)
+  while (s > SC(2) && (a.base ? a.base : a.h) * s > UY(250)) s--;  // actions that reach high (attack); padding does not count
   uint8_t fi = pmdFrameAt(a, t, loop);
   const uint8_t *fr = a.data + (uint32_t)fi * a.w * a.h;
   // anchor by the feet (a.base), not by the canvas height: this way actions
@@ -3005,54 +2943,6 @@ void drawPetPMD() {
   drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, SC(5));
 
   if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + U(50), PET_GROUND - UY(190), SC(2), false);
-}
-
-// animated sprite from the SD: integer zoom per pixel, frames at their own pace
-void drawPetSD() {
-  int s = UY(200) / mon.h;  // as on load (200 / height), but with the scene scaled
-  if (s < SC(2)) s = SC(2);
-  if (s > SC(5)) s = SC(5);
-  int w = mon.w * s, h = mon.h * s;
-  int x = CX - w / 2;
-  int y = PET_CY - h / 2;
-
-  bool sil = false;
-  if (pet.evolving()) {
-    sil = (millis() / 300) % 2;
-  } else if (pet.mood() == MOOD_HAPPY && (millis() / 500) % 2) {
-    y -= UY(6);  // little hop
-  }
-
-  uint16_t fm = mon.frameMs ? mon.frameMs : 100;
-  uint16_t fi = pet.sleeping ? 0 : (millis() / fm) % mon.frames;
-  const uint8_t *fr = mon.data + (uint32_t)fi * mon.w * mon.h;
-  for (int r = 0; r < mon.h; r++) {
-    const uint8_t *row = fr + r * mon.w;
-    forRuns(mon.w, [&](int c) { return indexedKey(row[c], sil); },
-            [&](int c0, int len, int k) { gfx->fillRect(x + c0 * s, y + r * s, len * s, s, sil ? INK_K : mon.pal[k]); });
-  }
-
-  // emotes instead of expressions (imported sprites have no anchors)
-  if (pet.showHeart()) drawMap(SPR_HEART, 32, x + w - U(30), y - UY(50), SC(2), false);
-}
-
-// closed eye: erases the 3x4 eye and draws the eyelid
-void overlayEye(const Species &sp, int x, int y, int s, int col) {
-  gfx->fillRect(x + col * s, y + sp.eyeRow * s, 3 * s, 4 * s, sp.bodyColor);
-  gfx->fillRect(x + col * s, y + (sp.eyeRow + 2) * s, 3 * s, s, INK_K);
-}
-
-// erases the base smile and paints an open mouth (eating) or a frown (sad)
-void overlayMouth(const Species &sp, int x, int y, int s, bool open) {
-  int mc = sp.mouthCol, mr = sp.mouthRow;
-  gfx->fillRect(x + (mc - 3) * s, y + mr * s, 7 * s, 2 * s, sp.bodyColor);
-  if (open) {
-    gfx->fillRect(x + (mc - 2) * s, y + mr * s, 5 * s, 2 * s, INK_K);
-  } else {
-    gfx->fillRect(x + (mc - 2) * s, y + mr * s, 5 * s, s, INK_K);
-    gfx->fillRect(x + (mc - 3) * s, y + (mr + 1) * s, s, s, INK_K);
-    gfx->fillRect(x + (mc + 3) * s, y + (mr + 1) * s, s, s, INK_K);
-  }
 }
 
 void drawPoops() {

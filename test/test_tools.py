@@ -167,8 +167,23 @@ class TestGeneratedFiles(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_pmd_zoom_reproduce_pmdzoom_h(self):
+        """pmdzoom.h comes from the sprites in tools/sdcard and the evolution lines in dex_data.py."""
+        tmp = tempfile.mkdtemp(prefix='tamapoke-gen-')
+        try:
+            shutil.copytree(TOOLS, os.path.join(tmp, 'tools'))
+            r = subprocess.run([sys.executable, os.path.join(tmp, 'tools', 'pmd_zoom.py')],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, f'pmd_zoom.py fallo:\n{r.stderr}')
+            with open(os.path.join(tmp, 'pmdzoom.h')) as a, open(os.path.join(ROOT, 'pmdzoom.h')) as b:
+                self.assertEqual(a.read(), b.read(),
+                                 'pmdzoom.h no coincide con lo que genera tools/pmd_zoom.py '
+                                 '(vuelve a generarlo tras cambiar sprites o evoluciones)')
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_los_ficheros_generados_avisan_de_que_lo_son(self):
-        for name in ('dex.h', 'species.h'):
+        for name in ('dex.h', 'species.h', 'pmdzoom.h'):
             with open(os.path.join(ROOT, name)) as fh:
                 head = fh.read(400)
             self.assertIn('GENERADO', head, f'{name} deberia decir que esta generado')

@@ -31,19 +31,33 @@ The same screens fit the 480 px square panel (2.16"):
 
 <p align="center"><img src="docs/screens/square.png" alt="Night, battle stats and set time on the 480 px square panel" width="760"></p>
 
-## Status
+## Highlights
 
-Running on hardware. Implemented: the 151 + shinies animated from microSD, full
-life cycle (egg by rarity → evolution → farewell/release/runaway, each gated
-behind a decision dialog), bred-Pokédex with gallery, battle stats (genes +
-training), retention hooks (streak / bond / medals / name), biome + real-time
-backgrounds, ball minigame, training bag, animated bath, RTC with offline
-progression, battery (AXP2101) and PWR button, anti-burn-in dimming,
-**sound (ES8311)**, **starter choice on
-first run**, and a one-click **web installer**.
+**A life you witness.** Pick a starter, hatch an egg (rarer ones for good care, a Clefairy or Gastly
+more likely if it rolled at night), and level up in real time. Evolution and the three endings never
+fire on their own: a button appears and you tap it to see the flicker between forms, a farewell that
+blesses the next egg, or a run-away that curses it.
 
-Pending: wild encounters / battle (designed, not implemented), 3D case, soak
-test. See **Roadmap**.
+<p align="center"><img src="docs/screens/life.png" alt="Starter choice, evolving, and a farewell" width="760"></p>
+
+**Friends nearby.** Other TamaPokes in radio range stand next to yours (up to four, smaller ones at the
+back, sleeping and shiny included). Awake neighbours greet each other with a nod and hearts, and every
+species you meet is remembered in the Pokédex. [Details](#nearby-tamapokes)
+
+<p align="center"><img src="docs/screens/nearby.png" alt="Four neighbours next to the pet, a greeting, and a night scene" width="760"></p>
+
+**Walk it.** The motion sensor counts steps, even with the screen off: daily goals give snacks and
+energy, walk finds can be a Stone that makes some species evolve 10 levels earlier, and a trail rank
+improves the shiny roll. The ground follows the type's biome and the sky follows the clock.
+[Details](#walking)
+
+<p align="center"><img src="docs/screens/walks.png" alt="A Stone found on a walk, the steps page, and a snow biome" width="760"></p>
+
+**Play and collect.** A pokeball catch minigame (trains speed), a training bag (strength), a bath, and a
+Pokédex of all 151 plus shinies with animated pictures. Every button sinks under your finger with a click,
+and sprites are sized from the drawn art, so evolutions grow: Charizard towers over Charmander.
+
+<p align="center"><img src="docs/screens/play.png" alt="The ball minigame, the training bag and the Pokédex" width="760"></p>
 
 ## Game manual (the actual numbers)
 
@@ -211,16 +225,8 @@ On first run you **choose a starter** (Bulbasaur / Charmander / Squirtle). After
 that you start with an **egg**. Tap it 3 times or wait and it hatches. From then
 on, care for your companion:
 
-**Four stats** that decay: **FOOD**, **JOY**, **ENE** (energy), **HYG** (hygiene).
-If one bottoms out it counts as a *slip-up*.
-
-**Buttons (bottom arc, icons):**
-- 🍎 **Feed** → food menu: 3 berries (each species has a hidden favourite that
-  gives a bonus) and a candy (+happiness but it fattens; weight makes it sluggish).
-- ⚽ **Play** → the pokeball minigame (trains SPEED).
-- 🌙 **Light** → sleep/wake (recovers energy, dims the screen). While asleep,
-  needs decay much slower (rest).
-- 🫧 **Bath** → a foam scene that cleans up the poops.
+**Buttons (bottom arc):** 🍎 Feed · ⚽ Play · 🌙 Light (sleep) · 🫧 Bath. The circles double as the
+four need meters. See [Actions](#actions) for what each does.
 
 **Touch gestures:**
 - Tap the creature = pet it (+happiness, bond); it calls out with its own synthesized chirp.
@@ -239,68 +245,16 @@ Bath while asleep, a key with the name full) answers with a short "no" sound ins
 **Physical PWR button:** short = screen on/off · long (4 s) = full power-off
 (the RTC stays alive, so time passes even while it's off).
 
-## Decisions: you choose, and you watch
+## Sprites
 
-The three life-cycle endings and evolution **don't happen on their own** — when
-the conditions are met a button appears and you tap it (so you're present to
-witness it), each opening a two-option dialog:
-
-- **Evolution** (red button): *Evolve* (epic animation: halo, rays, sparkles and
-  a **flicker between the old and new form**) or *Keep form* (re-offered next level).
-- **Farewell** (gold button, final form + 3 days): *Say goodbye* (warm farewell,
-  rising hearts → new egg) or *Stay together* (keep your companion; re-offered in
-  a day). Tension: a maxed-out friend vs. completing the Pokédex.
-- **Runaway** (dark button, total neglect for 1 h): a somber "feels abandoned"
-  ending in the rain — caring for the creature cancels it.
-
-## Sprites: PMD SpriteCollab everywhere
-
-- **PMD SpriteCollab** (everything — main screen, stat card, minigame **and the
-  Pokédex grid + detail view**): behaviour sprites — `tools/pack_pmd.py` packs
-  actions (Idle, Walk L/R, Sleep, Eat, Hurt, Attack, Pose, Nod, DeepBreath) into
-  the multi-action **TPK2** format (`/mons/pNNN.bin`). The engine in `TamaPoke.ino`
-  makes the creature wander, gesture, curl up to sleep, chew and wince. Anchored by
-  the feet (lowest content row), not the canvas. The Pokédex thumbnails
-  (`thumbs.bin`, TPTH) are derived from these by `tools/make_thumbs.py`.
-- **In-house workshop** (`tools/sprites.py`): 9 primitive-drawn sprites as a
-  no-SD fallback + the UI icons. Generates `species.h`. Preview in
-  `tools/sheet.png`, emit with `python3 tools/sprites.py emit`.
-
-`sdmon.h/.cpp` loads the PMD sprites into PSRAM (`PmdMon` for TPK2) plus the
-thumbnails (`SdThumbs`). `SdMon` (TPK1) remains as a dormant legacy fallback only.
-
-## Pokédex and species data
-
-`tools/dex_data.py` is the **single source**: name, slug, type (accent colour +
-background biome), evolution line with gen-1 levels, rarities and starters.
-`tools/dex_stats.py` has the real base stats (from PokéAPI). `gen_dex.py` emits
-`dex.h` (the `DEX_TBL[152]` table and the `dexName()` accessor). The pet's identity
-is its Pokédex number (persisted in NVS).
-
-- **Evolution** gen-1 style (levels 16/36/…; stones ≈30, trade ≈40; Eevee
-  branches to whichever evolution you're missing). Each slip-up delays it 1
-  level; it won't evolve with any stat < 40 or while asleep.
-
-## Battle stats and training
-
-Each creature has ATK/DEF/SPD = real gen-1 base × **genes** (90–110 %, rolled at
-hatch) + level + **training**:
-- SPEED ← the minigame
-- DEFENSE ← sustained good care (12 h with no slip-ups)
-- STRENGTH ← the training bag (whacking)
-
-Shown on the Battle page of the stat card. The (hidden) weight goes up with candy
-and burns off with training.
-
-## Retention: streak, bond, medals, name
-
-- **Streak** (the player's, persists across creatures): the first care of each
-  real day advances the streak; 3/7/30/100 milestones are celebrated; skipping a
-  day breaks it. Flame badge on the main screen.
-- **Bond** (the creature's): rises slowly with care and petting, drops with slip-ups.
-- **Medals** for the individual (level, berry, streak, bond, final form, fit) +
-  a global counter. Medals page of the stat card.
-- **Name**: touch keyboard; the nickname rules the header and the card.
+All sprites are from **[PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab)** and live on the SD
+card, which is required: without it the main screen shows a "sprites missing" notice.
+`tools/pack_pmd.py` packs the actions (Idle, Walk, Sleep, Eat, Hurt, Attack, Pose, Nod, DeepBreath) into
+the **TPK2** format (`/mons/pNNN.bin`), anchored by the feet, and `tools/make_thumbs.py` derives the
+Pokédex thumbnails. The zoom of each species comes from `tools/pmd_zoom.py` (`pmdzoom.h`): it is picked
+from the drawn art, not the sheet's padding, and an evolution line shares one zoom so it grows with each
+stage. CI regenerates `pmdzoom.h` and fails if it differs. `tools/sprites.py` draws the UI icons, egg, heart
+and poop (`species.h`).
 
 ## Walking
 
@@ -322,40 +276,20 @@ the Steps page of the stat card.
   Ranger 250,000. Steps and rank belong to the player and survive a new egg. Each rank
   improves the shiny roll by one (1 / 48 → 1 / 44 at Ranger), never past the 1 / 8 best.
 
-High streak and bond **improve the egg roll** (rarity and shiny): caring well
-always pays off.
-
-## Life cycle and eggs by rarity
-
-The life cycle lasts **3 days** of play. Three endings (all leave a new egg):
-**farewell** (final form + 3 days), **release** (long press), **runaway** (all 4
-bars at zero for 1 h). Each bred species is recorded in the **bred Pokédex**
-(normal and shiny separately).
-
-The egg rolls rarity over the ~79 base forms (47 common / 27 rare / 5 legendary),
-**biased towards the lines you're missing** (all 151 are completable), blessed by
-a farewell and punished by a runaway. Legendaries only with 25+ registered.
-**Shiny** 1/48 (better with streak/bond/farewell and the trail rank).
-
-## Backgrounds: biome + real time
-
-The idle screen paints the sky from the **RTC's real time** (dawn / day / dusk /
-night with moon and stars) and the ground from the **type's biome** (meadow,
-beach, forest, volcano, mountain, snow). Sleeping forces night.
-
 ## Layout
 
 - `TamaPoke.ino` — init, game loop, render of every screen, gestures, serial console, audio
 - `pet.h` / `pet.cpp` — pet state and logic (stats, evolution, life cycle, streak/bond/medals, NVS)
-- `sdmon.h` / `sdmon.cpp` — TPK1 (animated) and TPK2 (PMD) sprites + thumbnails, and file reception over USB (PUT/LS)
+- `sdmon.h` / `sdmon.cpp` — TPK2 (PMD) sprites + thumbnails, and file reception over USB (PUT/LS)
 - `rtcbat.h` / `rtcbat.cpp` — PCF85063 RTC + AXP2101 PMU (battery, brightness, PWR button)
 - `audio.h` / `audio.cpp` — ES8311 + I2S + Game-Boy-style tone synth (non-blocking task)
 - `i18n.h` / `i18n.cpp` — the UI strings
-- `dex.h` — GENERATED (`gen_dex.py`): the 151 table
-- `species.h` — GENERATED (`sprites.py`): fallback sprites, UI icons, colours
+- `dex.h` — GENERATED (`gen_dex.py` from `tools/dex_data.py`, the single source for names, types, evolution lines and rarities): the 151 table
+- `species.h` — GENERATED (`sprites.py`): UI icons, colours
+- `pmdzoom.h` — GENERATED (`pmd_zoom.py`): the zoom of each sprite
 - `pin_config.h` — the board's official pins
 - `tools/` — pipeline: `dex_data.py` (data), `dex_stats.py`, `gen_dex.py`,
-  `sprites.py` (workshop), `pack_pmd.py` / `make_thumbs.py`
+  `sprites.py` (workshop), `pmd_zoom.py`, `pack_pmd.py` / `make_thumbs.py`
   (packers), `pack_bundle.py` (web bundle), `send_sd.py` (SD upload)
 - `tools/sdcard/mons/` — the generated .bin files (animated, shiny, PMD, thumbnails)
 - `web/` — the browser installer (ESP Web Tools + Web Serial sprite loader)

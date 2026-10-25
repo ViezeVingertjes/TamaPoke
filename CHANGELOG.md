@@ -11,6 +11,17 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 ### Changed
 - The clock screen title now reads SET TIME, in capitals like every other
   menu title.
+- Pokémon now keep their relative size: sprites are zoomed from the drawn art
+  instead of the sheet's padding, and an evolution line shares one zoom, so
+  Charizard looks bigger than Charmander and Charmeleon no longer shrinks.
+  The EVOLVE! button sits a little higher so the bigger sprites stay clear of it.
+
+### Removed
+- The no-SD fallback sprites: the nine flash-drawn starters and the legacy TPK1
+  loader (and `tools/import_gif.py`, which only produced it) are gone. The SD
+  card with the sprites is required; without it the main screen shows the
+  "sprites missing" notice for every species. The `mon=` field of the serial
+  `STATS` and `HEALTH` lines now reports the PMD sprite.
 
 ## [1.19] - 2026-10-25
 
