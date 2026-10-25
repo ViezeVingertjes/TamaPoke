@@ -98,7 +98,7 @@ While **awake**, per minute:
 - Within a tier it favors species whose **evolution line you haven't finished** (so
   all 151 are completable).
 - **Shiny:** base **1 / 48** (→ **1 / 24** right after a goodbye), improved by
-  streak/bond down to a best of **1 / 8**. Tracked separately in the dex.
+  streak/bond and the trail rank (−1 per rank) down to a best of **1 / 8**. Tracked separately in the dex.
 - Every hatch rolls unique **genes** (90–110 % per stat) — no two are identical.
 
 ### Evolution
@@ -303,7 +303,8 @@ the Steps page of the stat card.
 - Walking cheers it up (+1 happiness per 100 steps) and bonds a little (+1 per 500),
   for the first 2000 steps of the day.
 - **Trail rank** from lifetime steps: Walker 10,000 / Hiker 50,000 / Trekker 100,000 /
-  Ranger 250,000. Steps and rank belong to the player and survive a new egg.
+  Ranger 250,000. Steps and rank belong to the player and survive a new egg. Each rank
+  improves the shiny roll by one (1 / 48 → 1 / 44 at Ranger), never past the 1 / 8 best.
 
 High streak and bond **improve the egg roll** (rarity and shiny): caring well
 always pays off.

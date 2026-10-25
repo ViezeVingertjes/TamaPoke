@@ -1076,6 +1076,24 @@ TEST(steps, el_rango_del_sendero_sale_de_los_pasos_totales) {
   CHECK_EQ((int)p.trailRank(), Pet::TRAIL_RANKS);
 }
 
+TEST(steps, el_rango_del_sendero_mejora_el_shiny_hasta_el_tope) {
+  Pet p;
+  makePet(p, 4);
+  p.streak = 0;
+  p.bond = 0;
+  p.lastEnd = CER_NONE;
+  CHECK_EQ(p.shinyOdds(), 48);
+  p.stepsTotal = 50000;                // HIKER: rank 2
+  CHECK_EQ(p.shinyOdds(), 46);
+  p.stepsTotal = 250000;               // RANGER: rank 4
+  CHECK_EQ(p.shinyOdds(), 44);
+  p.streak = 30;
+  p.bond = 100;                        // careBonus 14
+  CHECK_EQ(p.shinyOdds(), 30);
+  p.lastEnd = CER_FAREWELL;            // 24 - 14 - 4 = 6: the 1/8 floor still holds
+  CHECK_EQ(p.shinyOdds(), 8);
+}
+
 TEST(steps, un_huevo_cuenta_pasos_pero_no_recibe_premios) {
   Pet p;
   mockNvsReset();

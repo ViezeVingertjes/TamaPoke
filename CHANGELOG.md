@@ -8,6 +8,11 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The trail rank improves the shiny roll.** Each rank takes one off it (1 / 48 becomes 1 / 44
+  at Ranger); the 1 / 8 best stays.
+
 ## [1.18] - 2026-10-24
 
 ### Added

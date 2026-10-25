@@ -180,6 +180,7 @@ public:
   bool showMedal() const { return timeLeft(medalUntil) > 0; }
   bool showMilestone() const { return timeLeft(milestoneUntil) > 0; }
   int careBonus() const;  // egg improvement from streak + bond
+  int shinyOdds() const;  // the next egg is shiny with chance 1 / shinyOdds()
 
   // deferred periodic save: tick() marks it pending and the loop flushes it
   // when the screen is dimmed/off (the flash write freezes

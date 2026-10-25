@@ -21,10 +21,7 @@ void Pet::newEgg() {
   prevSpeciesId = -1;
   eggTarget = pickEggSpecies();  // hidden species based on rarity and pokedex
   starterPick = (registeredCount() == 0);  // first game: the player picks a starter
-  // shiny roll: 1/48 base, better with a farewell and high streak/bond
-  int shinyBase = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
-  if (shinyBase < 8) shinyBase = 8;
-  eggShiny = (random(shinyBase) == 0);
+  eggShiny = (random(shinyOdds()) == 0);
   eggTaps = 0;
   fullness = 80;
   joy = 80;
@@ -272,6 +269,12 @@ void Pet::registerSpecies(int16_t dex) {
 int Pet::careBonus() const {
   int s = streak > 30 ? 30 : streak;
   return s / 3 + bond / 25;
+}
+
+// shiny roll: 1/48 base, better with a farewell, high streak/bond and the trail rank, never past 1/8
+int Pet::shinyOdds() const {
+  int n = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus() - trailRank();
+  return n < 8 ? 8 : n;
 }
 
 // first care of the day: advances the streak and strengthens the bond
