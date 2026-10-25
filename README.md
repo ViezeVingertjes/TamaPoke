@@ -98,7 +98,8 @@ While **awake**, per minute:
 - Within a tier it favors species whose **evolution line you haven't finished** (so
   all 151 are completable).
 - **Shiny:** base **1 / 48** (→ **1 / 24** right after a goodbye), improved by
-  streak/bond and the trail rank (−1 per rank) down to a best of **1 / 8**. Tracked separately in the dex.
+  streak/bond and the trail rank (−1 per rank) down to a best of **1 / 8**. Tracked
+  separately in the dex.
 - Every hatch rolls unique **genes** (90–110 % per stat) — no two are identical.
 
 ### Evolution
@@ -123,7 +124,7 @@ After any ending, a **new egg** appears.
 - **Streak** (player-wide, survives across pets): first care each real day; milestones
   at **3 / 7 / 30 / 100** days; skipping a day breaks it.
 - **Bond** (per pet, resets on hatch): grows with affection (**cap about +20/day** from actions, plus a +4 daily care bonus), cools on
-  neglect. Both streak & bond improve egg/shiny odds.
+  neglect. Both streak & bond improve egg/shiny odds (the trail rank also helps the shiny roll).
 - **8 medals** (Lv10/25/50, favorite berry found, 7-day streak, max bond, final form,
   "fit" = weight 0 & no slip-ups), per-pet + a global counter.
 - **Pokédex:** raising a species registers it; **151 + shinies** to complete.
@@ -319,7 +320,7 @@ bars at zero for 1 h). Each bred species is recorded in the **bred Pokédex**
 The egg rolls rarity over the ~79 base forms (47 common / 27 rare / 5 legendary),
 **biased towards the lines you're missing** (all 151 are completable), blessed by
 a farewell and punished by a runaway. Legendaries only with 25+ registered.
-**Shiny** 1/48 (better with streak/bond/farewell).
+**Shiny** 1/48 (better with streak/bond/farewell and the trail rank).
 
 ## Backgrounds: biome + real time
 
