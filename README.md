@@ -105,6 +105,7 @@ While **awake**, per minute:
 ### Evolution
 - Triggers when **level ≥ its evolution level** (16 for most base forms; ~30 for
   stone-style, ~40 for trade-style) **and every stat ≥ 40** at that moment.
+- A **Stone** found on a walk lets a stone species evolve 10 levels earlier (see Walking).
 - **Never automatic** — a button appears and **you tap to witness it** (with a
   flicker between the old and new form). Each **slip-up delays it by 1 level**.
 - You can **decline** ("keep form"); it re-offers at the next level.
@@ -303,6 +304,12 @@ the Steps page of the stat card.
   (+5 strength). Each is given once per day.
 - Walking cheers it up (+1 happiness per 100 steps) and bonds a little (+1 per 500),
   for the first 2000 steps of the day.
+- **Walk finds:** every 1500 steps of the day it finds something, up to 3 a day: a snack
+  (+5 food) or, one time in five, a **Stone** if you hold none. Nothing is found while it
+  sleeps; the find waits for the next walk.
+- **Stone:** a species that evolves with a stone in the real games (Pikachu, Clefairy, Vulpix,
+  Eevee, Growlithe, Staryu...) evolves **10 levels earlier** while you hold one. Every need
+  must still be ≥ 40, and the Stone is used up only when it was what made it evolve.
 - **Trail rank** from lifetime steps: Walker 10,000 / Hiker 50,000 / Trekker 100,000 /
   Ranger 250,000. Steps and rank belong to the player and survive a new egg. Each rank
   improves the shiny roll by one (1 / 48 → 1 / 44 at Ranger), never past the 1 / 8 best.

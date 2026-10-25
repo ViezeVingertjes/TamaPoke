@@ -129,6 +129,18 @@ TEST(dex, las_stats_base_son_plausibles) {
   }
 }
 
+// a Stone brings evolution STONE_LEVELS earlier: only species that evolve, and late enough
+TEST(dex, las_especies_de_piedra_evolucionan_y_bastante_tarde) {
+  int n = 0;
+  for (int d = 1; d <= N; d++) {
+    if (!(DEX_TBL[d].flags & DEX_STONE)) continue;
+    n++;
+    CHECK_MSG(DEX_TBL[d].evolvesTo != 0, std::string("piedra en una forma final: ") + DEX_TBL[d].name);
+    CHECK_MSG(DEX_TBL[d].evolveLevel > Pet::STONE_LEVELS, std::string("piedra demasiado pronto: ") + DEX_TBL[d].name);
+  }
+  CHECK_EQ(n, 14);
+}
+
 TEST(dex, la_rama_de_eevee_cuadra_con_el_codigo) {
   CHECK_EQ((int)DEX_TBL[DEX_EEVEE].rarity, (int)R_COMUN);
   CHECK_RANGE((int)DEX_TBL[DEX_EEVEE].evolvesTo, 134, 136);

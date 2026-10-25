@@ -50,6 +50,7 @@ enum StrId : uint8_t {
   // walking: card page and the goal announcements
   S_STEPS, S_STEPS_NEXT_FMT, S_STEPS_ALL_DONE, S_STEPS_TOTAL_FMT,
   S_STEP_REWARD_1, S_STEP_REWARD_2, S_STEP_REWARD_3,
+  S_FIND_SNACK, S_FIND_STONE,  // walk finds (follow the goals: Pet::STEP_FIND_*)
   STR_COUNT
 };
 

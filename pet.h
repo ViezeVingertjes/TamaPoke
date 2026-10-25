@@ -77,6 +77,8 @@ public:
   uint32_t stepsToday = 0, stepsTotal = 0;
   uint32_t stepDay = 0;         // day (epoch / 86400) that stepsToday belongs to
   uint8_t stepRewardMask = 0;   // bit i: daily goal i already rewarded today
+  uint8_t findsToday = 0;       // walk finds given today (one every FIND_EVERY steps)
+  bool hasStone = false;        // a Stone found on a walk: a stone species evolves early with it
   // medals: the individual's + running count across all rearings
   uint16_t medals = 0, totalMedals = 0;
   uint16_t newMedal = 0;   // just earned, to celebrate
@@ -122,6 +124,7 @@ public:
     return 1.0f - (float)timeLeft(evolveUntil) / (float)EVOLVE_ANIM_MS;
   }
   bool canEvolveNow() const;  // evolution conditions met (ready)
+  uint16_t evolveLevelNeeded() const;  // level it evolves at: slip-ups delay it, a Stone brings it forward
   void evolve();              // triggers the transformation (called by a user touch)
   bool canFarewellNow() const;  // final form + 7 days: ready to say farewell (button)
   bool canRunawayNow() const;   // total neglect 1h: ready to run away (sad button)
@@ -170,11 +173,16 @@ public:
   void rename(const char *name);
   // walking: daily goals give a small reward, lifetime steps give a trail rank
   static constexpr uint8_t STEP_GOALS = 3, TRAIL_RANKS = 4;
+  static constexpr int8_t STEP_FIND_SNACK = STEP_GOALS, STEP_FIND_STONE = STEP_GOALS + 1;
+  static constexpr uint32_t FIND_EVERY = 1500;  // steps of the day between walk finds
+  static constexpr uint8_t FINDS_PER_DAY = 3;
+  static constexpr uint8_t STONE_LEVELS = 10;   // how much earlier a Stone lets it evolve
   static uint32_t stepGoal(uint8_t i);    // steps per day for goal i
   static uint32_t trailGoal(uint8_t i);   // lifetime steps for rank i + 1
   uint8_t trailRank() const;              // 0 = none yet .. TRAIL_RANKS
   void applyWalk(uint16_t steps);
-  // goal just reached (-1 = none), to announce it for a few seconds
+  // goal just reached (0..2), or a walk find (STEP_FIND_SNACK / STEP_FIND_STONE), to announce
+  // it for a few seconds; -1 = none
   int8_t stepRewardShown() const { return timeLeft(stepRewardUntil) > 0 ? stepRewardIdx : -1; }
   bool hasMedal(uint16_t m) const { return medals & m; }
   bool showMedal() const { return timeLeft(medalUntil) > 0; }

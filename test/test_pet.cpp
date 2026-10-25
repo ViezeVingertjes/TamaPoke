@@ -1094,6 +1094,115 @@ TEST(steps, el_rango_del_sendero_mejora_el_shiny_hasta_el_tope) {
   CHECK_EQ(p.shinyOdds(), 8);
 }
 
+// ---------------------------------------------------------------- walk finds
+TEST(finds, uno_cada_1500_pasos_y_tres_al_dia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.applyWalk(1499);
+  CHECK_EQ((int)p.findsToday, 0);
+  p.applyWalk(1);
+  CHECK_EQ((int)p.findsToday, 1);
+  CHECK(p.stepRewardShown() == Pet::STEP_FIND_SNACK || p.stepRewardShown() == Pet::STEP_FIND_STONE);
+  p.applyWalk(6000);                   // 7500: still only three
+  CHECK_EQ((int)p.findsToday, 3);
+  setDay(p, 20001);
+  advance(p, 1);
+  CHECK_EQ((int)p.findsToday, 0);      // a new day
+}
+
+TEST(finds, un_bocado_o_una_piedra_y_solo_una_piedra) {
+  int stones = 0, snacks = 0;
+  for (int seed = 1; seed <= 200; seed++) {
+    Pet p;
+    makePet(p, 4);
+    setDay(p, 20000);
+    randomSeed(seed);
+    p.hasStone = false;
+    p.fullness = 50;
+    p.applyWalk(4500);                 // the three finds of the day
+    CHECK_EQ((int)p.findsToday, 3);
+    int gotSnacks = (p.fullness - 50 - 15) / 5;  // 15 is the 500-step goal's snack
+    CHECK_EQ(gotSnacks + (p.hasStone ? 1 : 0), 3);  // a Stone is never found twice
+    stones += p.hasStone;
+    snacks += gotSnacks;
+  }
+  CHECK_RANGE(stones, 70, 140);        // 1 - 0.8^3 = 49 % of days find one
+  CHECK(snacks > 300);
+}
+
+TEST(finds, no_mientras_duerme_pero_quedan_pendientes) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.sleeping = true;
+  p.applyWalk(3000);
+  CHECK_EQ((int)p.findsToday, 0);
+  p.sleeping = false;
+  p.applyWalk(10);
+  CHECK_EQ((int)p.findsToday, 2);
+}
+
+TEST(finds, la_piedra_adelanta_la_evolucion_y_se_gasta) {
+  Pet p;
+  makePet(p, 25);                      // Pikachu: stone species, evolves at 30
+  setStats(p, 80, 80, 80, 80);
+  p.careMistakes = 0;
+  p.ageMinutes = MINUTES_PER_LEVEL * 19;  // level 20
+  CHECK_EQ((int)p.evolveLevelNeeded(), 30);
+  CHECK(!p.canEvolveNow());
+  p.hasStone = true;
+  CHECK_EQ((int)p.evolveLevelNeeded(), 20);
+  CHECK(p.canEvolveNow());
+  p.joy = 39;                          // still needs good care
+  CHECK(!p.canEvolveNow());
+  p.joy = 80;
+  p.evolve();
+  CHECK_EQ((int)p.speciesId, 26);
+  CHECK(!p.hasStone);                  // used up
+}
+
+TEST(finds, la_piedra_no_sirve_a_otras_especies_ni_se_gasta_sin_necesidad) {
+  Pet p;
+  makePet(p, 4);                       // Charmander: not a stone species
+  setStats(p, 80, 80, 80, 80);
+  p.hasStone = true;
+  p.ageMinutes = MINUTES_PER_LEVEL * 15;  // level 16: evolves on its own level
+  CHECK_EQ((int)p.evolveLevelNeeded(), 16);
+  p.evolve();
+  CHECK_EQ((int)p.speciesId, 5);
+  CHECK(p.hasStone);
+  Pet q;
+  makePet(q, 25);
+  setStats(q, 80, 80, 80, 80);
+  q.hasStone = true;
+  q.ageMinutes = MINUTES_PER_LEVEL * 35;  // already past 30: the Stone is not needed
+  q.evolve();
+  CHECK_EQ((int)q.speciesId, 26);
+  CHECK(q.hasStone);
+}
+
+TEST(finds, se_guardan_y_van_en_la_copia) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.applyWalk(1500);
+  a.hasStone = true;
+  a.saveNow();
+  Pet l;
+  l.begin();
+  CHECK_EQ((int)l.findsToday, 1);
+  CHECK(l.hasStone);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  CHECK(n > 0);
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.findsToday, 1);
+  CHECK(b.hasStone);
+}
+
 TEST(steps, un_huevo_cuenta_pasos_pero_no_recibe_premios) {
   Pet p;
   mockNvsReset();
@@ -1197,9 +1306,10 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(b.importBackup(blob, n));
   CHECK(b.isSeen(94));
 
-  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday at the end): cut those
-  // 24 bytes off and re-sign; the restore must work and leave the missing fields as they were
-  size_t m = n - 4 - 24;
+  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday, findsToday, hasStone at
+  // the end): cut those 26 bytes off and re-sign; the restore must work and leave the missing fields
+  // as they were
+  size_t m = n - 4 - 26;
   uint8_t old[Pet::BACKUP_MAX_BYTES];
   memcpy(old, blob, m);
   uint32_t sum = fnv(old, m);
@@ -1214,7 +1324,7 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(!c.isSeen(94));
 
   // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
-  size_t mid = n - 4 - 24 - 1 - 2;
+  size_t mid = n - 4 - 26 - 1 - 2;
   memcpy(old, blob, mid);
   uint32_t s3 = fnv(old, mid);
   memcpy(old + mid, &s3, 4);
@@ -1403,12 +1513,32 @@ TEST(hardening, poner_el_reloj_atras_no_renueva_el_tope_de_vinculo) {
   CHECK_EQ((int)p.bond, capped);       // the cap does not renew
 }
 
+TEST(finds, una_copia_de_antes_de_los_hallazgos_conserva_el_tope_de_vinculo) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.bond = 0;
+  for (int i = 0; i < 12; i++) a.playResult(10);   // today's cap is used up
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  size_t m = n - 4 - 2;                // the layout of 1.18: bond cap, no finds
+  uint32_t sum = fnv(blob, m);
+  memcpy(blob + m, &sum, 4);
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, m + 4));
+  int bond = b.bond;
+  setDay(b, 20000);
+  b.playResult(10);
+  CHECK_EQ((int)b.bond, bond);         // still capped today
+}
+
 TEST(hardening, restaurar_una_copia_empieza_con_un_tope_de_vinculo_nuevo) {
   Pet a;
   makePet(a, 4);
   uint8_t blob[Pet::BACKUP_MAX_BYTES];
   size_t n = a.exportBackup(blob, sizeof(blob));
-  size_t m = n - 4 - 5;                // a layout from before bondDay/bondToday, re-signed
+  size_t m = n - 4 - 7;                // a layout from before bondDay/bondToday (and the walk finds), re-signed
   uint32_t sum = fnv(blob, m);
   memcpy(blob + m, &sum, 4);
   Pet b;

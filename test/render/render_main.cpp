@@ -128,6 +128,7 @@ static const Scene SCENES[] = {
   { "main_nosprites", [] { closeAll(); adult(25); }, true },
   { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, false },
   { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false },
+  { "walk_find_stone", [] { closeAll(); adult(25); pet.stepRewardIdx = Pet::STEP_FIND_STONE; pet.stepRewardUntil = millis() + 4000; }, false },
   { "card_steps", [] { closeAll(); adult(6); cardOpen = true; cardPage = 4; pet.stepsToday = 3240; pet.stepsTotal = 61250; }, false },
   { "gallery_page6", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 6; galleryDirty = true; }, false },
   { "gallery_seen", [] { closeAll(); adult(6); pet.dexReg[0] &= ~0xC0; pet.dexSeen[0] |= 0xC0; galleryOpen = true; galleryPage = 0; galleryDirty = true; }, false },  // #7, #8: met, not raised

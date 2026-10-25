@@ -193,3 +193,8 @@ RARE = {58, 77, 83, 88, 95, 106, 107, 108, 111, 113, 114, 115, 122, 123,
 LEGENDARY = {144, 145, 146, 150, 151}
 
 SLUGS = {n: s for n, s, *_ in DEX}
+
+# species that evolve with a stone in the real games (Pikachu, Nidorina, Nidorino, Clefairy,
+# Vulpix, Jigglypuff, Gloom, Growlithe, Poliwhirl, Weepinbell, Shellder, Exeggcute, Staryu,
+# Eevee): with a Stone found on a walk they can evolve 10 levels early
+STONE = {25, 30, 33, 35, 37, 39, 44, 58, 61, 70, 90, 102, 120, 133}

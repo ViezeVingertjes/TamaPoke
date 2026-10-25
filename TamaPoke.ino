@@ -2033,7 +2033,7 @@ void renderCardProgress() {
   if (d.evolvesTo == 0) {
     evo = T(S_FINAL_FORM);
   } else {
-    int needed = d.evolveLevel + pet.careMistakes;
+    int needed = pet.evolveLevelNeeded();
     if (pet.level() >= needed) {
       if (pet.lowestStat() >= 40) evo = T(S_EVO_READY);
       else { evo = T(S_EVO_BLOCKED); evoCol = uiAlert(); }

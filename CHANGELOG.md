@@ -8,6 +8,14 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Added
+
+- **Walk finds and the Stone.** Every 1500 steps of the day the pet finds a snack (+5 food) or,
+  one time in five, a Stone, up to three finds a day. While a Stone is held, a species that evolves
+  with a stone in the real games (Pikachu, Clefairy, Vulpix, Eevee...) evolves 10 levels earlier;
+  every need must still be 40 or more, and the Stone is used up only when it was what made it
+  evolve. Both are part of the save backup.
+
 ### Changed
 
 - **The trail rank improves the shiny roll.** Each rank takes one off it (1 / 48 becomes 1 / 44
