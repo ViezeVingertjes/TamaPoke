@@ -81,7 +81,7 @@ static void atHour(int h) { pet.lastSeenEpoch = 1767225600UL + h * 3600UL; }
 struct Scene {
   const char *name;
   void (*setup)();
-  bool noPmd;      // the sprite comes from flash (no PMD from the SD)
+  bool noPmd;      // no sprites on the SD: the "missing sprites" notice
 };
 
 static const Scene SCENES[] = {
@@ -125,7 +125,6 @@ static const Scene SCENES[] = {
   { "evolving", [] { closeAll(); adult(6); pet.prevSpeciesId = 5; pet.evolveUntil = millis() + EVOLVE_ANIM_MS / 2; evoPmd.load(5, false); }, false },
   { "runaway", [] { closeAll(); adult(6); pet.startRunaway(); }, false },
   { "egg_rare_cracked", [] { closeAll(); pet.speciesId = -1; pet.eggTaps = 2; pet.eggTarget = 150; }, false },
-  { "main_flash", [] { closeAll(); adult(4); }, true },
   { "main_nosprites", [] { closeAll(); adult(25); }, true },
   { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, false },
   { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false },
@@ -178,7 +177,7 @@ static void prepare(const Scene &sc) {
   sc.setup();
   ensureMon();
   settleNeighbors();
-  if (sc.noPmd) pmd.unload();  // forces the flash sprite / the "missing sprites" notice
+  if (sc.noPmd) pmd.unload();  // forces the "missing sprites" notice
   mockSetMillis(100000);
 }
 
@@ -885,7 +884,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "la pantalla '%s' no dibujo nada\n", sc.name);
       return 1;
     }
-    // without an SD the game falls back to flash sprites and the capture misleads: the SD is required
+    // the SD with the sprites is required, otherwise the capture shows the "missing sprites" notice
     bool petScene = !pet.isEgg() && !pet.awaitingStarter() && !galleryOpen && !sc.noPmd;
     if ((petScene && !pmd.loaded) || (galleryDetail && !galleryPmd.loaded) || (galleryOpen && !thumbs.loaded) ||
         (pet.awaitingStarter() && !thumbs.loaded)) {
