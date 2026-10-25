@@ -21,10 +21,7 @@ void Pet::newEgg() {
   prevSpeciesId = -1;
   eggTarget = pickEggSpecies();  // hidden species based on rarity and pokedex
   starterPick = (registeredCount() == 0);  // first game: the player picks a starter
-  // shiny roll: 1/48 base, better with a farewell and high streak/bond
-  int shinyBase = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
-  if (shinyBase < 8) shinyBase = 8;
-  eggShiny = (random(shinyBase) == 0);
+  eggShiny = (random(shinyOdds()) == 0);
   eggTaps = 0;
   fullness = 80;
   joy = 80;
@@ -240,17 +237,21 @@ int16_t Pet::pickEggSpecies() {
   }
 
   // candidates of the tier with an incomplete line; if none, drop a tier;
-  // if the tier's pokedex is complete, any of the tier will do
+  // if the tier's pokedex is complete, any of the tier will do.
+  // At night the night species weigh NIGHT_WEIGHT times as much (by day all weigh 1)
+  bool night = isNight();
   for (int pass = 0; pass < 2; pass++) {
     for (int t = tier; t >= R_COMUN; t--) {
-      int16_t cand[80];
-      int n = 0;
-      for (int16_t d = 1; d <= 151 && n < 80; d++) {
-        if (DEX_TBL[d].rarity != t) continue;
-        if (pass == 0 && !lineHasUnregistered(d)) continue;
-        cand[n++] = d;
-      }
-      if (n > 0) return cand[random(n)];
+      auto odds = [&](int16_t d) -> int {
+        if (DEX_TBL[d].rarity != t || (pass == 0 && !lineHasUnregistered(d))) return 0;
+        return night && (DEX_TBL[d].flags & DEX_NIGHT) ? NIGHT_WEIGHT : 1;
+      };
+      int total = 0;
+      for (int16_t d = 1; d <= 151; d++) total += odds(d);
+      if (total == 0) continue;
+      int r = random(total);
+      for (int16_t d = 1; d <= 151; d++)
+        if ((r -= odds(d)) < 0) return d;
     }
   }
   return CLASSIC_DEX[random(NUM_CLASSIC_DEX)];  // unreachable, just in case
@@ -260,6 +261,24 @@ void Pet::markSeen(int16_t dex) {
   if (dex < 1 || dex > 151 || isSeen(dex)) return;
   dexSeen[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
   pendingSave = true;  // flushed when the screen dims
+}
+
+bool Pet::greet(uint32_t id) {
+  if (!id || isEgg() || sleeping || ceremony != CER_NONE || evolving()) return false;
+  for (uint32_t g : greeted)
+    if (g == id) return false;
+  ensureStepDay();
+  // beacons are not authenticated and ids change on every boot: the daily cap is what limits a fake
+  // or rebooting neighbor, the id list only stops greeting the same one twice
+  if (greetsToday >= GREETS_PER_DAY) return false;
+  greeted[greetedPos] = id;
+  greetedPos = (greetedPos + 1) % (sizeof(greeted) / sizeof(greeted[0]));
+  greetsToday++;
+  joy = clamp100(joy + 5);
+  addBond(1);
+  heartUntil = millis() + HEART_MS;
+  pendingSave = true;  // flushed when the screen dims
+  return true;
 }
 
 void Pet::registerSpecies(int16_t dex) {
@@ -272,6 +291,12 @@ void Pet::registerSpecies(int16_t dex) {
 int Pet::careBonus() const {
   int s = streak > 30 ? 30 : streak;
   return s / 3 + bond / 25;
+}
+
+// shiny roll: 1/48 base, better with a farewell, high streak/bond and the trail rank, never past 1/8
+int Pet::shinyOdds() const {
+  int n = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus() - trailRank();
+  return n < 8 ? 8 : n;
 }
 
 // first care of the day: advances the streak and strengthens the bond
@@ -431,14 +456,22 @@ void Pet::hatch() {
 // triggers it by touching the pet (evolve()), so they see the transformation.
 bool Pet::canEvolveNow() const {
   if (isEgg() || sleeping || ceremony != CER_NONE) return false;
-  const DexEntry &d = DEX_TBL[speciesId];
-  if (d.evolvesTo == 0) return false;
-  return level() >= (uint16_t)d.evolveLevel + careMistakes && lowestStat() >= 40;
+  if (DEX_TBL[speciesId].evolvesTo == 0) return false;
+  return level() >= evolveLevelNeeded() && lowestStat() >= 40;
+}
+
+uint16_t Pet::evolveLevelNeeded() const {
+  const DexEntry &d = DEX_TBL[isEgg() ? 0 : speciesId];
+  uint16_t lv = d.evolveLevel + careMistakes;
+  if (hasStone && (d.flags & DEX_STONE)) lv -= STONE_LEVELS;  // stone species all evolve at 30 or more
+  return lv;
 }
 
 void Pet::evolve() {
   if (!canEvolveNow()) return;
   const DexEntry &d = DEX_TBL[speciesId];
+  // the Stone is only used up when it was what let it evolve now
+  if (hasStone && (d.flags & DEX_STONE) && level() < evolveLevelNeeded() + STONE_LEVELS) hasStone = false;
   prevSpeciesId = speciesId;
   int16_t next = d.evolvesTo;
   if (speciesId == DEX_EEVEE) {
@@ -625,6 +658,9 @@ void Pet::save() {
   prefs.putUInt("stto", stepsToday);
   prefs.putUInt("stot", stepsTotal);
   prefs.putUChar("stmask", stepRewardMask);
+  prefs.putUChar("stfind", findsToday);
+  prefs.putBool("stone", hasStone);
+  prefs.putUChar("greet", greetsToday);
 }
 
 // The saved fields in one place: the same list writes and reads the backup, so the two
@@ -643,6 +679,8 @@ template <class IO> void Pet::backupFields(IO &io) {
   io(stepDay); io(stepsToday); io(stepsTotal); io(stepRewardMask);
   io(dexSeen);
   io(bondDay); io(bondToday);
+  io(findsToday); io(hasStone);
+  io(greetsToday);
 }
 
 namespace {
@@ -698,7 +736,15 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   memcpy(&sum, data + length - 4, 4);
   if (sum != backupChecksum(data, length - 4)) return false;
   BackupReader r{ data + sizeof(BACKUP_MAGIC), data + length - 4 };
+  bondDay = UINT32_MAX;  // no real day: still there after the read = a layout from before the bond cap
+  findsToday = UINT8_MAX;  // the same for the walk finds (findsToday and hasStone come together)
+  greetsToday = UINT8_MAX;  // and the greetings
   backupFields(r);
+  if (findsToday == UINT8_MAX) {  // the device's own finds and Stone must not pass to the restored pet
+    findsToday = 0;
+    hasStone = false;
+  }
+  if (greetsToday == UINT8_MAX) greetsToday = 0;  // nor today's greetings
   nick[sizeof(nick) - 1] = 0;
   bool nickOk = true;
   for (const char *c = nick; *c; c++) nickOk = nickOk && *c >= 32 && *c < 127;
@@ -707,7 +753,8 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
               nickOk && geneOk && weight <= 100 && !(starterPick && !isEgg()) && eggTarget >= 1 && eggTarget <= DEX_COUNT &&
               fullness <= 100 && joy <= 100 && energy <= 100 && hygiene <= 100 && poops <= 3 &&
               bond <= 100 && trAtk <= 100 && trDef <= 100 && trSpe <= 100 && lastEnd <= CER_RELEASE &&
-              stepRewardMask < (1 << STEP_GOALS);
+              stepRewardMask < (1 << STEP_GOALS) && findsToday <= FINDS_PER_DAY &&
+              greetsToday <= GREETS_PER_DAY;
   if (!sane) {
     BackupReader back{ prev + sizeof(BACKUP_MAGIC), prev + want - 4 };
     backupFields(back);
@@ -716,7 +763,7 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   ceremony = CER_NONE;
   evolveUntil = 0;
   neglectTicks = 0;
-  if (r.stopped) {  // an older layout without today's bond cap: it must not inherit the previous pet's
+  if (bondDay == UINT32_MAX) {  // an older layout without today's bond cap: it must not inherit the previous pet's
     bondDay = 0;
     bondToday = 0;
   }
@@ -734,6 +781,8 @@ void Pet::ensureStepDay() {
   if (firstDay) return;
   stepsToday = 0;
   stepRewardMask = 0;
+  findsToday = 0;
+  greetsToday = 0;
 }
 
 uint32_t Pet::stepGoal(uint8_t i) {
@@ -769,16 +818,36 @@ void Pet::applyWalk(uint16_t steps) {
   // walking cheers it up and bonds a little, only for the first 2000 steps of a day
   joy = clamp100(joy + crossings(before, stepsToday, 100, 2000));
   addBond(crossings(before, stepsToday, 500, 2000));
+  // a batch of steps can reach several goals and finds at once (after sleeping, or a long IMU
+  // batch): one announcement for the batch, a Stone before a goal before a snack
+  int8_t shown = -1;
+  auto rank = [](int8_t i) { return i == STEP_FIND_STONE ? 3 : i == STEP_FIND_SNACK ? 1 : 2; };
+  auto announce = [&](int8_t i) { if (shown < 0 || rank(i) >= rank(shown)) shown = i; };
   for (uint8_t i = 0; i < STEP_GOALS; i++) {
     if (stepsToday < stepGoal(i) || (stepRewardMask & (1 << i))) continue;
     stepRewardMask |= 1 << i;
     if (i == 0) fullness = clamp100(fullness + 15);       // a snack
     else if (i == 1) energy = clamp100(energy + 25);
     else trAtk = clamp100(trAtk + 5);                      // a workout
-    stepRewardIdx = i;
-    stepRewardUntil = millis() + 4500;
     heartUntil = millis() + HEART_MS;
-    if (!sleeping) sfxPlay(SFX_MEDAL);
+    announce(i);
+  }
+  // walk finds: one every FIND_EVERY steps, a few a day; a sleeping pet finds them on its next walk
+  while (!sleeping && findsToday < FINDS_PER_DAY && stepsToday >= FIND_EVERY * (findsToday + 1)) {
+    findsToday++;
+    if (!hasStone && random(5) == 0) {
+      hasStone = true;
+      announce(STEP_FIND_STONE);
+    } else {
+      fullness = clamp100(fullness + 5);
+      announce(STEP_FIND_SNACK);
+    }
+    pendingSave = true;
+  }
+  if (shown >= 0) {
+    stepRewardIdx = shown;
+    stepRewardUntil = millis() + 4500;
+    if (!sleeping) sfxPlay(shown == STEP_FIND_SNACK ? SFX_EAT : SFX_MEDAL);
   }
   if (stepsToday / 100 != before / 100) pendingSave = true;  // flushed when the screen dims
 }
@@ -840,6 +909,9 @@ void Pet::load() {
   stepsToday = prefs.getUInt("stto", 0);
   stepsTotal = prefs.getUInt("stot", 0);
   stepRewardMask = prefs.getUChar("stmask", 0);
+  findsToday = min(prefs.getUChar("stfind", 0), FINDS_PER_DAY);
+  hasStone = prefs.getBool("stone", false);
+  greetsToday = min(prefs.getUChar("greet", 0), GREETS_PER_DAY);
   // seeding: the current pet counts as raised (old saves)
   if (speciesId >= 1) registerSpecies(speciesId);
 }

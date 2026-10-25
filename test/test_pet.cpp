@@ -599,6 +599,50 @@ TEST(egg, una_escapada_castiga_la_rareza) {
   }
 }
 
+// ---------------------------------------------------------------- night eggs
+static void atHourOf(Pet &p, int h) { p.setClock(20000UL * 86400 + h * 3600UL); }
+
+TEST(egg, de_noche_salen_mas_especies_nocturnas) {
+  Pet p;
+  makePet(p, 4);
+  int day = 0, night = 0;
+  for (int seed = 1; seed <= 3000; seed++) {
+    atHourOf(p, 13);
+    randomSeed(seed);
+    int16_t d = p.pickEggSpecies();
+    day += (DEX_TBL[d].flags & DEX_NIGHT) != 0;
+    atHourOf(p, 23);
+    randomSeed(seed);
+    int16_t n = p.pickEggSpecies();
+    night += (DEX_TBL[n].flags & DEX_NIGHT) != 0;
+    CHECK_EQ((int)DEX_TBL[n].rarity, (int)DEX_TBL[d].rarity);  // the tier roll does not change
+  }
+  CHECK(day > 100);
+  CHECK_RANGE(night * 10 / day, 20, 28);  // x3 weight among ~46 commons: about 2.4 times as many
+}
+
+TEST(egg, sin_reloj_o_de_dia_el_sorteo_no_cambia) {
+  Pet p;
+  makePet(p, 4);
+  CHECK(!p.isNight());                 // no clock yet
+  int16_t noClock[200];
+  for (int seed = 1; seed <= 200; seed++) { randomSeed(seed); noClock[seed - 1] = p.pickEggSpecies(); }
+  atHourOf(p, 13);
+  bool same = true;
+  for (int seed = 1; seed <= 200; seed++) { randomSeed(seed); same = same && p.pickEggSpecies() == noClock[seed - 1]; }
+  CHECK_MSG(same, "by day the roll is the same as without a clock");
+  atHourOf(p, 2);
+  bool differs = false;
+  for (int seed = 1; seed <= 200; seed++) { randomSeed(seed); differs = differs || p.pickEggSpecies() != noClock[seed - 1]; }
+  CHECK_MSG(differs, "at night it is not");
+  atHourOf(p, 5);
+  CHECK(p.isNight());
+  atHourOf(p, 6);
+  CHECK(!p.isNight());
+  atHourOf(p, 20);
+  CHECK(p.isNight());
+}
+
 // ---------------------------------------------------------------- streak
 TEST(streak, el_primer_cuidado_del_dia_suma) {
   Pet p;
@@ -1076,6 +1120,152 @@ TEST(steps, el_rango_del_sendero_sale_de_los_pasos_totales) {
   CHECK_EQ((int)p.trailRank(), Pet::TRAIL_RANKS);
 }
 
+TEST(steps, el_rango_del_sendero_mejora_el_shiny_hasta_el_tope) {
+  Pet p;
+  makePet(p, 4);
+  p.streak = 0;
+  p.bond = 0;
+  p.lastEnd = CER_NONE;
+  CHECK_EQ(p.shinyOdds(), 48);
+  p.stepsTotal = 50000;                // HIKER: rank 2
+  CHECK_EQ(p.shinyOdds(), 46);
+  p.stepsTotal = 250000;               // RANGER: rank 4
+  CHECK_EQ(p.shinyOdds(), 44);
+  p.streak = 30;
+  p.bond = 100;                        // careBonus 14
+  CHECK_EQ(p.shinyOdds(), 30);
+  p.lastEnd = CER_FAREWELL;            // 24 - 14 - 4 = 6: the 1/8 floor still holds
+  CHECK_EQ(p.shinyOdds(), 8);
+}
+
+// ---------------------------------------------------------------- walk finds
+TEST(finds, uno_cada_1500_pasos_y_tres_al_dia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.applyWalk(1499);
+  CHECK_EQ((int)p.findsToday, 0);
+  p.applyWalk(1);
+  CHECK_EQ((int)p.findsToday, 1);
+  CHECK(p.stepRewardShown() == Pet::STEP_FIND_SNACK || p.stepRewardShown() == Pet::STEP_FIND_STONE);
+  p.applyWalk(6000);                   // 7500: still only three
+  CHECK_EQ((int)p.findsToday, 3);
+  setDay(p, 20001);
+  advance(p, 1);
+  CHECK_EQ((int)p.findsToday, 0);      // a new day
+}
+
+TEST(finds, un_bocado_o_una_piedra_y_solo_una_piedra) {
+  int stones = 0, snacks = 0;
+  for (int seed = 1; seed <= 200; seed++) {
+    Pet p;
+    makePet(p, 4);
+    setDay(p, 20000);
+    randomSeed(seed);
+    p.hasStone = false;
+    p.fullness = 50;
+    p.applyWalk(4500);                 // the three finds of the day
+    CHECK_EQ((int)p.findsToday, 3);
+    int gotSnacks = (p.fullness - 50 - 15) / 5;  // 15 is the 500-step goal's snack
+    CHECK_EQ(gotSnacks + (p.hasStone ? 1 : 0), 3);  // a Stone is never found twice
+    stones += p.hasStone;
+    snacks += gotSnacks;
+  }
+  CHECK_RANGE(stones, 70, 140);        // 1 - 0.8^3 = 49 % of days find one
+  CHECK(snacks > 300);
+}
+
+TEST(finds, no_mientras_duerme_pero_quedan_pendientes) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.sleeping = true;
+  p.applyWalk(3000);
+  CHECK_EQ((int)p.findsToday, 0);
+  p.sleeping = false;
+  p.applyWalk(10);
+  CHECK_EQ((int)p.findsToday, 2);
+}
+
+TEST(finds, la_piedra_adelanta_la_evolucion_y_se_gasta) {
+  Pet p;
+  makePet(p, 25);                      // Pikachu: stone species, evolves at 30
+  setStats(p, 80, 80, 80, 80);
+  p.careMistakes = 0;
+  p.ageMinutes = MINUTES_PER_LEVEL * 19;  // level 20
+  CHECK_EQ((int)p.evolveLevelNeeded(), 30);
+  CHECK(!p.canEvolveNow());
+  p.hasStone = true;
+  CHECK_EQ((int)p.evolveLevelNeeded(), 20);
+  CHECK(p.canEvolveNow());
+  p.joy = 39;                          // still needs good care
+  CHECK(!p.canEvolveNow());
+  p.joy = 80;
+  p.evolve();
+  CHECK_EQ((int)p.speciesId, 26);
+  CHECK(!p.hasStone);                  // used up
+}
+
+TEST(finds, la_piedra_no_sirve_a_otras_especies_ni_se_gasta_sin_necesidad) {
+  Pet p;
+  makePet(p, 4);                       // Charmander: not a stone species
+  setStats(p, 80, 80, 80, 80);
+  p.hasStone = true;
+  p.ageMinutes = MINUTES_PER_LEVEL * 15;  // level 16: evolves on its own level
+  CHECK_EQ((int)p.evolveLevelNeeded(), 16);
+  p.evolve();
+  CHECK_EQ((int)p.speciesId, 5);
+  CHECK(p.hasStone);
+  Pet q;
+  makePet(q, 25);
+  setStats(q, 80, 80, 80, 80);
+  q.hasStone = true;
+  q.ageMinutes = MINUTES_PER_LEVEL * 35;  // already past 30: the Stone is not needed
+  q.evolve();
+  CHECK_EQ((int)q.speciesId, 26);
+  CHECK(q.hasStone);
+}
+
+TEST(finds, varios_a_la_vez_anuncian_la_piedra_antes_que_la_meta) {
+  bool sawStone = false;
+  for (int seed = 1; seed <= 60 && !sawStone; seed++) {
+    Pet p;
+    makePet(p, 4);
+    setDay(p, 20000);
+    randomSeed(seed);
+    p.hasStone = false;
+    p.applyWalk(4600);                 // the 500 and 2000 goals and three finds in one batch
+    if (!p.hasStone) {
+      CHECK_EQ((int)p.stepRewardShown(), 1);  // no Stone: the 2000 goal, not a snack
+      continue;
+    }
+    sawStone = true;
+    CHECK_EQ((int)p.stepRewardShown(), (int)Pet::STEP_FIND_STONE);
+  }
+  CHECK(sawStone);
+}
+
+TEST(finds, se_guardan_y_van_en_la_copia) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.applyWalk(1500);
+  a.hasStone = true;
+  a.saveNow();
+  Pet l;
+  l.begin();
+  CHECK_EQ((int)l.findsToday, 1);
+  CHECK(l.hasStone);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  CHECK(n > 0);
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.findsToday, 1);
+  CHECK(b.hasStone);
+}
+
 TEST(steps, un_huevo_cuenta_pasos_pero_no_recibe_premios) {
   Pet p;
   mockNvsReset();
@@ -1115,6 +1305,65 @@ TEST(steps, los_pasos_de_antes_de_tener_reloj_cuentan_hoy) {
   advance(p, 1);                       // the first minute with a clock must not drop them
   CHECK_EQ((int)p.stepsToday, 400);
   CHECK_EQ((int)p.stepsTotal, 400);
+}
+
+// ---------------------------------------------------------------- nearby greetings
+TEST(greet, saluda_una_vez_por_vecino_y_tres_al_dia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  setStats(p, 50, 50, 50, 50);
+  p.bond = 0;
+  CHECK(p.greet(11));
+  CHECK_EQ((int)p.joy, 55);
+  CHECK_EQ((int)p.bond, 1);
+  CHECK(p.showHeart());
+  CHECK(!p.greet(11));                 // the same one, again: nothing
+  CHECK_EQ((int)p.joy, 55);
+  CHECK(p.greet(12));
+  CHECK(p.greet(13));
+  CHECK(!p.greet(14));                 // the fourth of the day: nothing
+  CHECK_EQ((int)p.joy, 65);
+  CHECK_EQ((int)p.greetsToday, 3);
+  setDay(p, 20001);
+  CHECK(p.greet(14));                  // a new day
+  CHECK(!p.greet(11));                 // one greeted this boot stays greeted
+}
+
+TEST(greet, nada_dormido_huevo_o_ceremonia) {
+  Pet p;
+  makePet(p, 4);
+  setDay(p, 20000);
+  p.sleeping = true;
+  CHECK(!p.greet(21));
+  p.sleeping = false;
+  CHECK(p.greet(21));                  // it was not marked while asleep
+  p.startFarewell();
+  CHECK(!p.greet(22));
+  Pet e;
+  mockNvsReset();
+  e.begin();
+  e.chooseStarter(4);
+  CHECK(!e.greet(23));                 // an egg
+  CHECK(!p.greet(0));
+}
+
+TEST(greet, el_tope_se_guarda_y_va_en_la_copia) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.greet(31);
+  a.greet(32);
+  a.saveNow();
+  Pet l;
+  l.begin();
+  CHECK_EQ((int)l.greetsToday, 2);
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  Pet b;
+  makePet(b, 7);
+  CHECK(b.importBackup(blob, n));
+  CHECK_EQ((int)b.greetsToday, 2);
 }
 
 // ---------------------------------------------------------------- console saves
@@ -1179,9 +1428,10 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(b.importBackup(blob, n));
   CHECK(b.isSeen(94));
 
-  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday at the end): cut those
-  // 24 bytes off and re-sign; the restore must work and leave the missing fields as they were
-  size_t m = n - 4 - 24;
+  // an older firmware wrote fewer fields (no dexSeen, bondDay, bondToday, findsToday, hasStone,
+  // greetsToday at the end): cut those 27 bytes off and re-sign; the restore must work and leave the
+  // missing fields as they were
+  size_t m = n - 4 - 27;
   uint8_t old[Pet::BACKUP_MAX_BYTES];
   memcpy(old, blob, m);
   uint32_t sum = fnv(old, m);
@@ -1196,7 +1446,7 @@ TEST(backup, incluye_lo_visto_y_acepta_una_copia_mas_corta_de_otra_version) {
   CHECK(!c.isSeen(94));
 
   // a cut in the middle of a field (stepsTotal, 4 bytes) is not a layout any firmware wrote
-  size_t mid = n - 4 - 24 - 1 - 2;
+  size_t mid = n - 4 - 27 - 1 - 2;
   memcpy(old, blob, mid);
   uint32_t s3 = fnv(old, mid);
   memcpy(old + mid, &s3, 4);
@@ -1385,12 +1635,38 @@ TEST(hardening, poner_el_reloj_atras_no_renueva_el_tope_de_vinculo) {
   CHECK_EQ((int)p.bond, capped);       // the cap does not renew
 }
 
+TEST(finds, una_copia_de_antes_de_los_hallazgos_conserva_el_tope_de_vinculo) {
+  Pet a;
+  makePet(a, 4);
+  setDay(a, 20000);
+  a.bond = 0;
+  for (int i = 0; i < 12; i++) a.playResult(10);   // today's cap is used up
+  uint8_t blob[Pet::BACKUP_MAX_BYTES];
+  size_t n = a.exportBackup(blob, sizeof(blob));
+  size_t m = n - 4 - 3;                // the layout of 1.18: bond cap, no finds or greetings
+  uint32_t sum = fnv(blob, m);
+  memcpy(blob + m, &sum, 4);
+  Pet b;
+  makePet(b, 7);
+  b.hasStone = true;                   // this device's own Stone, finds and greetings...
+  b.findsToday = 3;
+  b.greetsToday = 3;
+  CHECK(b.importBackup(blob, m + 4));
+  CHECK(!b.hasStone);                  // ...do not pass to the restored pet
+  CHECK_EQ((int)b.findsToday, 0);
+  CHECK_EQ((int)b.greetsToday, 0);
+  int bond = b.bond;
+  setDay(b, 20000);
+  b.playResult(10);
+  CHECK_EQ((int)b.bond, bond);         // still capped today
+}
+
 TEST(hardening, restaurar_una_copia_empieza_con_un_tope_de_vinculo_nuevo) {
   Pet a;
   makePet(a, 4);
   uint8_t blob[Pet::BACKUP_MAX_BYTES];
   size_t n = a.exportBackup(blob, sizeof(blob));
-  size_t m = n - 4 - 5;                // a layout from before bondDay/bondToday, re-signed
+  size_t m = n - 4 - 8;                // a layout from before bondDay/bondToday (and finds, greetings), re-signed
   uint32_t sum = fnv(blob, m);
   memcpy(blob + m, &sum, 4);
   Pet b;

@@ -105,6 +105,7 @@ static const Scene SCENES[] = {
   { "nearby_4", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); nb(3, 39); nb(4, 94, true); }, false },
   { "nearby_big", [] { closeAll(); adult(143); nb(1, 25); nb(2, 95); nb(3, 131); nb(4, 1); }, false },
   { "nearby_night", [] { closeAll(); adult(6); pet.sleeping = true; nb(1, 25, false, true); nb(2, 7, false, true); nb(3, 39); nb(4, 94, true, true); }, false },
+  { "nearby_greet", [] { closeAll(); adult(6); nb(1, 25); nb(2, 7); settleNeighbors(); greetNeighbors(); mockSetMillis(millis() + 600); }, false },
   { "feed_menu", [] { closeAll(); adult(6); feedMenuUntil = millis() + 6000; }, false },
   { "release_dialog", [] { closeAll(); adult(6); confirmUntil = millis() + 10000; }, false },
   { "evolve_dialog", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; choiceKind = 1; choiceUntil = millis() + 12000; }, false },
@@ -128,6 +129,15 @@ static const Scene SCENES[] = {
   { "main_nosprites", [] { closeAll(); adult(25); }, true },
   { "card_medals", [] { closeAll(); adult(6); cardOpen = true; cardPage = 2; }, false },
   { "card_progress", [] { closeAll(); adult(6); cardOpen = true; cardPage = 3; }, false },
+  // pressed look (the finger is down on it)
+  { "press_deck", [] { closeAll(); adult(6); touchOn = target(P_DECK, 1, true); }, false },
+  { "press_cta", [] { closeAll(); adult(4); pet.ageMinutes = 60 * 20; touchOn = target(P_CTA, 0, true); }, false },
+  { "press_train", [] { closeAll(); adult(6); cardOpen = true; cardPage = 1; touchOn = target(P_TRAIN, 0, true); }, false },
+  { "press_key", [] { closeAll(); adult(6); kbOpen = true; strcpy(nameBuf, "ASH"); nameLen = 3; touchOn = target(P_KEY, 8, true); }, false },
+  { "press_cell", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 0; galleryDirty = true; touchOn = target(P_CELL, 5, true); }, false },
+  { "press_release_yes", [] { closeAll(); adult(6); confirmUntil = millis() + 10000; touchOn = target(P_REL_YES, 0, true); }, false },
+  { "press_night", [] { closeAll(); adult(6); pet.sleeping = true; touchOn = target(P_DECK, 2, true); }, false },
+  { "walk_find_stone", [] { closeAll(); adult(25); pet.stepRewardIdx = Pet::STEP_FIND_STONE; pet.stepRewardUntil = millis() + 4000; }, false },
   { "card_steps", [] { closeAll(); adult(6); cardOpen = true; cardPage = 4; pet.stepsToday = 3240; pet.stepsTotal = 61250; }, false },
   { "gallery_page6", [] { closeAll(); adult(6); galleryOpen = true; galleryPage = 6; galleryDirty = true; }, false },
   { "gallery_seen", [] { closeAll(); adult(6); pet.dexReg[0] &= ~0xC0; pet.dexSeen[0] |= 0xC0; galleryOpen = true; galleryPage = 0; galleryDirty = true; }, false },  // #7, #8: met, not raised
@@ -153,6 +163,8 @@ static Pet gPristinePet;  // the critter right after setup()
 static void prepare(const Scene &sc) {
   gBatPercent = 80; gBatCharging = false; pet.lastSeenEpoch = 0;
   feedMenuUntil = confirmUntil = bathUntil = 0; bathPending = false; choiceKind = 0;
+  greetId = greetUntil = 0;
+  touchOn = Press();
   pet = gPristinePet;  // the whole critter (timers, pokedex, medals...) as after boot
   screenKeyValid = false;  // a static screen is always painted the first time
   gameOverUntil = sackOverUntil = 0; gameNewHi = sackNewHi = false; sackGain = 0;
@@ -208,6 +220,32 @@ static int runTapTests() {
   gHostNbN = 0;
   settleNeighbors();
   EXPECT(!nbPmd[0].loaded && !nbPmd[1].loaded, "sin vecinos no queda ningun sprite cargado");
+  // greetings: an awake neighbor on screen is greeted once, a sleeping one is not
+  begin("main_day");
+  nb(7, 25, false, true);
+  settleNeighbors();
+  greetNeighbors();
+  EXPECT(!greetUntil && pet.greetsToday == 0, "un vecino dormido no se saluda");
+  gHostNb[0].sleeping = false;
+  greetNeighbors();
+  EXPECT(greetId == 7 && timeLeft(greetUntil) && pet.greetsToday == 1, "un vecino despierto se saluda");
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 1, "el mismo vecino solo una vez");
+  begin("main_day");
+  nb(8, 7);
+  settleNeighbors();
+  gameOpen = true;
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 0, "no se saluda con otra pantalla encima");
+  gameOpen = false;
+  dimStage = 1;
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 0, "ni con la pantalla atenuada");
+  dimStage = 0;
+  greetNeighbors();
+  EXPECT(pet.greetsToday == 1, "en la pantalla principal si");
+  begin("evolving");
+  EXPECT(!pet.greet(99), "durante la evolucion no se saluda");
   // food selector: the center of each icon picks its slot
   for (int i = 0; i < 4; i++) {
     begin("feed_menu");
@@ -304,19 +342,85 @@ static int runTapTests() {
   begin("gallery_detail");
   tapAt(CX, CY);
   EXPECT(galleryOpen && !galleryDetail, "tocar el detalle vuelve a la rejilla");
-  // card: the name opens the keyboard, ENTRENAR FUERZA opens the bag
+  // card: the name opens the keyboard, ENTRENAR FUERZA opens the bag, only Back closes it
   begin("card_profile");
-  tapAt(CX, CARD_NAME_ZONE_H - 1);
+  tapAt(CX, CARD_NAME_Y + CARD_NAME_H / 2);
   EXPECT(kbOpen, "tocar el nombre abre el teclado");
   begin("card_profile");
-  tapAt(CX, CARD_NAME_ZONE_H + UY(40));
-  EXPECT(!kbOpen && !cardOpen, "tocar bajo el nombre cierra la ficha");
+  tapAt(CX, CARD_NAME_Y + CARD_NAME_H + UY(40));
+  EXPECT(!kbOpen && cardOpen, "tocar bajo el nombre no hace nada");
+  tapAt(BACK_X + BACK_W / 2, BACK_Y + BACK_H / 2);
+  EXPECT(!cardOpen, "Volver cierra la ficha");
   begin("card_stats");
   tapAt(TRAIN_X + TRAIN_W / 2, TRAIN_Y + TRAIN_H / 2);
   EXPECT(sackOpen && !cardOpen, "ENTRENAR FUERZA abre el saco");
   begin("card_stats");
   tapAt(TRAIN_X + TRAIN_W / 2, TRAIN_Y - UY(12));
-  EXPECT(!sackOpen && !cardOpen, "tocar fuera del boton cierra la ficha sin entrenar");
+  EXPECT(!sackOpen && cardOpen, "tocar fuera del boton no entrena ni cierra la ficha");
+  begin("card_stats");
+  pet.sleeping = true;
+  EXPECT(!pressTarget(TRAIN_X + TRAIN_W / 2, TRAIN_Y + TRAIN_H / 2).enabled, "dormido no se entrena");
+  tapAt(TRAIN_X + TRAIN_W / 2, TRAIN_Y + TRAIN_H / 2);
+  EXPECT(!sackOpen && cardOpen, "y tocarlo no hace nada");
+  // what can be pressed: disabled buttons are still targets (deny sound), not the empty space
+  begin("main_night");
+  for (int i = 0; i < 4; i++) {
+    Press p = pressTarget(buttons[i].cx, buttons[i].cy);
+    EXPECT(p.id == P_DECK && p.idx == i && p.enabled == (i == 2), "dormido solo LUZ esta activo");
+  }
+  tapAt(buttons[0].cx, buttons[0].cy);
+  EXPECT(!feedMenuUntil, "COMER dormido no abre el selector");
+  begin("main_day");
+  EXPECT(pressTarget(CX, UY(332)).id == P_NONE, "el hueco entre botones no es un objetivo");
+  EXPECT(pressTarget(CX, PET_CY).id == P_PET, "el bicho es el objetivo de la caricia");
+  begin("keyboard");
+  nameLen = 0; nameBuf[0] = 0;
+  EXPECT(!pressTarget(KB_X + (28 % KB_COLS) * KB_W + KB_W / 2, KB_Y + (28 / KB_COLS) * KB_H + KB_H / 2).enabled, "borrar con el nombre vacio no hace nada");
+  strcpy(nameBuf, "ABCDEFGHIJK"); nameLen = 11;
+  EXPECT(!pressTarget(KB_X + KB_W / 2, KB_Y + KB_H / 2).enabled, "una letra con el nombre lleno no hace nada");
+  begin("gallery");
+  EXPECT(pressTarget(CX, HEADER_ZONE_H / 2).id == P_CLOSE, "la cabecera cierra la galeria");
+  begin("gallery_page6");
+  galleryPage = 9;                         // the last page has 7 cells: the rest are not targets
+  EXPECT(pressTarget(GAL_X + 3 * GAL_CELL + GAL_CELL / 2, GAL_Y + GAL_CELL_Y + GAL_CELL_Y / 2).id == P_NONE, "las celdas vacias no son objetivos");
+  // pressed look through the real gesture handler: down shows it, sliding off clears it, lift fires
+  touchReset();
+  begin("main_day");
+  touchStep(true, buttons[1].cx, buttons[1].cy, 40);
+  EXPECT(isPressed(P_DECK, 1), "al apoyar el dedo el boton se ve pulsado");
+  touchStep(true, buttons[1].cx + U(60), buttons[1].cy, 40);
+  EXPECT(!isPressed(P_DECK, 1), "al salirse del boton deja de verse pulsado");
+  fingerUp();
+  EXPECT(!gameOpen, "y al soltar fuera no juega");
+  touchReset();
+  begin("main_day");
+  touchStep(true, buttons[1].cx, buttons[1].cy, 40);
+  fingerUp();
+  EXPECT(gameOpen && touchOn.id == P_NONE, "al soltar dentro juega y deja de verse pulsado");
+  touchReset();
+  begin("main_day");
+  touchStep(true, buttons[1].cx, buttons[1].cy, 40);
+  touchStep(true, buttons[1].cx + U(60), buttons[1].cy, 40);
+  touchStep(true, buttons[1].cx, buttons[1].cy, 40);  // and back onto the button
+  EXPECT(!isPressed(P_DECK, 1), "volver al boton no lo vuelve a pulsar");
+  fingerUp();
+  EXPECT(!gameOpen, "salirse y volver cancela el toque");
+  touchReset();
+  begin("bath");
+  EXPECT(!pressTarget(buttons[3].cx, buttons[3].cy).enabled, "BANO durante el bano no hace nada");
+  begin("evolving");
+  EXPECT(!pressTarget(buttons[1].cx, buttons[1].cy).enabled, "JUGAR durante la evolucion no hace nada");
+  begin("keyboard");
+  nameLen = 0; nameBuf[0] = 0;
+  keyboardTap(target(P_KEY, 28, true));  // a stale enabled flag must not underflow the name
+  EXPECT(nameLen == 0, "borrar con el nombre vacio no rompe nada");
+  touchReset();
+  begin("gallery");
+  render();
+  touchStep(true, GAL_X + GAL_CELL / 2, GAL_Y + GAL_CELL_Y / 2, 40);
+  EXPECT(galleryDirty, "pulsar una celda repinta la rejilla");
+  fingerUp();
+  touchReset();
   // keyboard: each key (its center) types its letter; <- deletes; OK saves
   for (int i = 0; i < 28; i++) {
     begin("keyboard");

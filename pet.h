@@ -77,6 +77,9 @@ public:
   uint32_t stepsToday = 0, stepsTotal = 0;
   uint32_t stepDay = 0;         // day (epoch / 86400) that stepsToday belongs to
   uint8_t stepRewardMask = 0;   // bit i: daily goal i already rewarded today
+  uint8_t findsToday = 0;       // walk finds given today (one every FIND_EVERY steps)
+  bool hasStone = false;        // a Stone found on a walk: a stone species evolves early with it
+  uint8_t greetsToday = 0;      // nearby TamaPokes greeted today (GREETS_PER_DAY at most)
   // medals: the individual's + running count across all rearings
   uint16_t medals = 0, totalMedals = 0;
   uint16_t newMedal = 0;   // just earned, to celebrate
@@ -122,6 +125,7 @@ public:
     return 1.0f - (float)timeLeft(evolveUntil) / (float)EVOLVE_ANIM_MS;
   }
   bool canEvolveNow() const;  // evolution conditions met (ready)
+  uint16_t evolveLevelNeeded() const;  // level it evolves at: slip-ups delay it, a Stone brings it forward
   void evolve();              // triggers the transformation (called by a user touch)
   bool canFarewellNow() const;  // final form + 7 days: ready to say farewell (button)
   bool canRunawayNow() const;   // total neglect 1h: ready to run away (sad button)
@@ -151,6 +155,10 @@ public:
   }
   bool isKnown(int16_t dex) const { return isRegistered(dex) || isSeen(dex); }  // shown in color, with its name
   void markSeen(int16_t dex);  // a creature met nearby: the Pokedex shows it, the raised count does not
+  // A nearby TamaPoke (by its beacon id) next to an awake pet: the first time it is seen since boot,
+  // a little joy and bond, a few times a day. Returns true when it greeted.
+  static constexpr uint8_t GREETS_PER_DAY = 3;
+  bool greet(uint32_t id);
   bool isShinyRegistered(int16_t dex) const {
     return dex >= 1 && dex <= 151 && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
@@ -158,6 +166,12 @@ public:
   bool lineHasUnregistered(int16_t base) const;
   uint8_t eggRarity() const;       // rarity of the current egg (without revealing the species)
   int16_t pickEggSpecies();        // public so rolls can be simulated (EGGS)
+  static constexpr int NIGHT_WEIGHT = 3;  // night species at night, within their tier
+  // night by the real clock (20:00 to 06:00); false while there is no clock
+  bool isNight() const {
+    uint32_t h = (lastSeenEpoch / 3600) % 24;
+    return lastSeenEpoch && (h < 6 || h >= 20);
+  }
   uint8_t lowestStat() const { return min(min(fullness, joy), min(energy, hygiene)); }
   PetMood mood() const;
   // progress of the farewell/runaway ceremony, 0..1 (to animate it)
@@ -170,16 +184,22 @@ public:
   void rename(const char *name);
   // walking: daily goals give a small reward, lifetime steps give a trail rank
   static constexpr uint8_t STEP_GOALS = 3, TRAIL_RANKS = 4;
+  static constexpr int8_t STEP_FIND_SNACK = STEP_GOALS, STEP_FIND_STONE = STEP_GOALS + 1;
+  static constexpr uint32_t FIND_EVERY = 1500;  // steps of the day between walk finds
+  static constexpr uint8_t FINDS_PER_DAY = 3;
+  static constexpr uint8_t STONE_LEVELS = 10;   // how much earlier a Stone lets it evolve
   static uint32_t stepGoal(uint8_t i);    // steps per day for goal i
   static uint32_t trailGoal(uint8_t i);   // lifetime steps for rank i + 1
   uint8_t trailRank() const;              // 0 = none yet .. TRAIL_RANKS
   void applyWalk(uint16_t steps);
-  // goal just reached (-1 = none), to announce it for a few seconds
+  // goal just reached (0..2), or a walk find (STEP_FIND_SNACK / STEP_FIND_STONE), to announce
+  // it for a few seconds; -1 = none
   int8_t stepRewardShown() const { return timeLeft(stepRewardUntil) > 0 ? stepRewardIdx : -1; }
   bool hasMedal(uint16_t m) const { return medals & m; }
   bool showMedal() const { return timeLeft(medalUntil) > 0; }
   bool showMilestone() const { return timeLeft(milestoneUntil) > 0; }
   int careBonus() const;  // egg improvement from streak + bond
+  int shinyOdds() const;  // the next egg is shiny with chance 1 / shinyOdds()
 
   // deferred periodic save: tick() marks it pending and the loop flushes it
   // when the screen is dimmed/off (the flash write freezes
@@ -223,6 +243,8 @@ private:
   uint32_t milestoneUntil = 0; // streak milestone celebration
   uint32_t stepRewardUntil = 0;
   int8_t stepRewardIdx = -1;
+  uint32_t greeted[8] = { 0 };  // neighbor ids already greeted (RAM: ids change on every boot)
+  uint8_t greetedPos = 0;
   void ensureStepDay();
 
   uint32_t today() const { return lastSeenEpoch ? lastSeenEpoch / 86400 : 0; }

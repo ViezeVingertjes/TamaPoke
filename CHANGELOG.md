@@ -8,6 +8,28 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Added
+
+- **Walk finds and the Stone.** Every 1500 steps of the day the pet finds a snack (+5 food) or,
+  one time in five, a Stone, up to three finds a day. While a Stone is held, a species that evolves
+  with a stone in the real games (Pikachu, Clefairy, Vulpix, Eevee...) evolves 10 levels earlier;
+  every need must still be 40 or more, and the Stone is used up only when it was what made it
+  evolve. Both are part of the save backup.
+- **Night eggs.** An egg rolled at night (20:00 to 06:00) makes Clefairy, Zubat, Oddish,
+  Venonat, Gastly and Drowzee three times as likely within their tier. The tier odds do not change.
+- **Nearby TamaPokes greet each other.** An awake neighbour next to your awake pet gets a greeting
+  once: both nod, hearts, "Hi, friend!", +5 happiness and +1 bond. Up to three a day, nothing to tap.
+- **Touch feedback everywhere.** Every button sinks and darkens the moment the finger lands, with a
+  click; sliding off before lifting cancels it. A button that can't act right now (Feed, Play and
+  Bath while asleep, a full name on the keyboard) plays a short deny sound. The training bag sounds on
+  every hit.
+
+### Changed
+
+- **The trail rank improves the shiny roll.** Each rank takes one off it (1 / 48 becomes 1 / 44
+  at Ranger); the 1 / 8 best stays.
+- The stat card closes only from **Back** or a swipe up; a tap on a page no longer closes it.
+
 ## [1.18] - 2026-10-24
 
 ### Added
