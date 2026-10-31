@@ -7,7 +7,7 @@
 
 static NbBeacon beacon(uint32_t id, int species = 25, int level = 12) {
   NbBeacon b;
-  b.species = (uint8_t)species; b.shiny = false; b.sleeping = false; b.level = (uint16_t)level; b.id = id;
+  b.species = (uint8_t)species; b.shiny = false; b.sleeping = false; b.level = (uint16_t)level; b.id = id; b.tick = NB_TICK_NONE;
   return b;
 }
 
@@ -51,7 +51,7 @@ TEST(nearby, el_decodificador_rechaza_todo_lo_que_no_sea_un_paquete_valido) {
   CHECK(reject(25, 0, 1, 0));
   CHECK(reject(25, 1000, 1, 0));
   CHECK(reject(25, 5, 0, 0));
-  CHECK(reject(25, 5, 1, 4));                            // unknown flag
+  CHECK(reject(25, 5, 1, 0x20));                         // unknown flag
 }
 
 TEST(nearby, el_decodificador_aguanta_basura_aleatoria) {
@@ -237,4 +237,95 @@ TEST(nearby, la_busqueda_activa_encuentra_a_uno_que_solo_escucha_por_ventanas) {
   CHECK(p90 <= 26000);        // as soon as the other opens a window (<= 31.25 s) + the signal time
   stats(NB_SEARCH, NB_DIM, &med, &p90);
   CHECK(p90 <= 60000);        // the search lasts a minute: it reaches a window of dim mode (<= 56 s)
+}
+
+TEST(nearby, el_tick_de_la_ventana_viaja_en_el_paquete) {
+  uint8_t d[NB_BEACON_LEN];
+  NbBeacon b;
+  for (int t = 0; t <= 7; t++) {
+    nbEncode(d, 77, 25, true, true, 9, t);
+    CHECK(nbDecode(d, NB_BEACON_LEN, &b));
+    CHECK_EQ((int)b.tick, t);
+    CHECK(b.shiny && b.sleeping);
+  }
+  nbEncode(d, 77, 25, false, false, 9);
+  CHECK(nbDecode(d, NB_BEACON_LEN, &b));
+  CHECK_EQ((int)b.tick, (int)NB_TICK_NONE);
+}
+
+TEST(nearby, los_periodos_son_multiplos_de_la_rejilla_comun) {
+  CHECK_EQ((int)(NB_GRID_MS % nbPeriodMs(NB_ACTIVE)), 0);
+  CHECK_EQ((int)(NB_GRID_MS % nbPeriodMs(NB_DIM)), 0);
+  CHECK_EQ((int)(NB_GRID_MS % nbPeriodMs(NB_NIGHT)), 0);
+  CHECK_EQ((int)(nbPeriodMs(NB_DIM) % nbPeriodMs(NB_ACTIVE)), 0);
+  CHECK_EQ((int)(nbPeriodMs(NB_NIGHT) % nbPeriodMs(NB_DIM)), 0);
+}
+
+// Two devices in windows at different instants hear each other once; from then on they must
+// open their windows together (this is what keeps neighbors and their state fresh).
+static void syncedWindows(NbMode ma, NbMode mb, uint32_t sa, uint32_t sb) {
+  NbSync A, B;
+  // exchange: A's window opened at sa, B's at sb; each hears the other's beacon (tick 0..4)
+  uint32_t t = (sa > sb ? sa : sb) + 100;
+  NbBeacon fromB = beacon(2); fromB.tick = (uint8_t)((t - sb) / NB_TICK_MS);
+  NbBeacon fromA = beacon(1); fromA.tick = (uint8_t)((t - sa) / NB_TICK_MS);
+  CHECK(A.hear(fromB, t, true, sa, t));
+  CHECK(B.hear(fromA, t, true, sb, t));
+  uint32_t wa = A.next(t + 800, nbPeriodMs(ma)), wb = B.next(t + 800, nbPeriodMs(mb));
+  uint32_t pa0 = nbPeriodMs(ma), pb0 = nbPeriodMs(mb);
+  while ((int32_t)(wa - wb) < -200) wa = A.next(wa + 800, pa0);
+  while ((int32_t)(wb - wa) < -200) wb = B.next(wb + 800, pb0);
+  for (int i = 0; i < 40; i++) {
+    uint32_t hi = wa > wb ? wa : wb, lo = wa > wb ? wb : wa;
+    CHECK(hi - lo < 200);                                  // windows (0.8 s) overlap almost fully
+    uint32_t pa = nbPeriodMs(ma), pb = nbPeriodMs(mb);
+    wa = A.next(wa + 800, pa); wb = B.next(wb + 800, pb);
+    // the faster device opens in between: only compare the instants both use
+    while ((int32_t)(wa - wb) < -200) wa = A.next(wa + 800, pa);
+    while ((int32_t)(wb - wa) < -200) wb = B.next(wb + 800, pb);
+  }
+}
+
+TEST(nearby, tras_oirse_los_dos_abren_la_ventana_a_la_vez) {
+  syncedWindows(NB_ACTIVE, NB_ACTIVE, 10000, 10500);
+  syncedWindows(NB_ACTIVE, NB_ACTIVE, 10700, 10000);
+  syncedWindows(NB_ACTIVE, NB_DIM, 3000, 3600);
+  syncedWindows(NB_DIM, NB_NIGHT, 123456, 123000);
+}
+
+TEST(nearby, la_busqueda_continua_y_una_ventana_se_alinean) {
+  NbSync searcher, windowed;
+  uint32_t winStart = 50000, t = 50320;
+  NbBeacon fromW = beacon(2); fromW.tick = 2;                  // window open for 320 ms
+  CHECK(searcher.hear(fromW, t, false, 0, t));                 // searching: no window of its own
+  NbBeacon fromS = beacon(1);                                  // the searcher sends tick 7
+  CHECK(windowed.hear(fromS, t + 5, true, winStart, t + 5));
+  CHECK_EQ((long)searcher.anchor, (long)winStart);
+  CHECK_EQ((long)windowed.anchor, (long)winStart);
+  CHECK_EQ((long)searcher.next(t + 800, 25000), (long)(winStart + 25000));
+}
+
+TEST(nearby, sin_ventana_propia_ni_ajena_no_hay_sincronia) {
+  NbSync a;
+  CHECK(!a.hear(beacon(2), 1000, false, 0, 1000));             // both searching: nothing to align on
+  CHECK(!a.live(1000));
+}
+
+TEST(nearby, una_rejilla_ajena_se_ignora_y_la_propia_caduca) {
+  NbSync a;
+  NbBeacon x = beacon(2); x.tick = 0;
+  CHECK(a.hear(x, 100000, true, 100000, 100000));
+  CHECK(!a.hear(x, 100000 + 12345, false, 0, 100000 + 12345));  // 12 s off the 25 s grid: other group
+  CHECK(a.hear(x, 100000 + 25000 + 30, false, 0, 100000 + 25030)); // on grid (30 ms late)
+  CHECK(a.live(100000 + NB_SYNC_LIFE_MS));
+  CHECK(!a.live(100000 + 25030 + NB_SYNC_LIFE_MS + 1));
+}
+
+TEST(nearby, la_rejilla_sobrevive_al_desbordamiento_de_millis) {
+  NbSync a;
+  NbBeacon x = beacon(2); x.tick = 0;
+  uint32_t t0 = 0xFFFFFFFFu - 60000u;
+  CHECK(a.hear(x, t0, true, t0, t0));
+  uint32_t n = a.next(t0 + 800, 25000);
+  CHECK_EQ((long)(n - t0), 25000L);                              // across the wrap
 }

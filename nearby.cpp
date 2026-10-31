@@ -7,7 +7,7 @@
 
 // ---------------------------------------------------------------------------
 // ESP-NOW radio to see the TamaPokes next to you. Designed to use little power:
-//  - the radio is only on in 0.8 s windows (every 25 s in use, 45 s with the
+//  - the radio is only on in 0.8 s windows (every 25 s in use, 50 s with the
 //    screen dimmed, 5 min with the screen off) and in a 60 s active search
 //    that starts when the feature is enabled;
 //  - minimum transmit power (2 dBm): "nearby" means nearby;
@@ -27,6 +27,7 @@ static const uint8_t BCAST[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 struct RxPacket {
   uint8_t len;
   int8_t rssi;
+  uint32_t at;  // millis() when it arrived
   uint8_t data[NB_BEACON_LEN];
 };
 static RxPacket ring[NB_RING];
@@ -48,6 +49,8 @@ static uint32_t gLastPrune = 0;
 static uint32_t gFailUntil = 0;       // after a radio failure, do not retry until this time (if gFailed)
 static bool gFailed = false;
 static NbMode gMode = NB_OFF;
+static NbSync gSync;                  // shared window grid with a neighbor (see nearby.h)
+static bool gWinSearch = false;       // the current/last radio session was the continuous search (no window)
 static uint32_t gEpoch = 0;
 static uint32_t gKnownMask = 0;       // fingerprint of the neighbors shown (to tell whether they change)
 
@@ -57,6 +60,7 @@ static void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len
   uint8_t next = (ringHead + 1) % NB_RING;
   if (next != ringTail) {  // ring full: drop it
     ring[ringHead].len = (uint8_t)len;
+    ring[ringHead].at = millis();
     ring[ringHead].rssi = info && info->rx_ctrl ? (int8_t)info->rx_ctrl->rssi : -80;
     memcpy(ring[ringHead].data, data, len);
     ringHead = next;
@@ -85,10 +89,16 @@ static void radioStop() {
   WiFi.mode(WIFI_OFF);  // turns the radio fully off (this is what saves power)
 }
 
-static void sendBeacon(const NbSelf &self) {
+static void sendBeacon(uint32_t now, const NbSelf &self) {
   if (!self.valid) return;
+  // tell the receiver how long our window has been open, so it can line up with it
+  int tick = NB_TICK_NONE;
+  if (!gWinSearch) {
+    uint32_t t = (now - gWindowStart + NB_TICK_MS / 2) / NB_TICK_MS;
+    tick = t > 6 ? 6 : (int)t;
+  }
   uint8_t pkt[NB_BEACON_LEN];
-  nbEncode(pkt, gSelfId, self.species, self.shiny, self.sleeping, self.level);
+  nbEncode(pkt, gSelfId, self.species, self.shiny, self.sleeping, self.level, tick);
   esp_now_send(BCAST, pkt, NB_BEACON_LEN);
 }
 
@@ -99,6 +109,7 @@ void nearbyBegin() {
   esp_fill_random(gMac, 6);
   gMac[0] = (gMac[0] | 0x02) & 0xFE;  // locally administered, unicast
   gTable.clear();
+  gSync.clear();
   gTable.selfId = gSelfId;
   gNextWindow = millis() + 2000 + (esp_random() % 8000);
   gSearchUntil = millis() + NB_SEARCH_MS;  // on boot it searches for a minute: with another device next to it they see each other in seconds
@@ -139,11 +150,15 @@ static void drainRing(uint32_t now, const NbSelf &self) {
     NbBeacon b;
     if (!nbDecode(pk.data, pk.len, &b)) continue;
     NbResult r = gTable.accept(b, pk.rssi, now);
+    if (r != NB_IGNORED) {
+      bool haveOwn = !gWinSearch && (uint32_t)(pk.at - gWindowStart) < NB_WINDOW_MS + 500;
+      gSync.hear(b, pk.at, haveOwn, gWindowStart, now);
+    }
     // a new one: reply right away, so that it also sees us even if its window is about to
     // close (at most one reply per second)
     if (r == NB_NEW && gRadioOn && now - gLastReply > 1000) {
       gLastReply = now;
-      sendBeacon(self);
+      sendBeacon(now, self);
     }
   }
 }
@@ -159,7 +174,7 @@ void nearbyPoll(uint32_t now, const PowerCtx &c, const NbSelf &self) {
     // the search lasts until it ends; the other windows, NB_WINDOW_MS
     bool end = mode == NB_OFF || (mode != NB_SEARCH && (int32_t)(now - gWindowEnd) >= 0);
     if (!end && (int32_t)(now - gNextBeacon) >= 0) {
-      sendBeacon(self);
+      sendBeacon(now, self);
       if (mode == NB_SEARCH) gNextBeacon = now + NB_SEARCH_BEACON_MS;
       else if (++gBeaconIdx < NB_BEACON_COUNT) gNextBeacon = gWindowStart + nbBeaconAtMs(gBeaconIdx);
       else gNextBeacon = gWindowEnd;
@@ -168,19 +183,21 @@ void nearbyPoll(uint32_t now, const PowerCtx &c, const NbSelf &self) {
       radioStop();
       gRadioOn = false;
       NbMode dm = (mode == NB_SEARCH || mode == NB_OFF) ? NB_ACTIVE : mode;
-      gNextWindow = now + nbNextDelayMs(dm, esp_random());
+      gNextWindow = gSync.live(now) ? gSync.next(now, nbPeriodMs(dm)) : now + nbNextDelayMs(dm, esp_random());
     }
   } else if (mode != NB_OFF) {
     // if the screen turns on, the next window cannot be minutes away
     if (mode != NB_SEARCH) {
       uint32_t maxWait = nbPeriodMs(mode) * 5 / 4;
-      if ((int32_t)(gNextWindow - now) > (int32_t)maxWait) gNextWindow = now + esp_random() % (maxWait + 1);
+      if ((int32_t)(gNextWindow - now) > (int32_t)maxWait)
+        gNextWindow = gSync.live(now) ? gSync.next(now, nbPeriodMs(mode)) : now + esp_random() % (maxWait + 1);
     }
     bool due = mode == NB_SEARCH || (int32_t)(now - gNextWindow) >= 0;
     if (due && (!gFailed || (int32_t)(now - gFailUntil) >= 0)) {
       if (radioStart()) {
         gRadioOn = true;
         gWindowStart = now;
+        gWinSearch = mode == NB_SEARCH;
         gWindowEnd = now + NB_WINDOW_MS;
         gBeaconIdx = 0;
         gNextBeacon = now;

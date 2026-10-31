@@ -22,7 +22,8 @@
 #define NB_REPEAT_MS 500      // two signals from the same neighbor closer together than this do not count
 
 // ---- packet format (11 bytes) ----
-//  0 'T'   1 'P'   2 version   3 species (1-151)   4 flags (bit 0 shiny, bit 1 asleep)
+//  0 'T'   1 'P'   2 version   3 species (1-151)   4 flags (bit 0 shiny, bit 1 asleep,
+//  bits 2-4 tick: how many 160 ms ticks the sender's window has been open, 7 = no window)
 //  5-6 level (little endian)   7-9 device id (24 bits, nonzero)   10 crc8 of the previous 10
 // Only data the other device would already see if it were next to this one is sent: no nickname or anything personal.
 struct NbBeacon {
@@ -30,7 +31,10 @@ struct NbBeacon {
   bool shiny, sleeping;
   uint16_t level;
   uint32_t id;  // 24 bits, nonzero
+  uint8_t tick; // 0-6: sender's window has been open tick*NB_TICK_MS; NB_TICK_NONE: not in a window
 };
+#define NB_TICK_MS 160
+#define NB_TICK_NONE 7
 
 inline uint8_t nbCrc8(const uint8_t *d, int n) {
   uint8_t c = 0;
@@ -41,12 +45,12 @@ inline uint8_t nbCrc8(const uint8_t *d, int n) {
   return c;
 }
 
-inline int nbEncode(uint8_t *out, uint32_t id, int species, bool shiny, bool sleeping, int level) {
+inline int nbEncode(uint8_t *out, uint32_t id, int species, bool shiny, bool sleeping, int level, int tick = NB_TICK_NONE) {
   out[0] = NB_MAGIC0;
   out[1] = NB_MAGIC1;
   out[2] = NB_VERSION;
   out[3] = (uint8_t)species;
-  out[4] = (uint8_t)((shiny ? 1 : 0) | (sleeping ? 2 : 0));
+  out[4] = (uint8_t)((shiny ? 1 : 0) | (sleeping ? 2 : 0) | ((tick & 7) << 2));
   out[5] = (uint8_t)(level & 0xFF);
   out[6] = (uint8_t)(level >> 8);
   out[7] = (uint8_t)(id & 0xFF);
@@ -64,10 +68,11 @@ inline bool nbDecode(const uint8_t *d, int len, NbBeacon *out) {
   int species = d[3];
   int level = d[5] | (d[6] << 8);
   uint32_t id = (uint32_t)d[7] | ((uint32_t)d[8] << 8) | ((uint32_t)d[9] << 16);
-  if (species < 1 || species > 151 || level < 1 || level > 999 || id == 0 || (d[4] & ~3)) return false;
+  if (species < 1 || species > 151 || level < 1 || level > 999 || id == 0 || (d[4] & ~0x1F)) return false;
   out->species = (uint8_t)species;
   out->shiny = d[4] & 1;
   out->sleeping = d[4] & 2;
+  out->tick = (d[4] >> 2) & 7;
   out->level = (uint16_t)level;
   out->id = id;
   return true;
@@ -166,7 +171,7 @@ enum NbMode : uint8_t { NB_OFF = 0, NB_ACTIVE, NB_DIM, NB_NIGHT, NB_SEARCH };
 inline uint32_t nbPeriodMs(NbMode m) {
   switch (m) {
     case NB_ACTIVE: return 25000;
-    case NB_DIM: return 45000;
+    case NB_DIM: return 50000;
     case NB_NIGHT: return 300000;
     default: return 0;  // NB_OFF has no windows; NB_SEARCH is a single continuous one
   }
@@ -191,6 +196,68 @@ inline uint32_t nbNextDelayMs(NbMode m, uint32_t rnd) {
   uint32_t p = nbPeriodMs(m);
   return p ? p - p / 4 + rnd % (p / 2 + 1) : 0;
 }
+
+// ---- window synchronisation ----
+// Windows at random times meet only every 6-25 minutes, so a neighbour is forgotten and its state
+// (asleep/awake) goes stale. Once two devices hear each other they agree on a common grid and open
+// their windows at the same instants from then on. All periods are multiples of 25 s (and divide
+// NB_GRID_MS), so devices in different modes still share windows: active every grid point, dim every
+// 2nd, night every 12th. Both sides derive the same anchor: the earlier of the two window starts
+// (a device that only listens continuously uses the other's start).
+#define NB_STEP_MS 25000UL         // finest grid step: every window opens at a multiple of this from the anchor
+#define NB_GRID_MS 300000UL
+#define NB_SYNC_TOL_MS 400UL       // a beacon this close to the grid counts as in sync
+#define NB_SYNC_LIFE_MS 1200000UL  // with no in-sync beacon for 20 min the grid is dropped (random windows again)
+
+// signed distance of d from the nearest multiple of g
+inline int32_t nbGridOffset(int32_t d, uint32_t g = NB_STEP_MS) {
+  int32_t m = d % (int32_t)g;
+  if (m < 0) m += (int32_t)g;
+  return m > (int32_t)(g / 2) ? m - (int32_t)g : m;
+}
+
+struct NbSync {
+  bool valid = false;
+  uint32_t anchor = 0;    // an instant at which a window opens on the shared grid
+  uint32_t lastHit = 0;
+
+  bool live(uint32_t now) const { return valid && (uint32_t)(now - lastHit) < NB_SYNC_LIFE_MS; }
+  void clear() { valid = false; }
+
+  // A beacon was received at rxAt. haveOwn/ownStart: our own window was open then (not in the
+  // continuous search). Returns true if the beacon was used.
+  bool hear(const NbBeacon &b, uint32_t rxAt, bool haveOwn, uint32_t ownStart, uint32_t now) {
+    bool haveW = b.tick < NB_TICK_NONE;
+    uint32_t w = rxAt - (uint32_t)b.tick * NB_TICK_MS;  // when the sender's window opened
+    if (!haveW && !haveOwn) return false;
+    if (live(now)) {
+      if (!haveW) return false;
+      int32_t e = nbGridOffset((int32_t)(w - anchor));
+      if (e > (int32_t)NB_SYNC_TOL_MS || e < -(int32_t)NB_SYNC_TOL_MS) return false;  // someone else's grid
+      anchor += (uint32_t)(e / 2);  // meet halfway: the two clocks drift apart slowly
+      lastHit = now;
+      return true;
+    }
+    uint32_t cand = haveW ? w : ownStart;
+    if (haveW && haveOwn && (int32_t)(ownStart - w) < 0) cand = ownStart;  // the earlier of the two
+    anchor = cand;
+    valid = true;
+    lastHit = now;
+    return true;
+  }
+
+  // first window opening >= now for a device with this period
+  uint32_t next(uint32_t now, uint32_t period) {
+    int32_t d = (int32_t)(now - anchor);
+    if (d <= 0) return anchor;
+    if (d > (int32_t)(2 * NB_GRID_MS)) {  // keep the anchor recent so it never overflows
+      anchor += (uint32_t)(d / (int32_t)NB_GRID_MS - 1) * NB_GRID_MS;
+      d = (int32_t)(now - anchor);
+    }
+    uint32_t k = ((uint32_t)d + period - 1) / period;
+    return anchor + k * period;
+  }
+};
 
 // instants (ms from the start of the window) at which a signal is sent: on opening, and
 // repeated twice in case the other opens its window midway
